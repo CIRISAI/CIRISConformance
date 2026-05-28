@@ -1,0 +1,37 @@
+# Pinned wheel matrix under test. CI installs exactly these versions
+# into a clean venv before running pytest. Adjust ONLY when the
+# cohabitation contract is consciously updated — these pins are the
+# canonical statement of "what's expected to work together right now."
+#
+# Update protocol:
+#   1. Bump the relevant pin (e.g. ciris-edge: 0.9.2 after persist#109 lands)
+#   2. Run `pytest` locally to verify; remove any `xfail` that now passes
+#   3. PR; the under-test consumer repos see the new floor on their next merge
+#
+# Crates not yet shipping wheels (nodecore / lenscore / registry-core) are
+# omitted; add them here when they cut their first PyPI release.
+
+stack:
+  ciris-persist: "2.2.0"
+  ciris-keyring: "3.0.1"
+  ciris-crypto:  "3.0.1"
+  ciris-edge:    "0.9.1"
+
+# Python interpreter version under test. Edge ships abi3-py310 so 3.10
+# is the floor; 3.11 / 3.12 / 3.13 should also pass cohabitation.
+python_versions:
+  - "3.10"
+  - "3.11"
+  - "3.12"
+
+# Known cross-artifact issues this matrix EXPECTS to fail. The
+# corresponding tests carry @pytest.mark.xfail(strict=True). When an
+# issue closes, remove from this list AND remove the xfail marker —
+# strict=True will then flag any silent regression.
+known_failures:
+  - id: "persist#109"
+    title: "PyO3 cross-crate PyClass identity failure on init_edge_runtime"
+    url: "https://github.com/CIRISAI/CIRISPersist/issues/109"
+    affects:
+      - tests/test_030_cohabitation_init.py::test_init_edge_runtime_succeeds
+      - tests/test_040_pyclass_identity.py::test_persist_engine_type_identity_across_imports

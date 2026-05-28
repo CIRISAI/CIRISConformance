@@ -1,0 +1,198 @@
+"""
+Pytest fixtures + helpers for the CIRISConformance harness.
+
+Two principles drive every fixture here:
+
+1. **Subprocess isolation.** PyO3 type registration is process-global.
+   Once `import ciris_persist` runs, the `PyEngine` PyTypeInfo is
+   registered in the running interpreter's type table for the rest of
+   the process's life. A test that imports persist cannot be cleanly
+   followed by a test that DOESN'T import persist — the registration
+   leaks. Every cohabitation scenario runs in a fresh `subprocess`
+   (we use plain `subprocess` + an inline Python script, not
+   pytest-forked, because forked tests share the parent's import
+   state at fork-time).
+
+2. **No imports of ciris-* at module level in this file.** This
+   conftest runs in the pytest main process. If we imported anything
+   here, every test would inherit that import. We pass module names
+   as strings into subprocess scripts.
+"""
+
+from __future__ import annotations
+
+import json
+import subprocess
+import sys
+import textwrap
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Iterable
+
+import pytest
+import yaml
+
+
+REPO_ROOT = Path(__file__).resolve().parent
+MATRIX_PATH = REPO_ROOT / "matrices" / "current.yaml"
+
+
+# ─── Canonical wheel inventory ────────────────────────────────────────
+# When a new ciris-* crate ships a wheel, add it here AND to
+# matrices/current.yaml. The pairwise import test iterates this list.
+ALL_WHEELS: tuple[str, ...] = (
+    "ciris_persist",
+    "ciris_keyring",
+    "ciris_crypto",
+    "ciris_edge",
+)
+
+
+@dataclass(frozen=True)
+class WheelMatrix:
+    """The pinned wheel set under test, parsed from matrices/current.yaml."""
+
+    versions: dict[str, str]
+    python_versions: list[str]
+    known_failures: list[dict]
+
+    @classmethod
+    def load(cls, path: Path = MATRIX_PATH) -> "WheelMatrix":
+        data = yaml.safe_load(path.read_text())
+        return cls(
+            versions=data.get("stack", {}),
+            python_versions=data.get("python_versions", []),
+            known_failures=data.get("known_failures", []),
+        )
+
+    def version(self, package: str) -> str | None:
+        """Resolve `ciris_persist` → `2.2.0` etc. Handles underscore/hyphen."""
+        for key, value in self.versions.items():
+            if key.replace("-", "_") == package.replace("-", "_"):
+                return value
+        return None
+
+
+@pytest.fixture(scope="session")
+def matrix() -> WheelMatrix:
+    return WheelMatrix.load()
+
+
+# ─── Subprocess Python runner ─────────────────────────────────────────
+
+
+@dataclass
+class ScriptResult:
+    """What a subprocess Python script returns to the test."""
+
+    returncode: int
+    stdout: str
+    stderr: str
+
+    @property
+    def ok(self) -> bool:
+        return self.returncode == 0
+
+    def parsed_stdout(self) -> dict | list:
+        """Parse stdout as JSON (the canonical script-to-test channel)."""
+        return json.loads(self.stdout)
+
+
+def run_python_script(
+    script: str,
+    *,
+    timeout: float = 30.0,
+    expect_ok: bool = False,
+) -> ScriptResult:
+    """
+    Run `script` in a fresh Python subprocess (same interpreter as pytest).
+
+    The fresh subprocess is the load-bearing primitive — it guarantees
+    no prior `import ciris_*` state leaks into the scenario under test.
+
+    Pass `expect_ok=True` to fail the test (via assert) if the script
+    exits non-zero; otherwise return the result for the caller to inspect.
+    """
+    completed = subprocess.run(
+        [sys.executable, "-c", textwrap.dedent(script)],
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+    )
+    result = ScriptResult(
+        returncode=completed.returncode,
+        stdout=completed.stdout,
+        stderr=completed.stderr,
+    )
+    if expect_ok and not result.ok:
+        pytest.fail(
+            f"Subprocess script exited {result.returncode}\n"
+            f"STDOUT:\n{result.stdout}\n"
+            f"STDERR:\n{result.stderr}"
+        )
+    return result
+
+
+@pytest.fixture
+def python_subprocess():
+    """Function fixture: returns the `run_python_script` helper."""
+    return run_python_script
+
+
+# ─── Installed-wheel discovery ────────────────────────────────────────
+
+
+def is_module_installed(module_name: str) -> bool:
+    """Probe whether `module_name` is importable in a fresh subprocess.
+
+    Done in a subprocess so the probe doesn't pollute pytest's import
+    state — important when the probe falls through to a real test that
+    needs a clean interpreter.
+    """
+    script = f"""
+        import importlib, sys
+        try:
+            importlib.import_module({module_name!r})
+            sys.exit(0)
+        except ImportError:
+            sys.exit(1)
+    """
+    result = run_python_script(script, timeout=10.0)
+    return result.ok
+
+
+def installed_wheels() -> list[str]:
+    """Return the subset of `ALL_WHEELS` actually installed in this env."""
+    return [w for w in ALL_WHEELS if is_module_installed(w)]
+
+
+@pytest.fixture(scope="session")
+def installed() -> list[str]:
+    """Session-scoped: which ciris-* wheels are importable."""
+    return installed_wheels()
+
+
+# ─── Marker-driven skip logic ─────────────────────────────────────────
+
+
+_REQUIREMENT_MARKERS = {
+    "requires_persist": "ciris_persist",
+    "requires_edge": "ciris_edge",
+    "requires_verify": "ciris_keyring",  # ciris_crypto rides along
+}
+
+
+def pytest_collection_modifyitems(config: pytest.Config, items: Iterable[pytest.Item]) -> None:
+    """Auto-skip tests whose required wheel isn't installed.
+
+    Lets CI install a subset (e.g. edge-only) and have the harness
+    cleanly skip the cohabitation tests rather than fail — useful for
+    pre-merge runs where the under-test artifact isn't yet on PyPI.
+    """
+    have = set(installed_wheels())
+    for item in items:
+        for marker_name, module in _REQUIREMENT_MARKERS.items():
+            if item.get_closest_marker(marker_name) and module not in have:
+                item.add_marker(
+                    pytest.mark.skip(reason=f"{module} not installed in current env")
+                )

@@ -1,0 +1,57 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ciris-conformance"
+version = "0.1.0"
+description = "Federation cohabitation + cross-artifact conformance harness for the CIRIS stack"
+readme = "README.md"
+license = { text = "AGPL-3.0-or-later" }
+authors = [{ name = "CIRIS AI", email = "hello@ciris.ai" }]
+requires-python = ">=3.10"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
+    "Topic :: Software Development :: Testing",
+]
+
+dependencies = [
+    "pytest>=8.0",
+    "pytest-forked>=1.6",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest-xdist>=3.5",
+    "ruff>=0.5",
+]
+
+[project.urls]
+Homepage = "https://ciris.ai"
+Repository = "https://github.com/CIRISAI/CIRISConformance"
+Issues = "https://github.com/CIRISAI/CIRISConformance/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ciris_conformance"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = [
+    "--strict-markers",
+    "--strict-config",
+    "-ra",
+]
+markers = [
+    "cohabitation: tests that load multiple ciris-* wheels in one process",
+    "requires_persist: test needs ciris-persist installed",
+    "requires_edge: test needs ciris-edge installed",
+    "requires_verify: test needs ciris-keyring + ciris-crypto installed",
+    "version_skew: test deliberately pairs non-current versions",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
