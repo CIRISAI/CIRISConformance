@@ -26,8 +26,13 @@ stack:
 
 # Python interpreter version under test. Edge ships abi3-py310 so 3.10
 # is the floor; 3.11 / 3.12 / 3.13 should also pass cohabitation.
+# NOTE: 3.10 is excluded because ciris-edge's PyPI pyproject declares
+# `requires-python = ">=3.11"`. The Cargo `abi3-py310` build means the
+# wheel is binary-compatible with py3.10+, but pip install from PyPI
+# refuses it. py3.10 consumers that DO matter (Chaquopy on Android)
+# ship their own interpreter and bundle the wheel directly, bypassing
+# pip's requires-python check.
 python_versions:
-  - "3.10"
   - "3.11"
   - "3.12"
 

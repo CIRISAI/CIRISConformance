@@ -37,7 +37,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python: ["3.10", "3.11", "3.12"]
+        # NOTE: py3.10 is excluded because ciris-edge's pyproject declares
+        # `requires-python = ">=3.11"` — pip refuses py3.10 install from
+        # PyPI even though the Cargo `abi3-py310` build means the wheel is
+        # binary-compatible with py3.10+ at the ABI level. The py3.10
+        # consumer that matters (Chaquopy on Android) ships its own
+        # interpreter and bundles the wheel directly, bypassing pip's
+        # requires-python check. If a published wheel ever moves its
+        # pyproject floor to >=3.10, add "3.10" back here.
+        python: ["3.11", "3.12"]
         backend: ["sqlite", "postgres"]
     env:
       CIRIS_CONFORMANCE_DATABASE_URL: ${{ matrix.backend == 'postgres' && 'postgres://postgres:postgres@localhost:5432/conformance' || 'sqlite::memory:' }}
