@@ -17,9 +17,9 @@ stack:
   # CIRISVerify; they have NO Python wheels — they ride statically
   # inside ciris-verify + ciris-edge's compiled cdylib via Cargo.
   # ciris-verify is the Python surface that wraps them.
-  ciris-persist: "2.2.0"
+  ciris-persist: "2.7.0"   # bumped 2.2.0 → 2.7.0: ships PyCapsule cohabitation accessors (#109) + list_keys_by_identity_type (#105) + aggregate UI queries (#104)
   ciris-verify:  "3.0.1"   # matches edge's Cargo pin on ciris-keyring + ciris-crypto v3.0.1
-  ciris-edge:    "0.9.1"
+  ciris-edge:    "0.9.2"   # bumped 0.9.1 → 0.9.2: consumes persist v2.7.0's PyCapsule cohabitation init (closes CIRISEdge#22 cohab regression)
   # ciris-lens-core (0.1.1 on PyPI) and ciris-node-core (not yet on
   # PyPI) get added here when they ship federation-relevant Python
   # surfaces requiring cohabitation verification.
@@ -40,9 +40,8 @@ python_versions:
 # corresponding tests carry @pytest.mark.xfail(strict=True). When an
 # issue closes, remove from this list AND remove the xfail marker —
 # strict=True will then flag any silent regression.
-known_failures:
-  - id: "persist#109"
-    title: "PyO3 cross-crate PyClass identity failure on init_edge_runtime"
-    url: "https://github.com/CIRISAI/CIRISPersist/issues/109"
-    affects:
-      - tests/test_030_cohabitation_init.py::test_init_edge_runtime_succeeds
+known_failures: []
+# persist#109 closed in CIRISPersist v2.7.0 (PyCapsule cohabitation
+# accessors) + consumed in CIRISEdge v0.9.2. test_init_edge_runtime_succeeds
+# is no longer xfail-marked — it now passes against the bumped matrix,
+# becoming the hard regression gate for cross-wheel cohabitation init.

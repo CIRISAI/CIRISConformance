@@ -103,15 +103,17 @@ def _init_handshake_script(database_url: str) -> str:
 @pytest.mark.cohabitation
 @pytest.mark.requires_persist
 @pytest.mark.requires_edge
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "persist#109 — PyO3 cross-crate PyClass identity. "
-        "Remove this xfail when persist#109 ships + edge consumes the fix."
-    ),
-)
 def test_init_edge_runtime_succeeds(python_subprocess):
-    """The actual cohabitation init handshake completes successfully."""
+    """The actual cohabitation init handshake completes successfully.
+
+    persist#109 (PyO3 cross-crate PyClass identity failure) closed in
+    CIRISPersist v2.7.0 via PyCapsule accessors; consumed in CIRISEdge
+    v0.9.2 (init_edge_runtime now takes `engine: Bound<PyAny>` and
+    extracts substrate handles via `federation_directory_capsule` /
+    `outbound_queue_capsule` / `keyring_signer_capsule` `#[pymethod]`s).
+    This test is now a HARD regression gate: any future cross-wheel
+    cohabitation break fails it directly (no xfail absorbing the bug).
+    """
     result = python_subprocess(_init_handshake_script(get_database_url()), expect_ok=False)
     assert result.ok, (
         f"init_edge_runtime cohabitation handshake failed "
@@ -137,7 +139,12 @@ def test_init_handshake_fails_with_persist_109_signature(python_subprocess):
     xfails with a DIFFERENT signature, persist#109 mutated into a
     different bug — also worth flagging.
 
-    Remove this test when persist#109 closes.
+    NOTE 2026-05-28: persist#109 + edge v0.9.2 closed the original
+    bug. Against the current matrix (persist 2.7.0 / edge 0.9.2)
+    this test now skips because init_handshake succeeds — the
+    `if result.ok: pytest.skip(...)` branch fires. Kept as a tripwire
+    for any future regression that re-introduces the v0.9.1-class
+    cross-module identity failure.
     """
     result = python_subprocess(_init_handshake_script(get_database_url()), expect_ok=False)
     if result.ok:
