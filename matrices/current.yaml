@@ -12,10 +12,17 @@
 # omitted; add them here when they cut their first PyPI release.
 
 stack:
+  # CIRIS family Python wheels on PyPI.
+  # NOTE: ciris-keyring + ciris-crypto are Rust-only crates inside
+  # CIRISVerify; they have NO Python wheels — they ride statically
+  # inside ciris-verify + ciris-edge's compiled cdylib via Cargo.
+  # ciris-verify is the Python surface that wraps them.
   ciris-persist: "2.2.0"
-  ciris-keyring: "3.0.1"
-  ciris-crypto:  "3.0.1"
+  ciris-verify:  "3.0.1"   # matches edge's Cargo pin on ciris-keyring + ciris-crypto v3.0.1
   ciris-edge:    "0.9.1"
+  # ciris-lens-core (0.1.1 on PyPI) and ciris-node-core (not yet on
+  # PyPI) get added here when they ship federation-relevant Python
+  # surfaces requiring cohabitation verification.
 
 # Python interpreter version under test. Edge ships abi3-py310 so 3.10
 # is the floor; 3.11 / 3.12 / 3.13 should also pass cohabitation.

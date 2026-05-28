@@ -71,25 +71,21 @@ def test_ciris_edge_exposes_init_edge_runtime(python_subprocess):
 
 
 @pytest.mark.requires_verify
-def test_ciris_keyring_imports_alone(python_subprocess):
+def test_ciris_verify_imports_alone(python_subprocess):
+    """
+    `ciris_verify` is the Python wheel that wraps the Rust crates
+    `ciris-keyring` and `ciris-crypto`. The two Rust crates have no
+    standalone Python wheels — they ride inside this one.
+    """
     result = python_subprocess(
         """
-        import ciris_keyring
+        import ciris_verify
         import json
-        print(json.dumps({"module": "ciris_keyring", "ok": True}))
-        """,
-        expect_ok=True,
-    )
-    assert result.parsed_stdout()["ok"] is True
-
-
-@pytest.mark.requires_verify
-def test_ciris_crypto_imports_alone(python_subprocess):
-    result = python_subprocess(
-        """
-        import ciris_crypto
-        import json
-        print(json.dumps({"module": "ciris_crypto", "ok": True}))
+        print(json.dumps({
+            "module": "ciris_verify",
+            "version": getattr(ciris_verify, "__version__", None),
+            "ok": True,
+        }))
         """,
         expect_ok=True,
     )

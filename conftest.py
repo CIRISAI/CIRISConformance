@@ -77,12 +77,17 @@ def backend_label() -> str:
 
 
 # ─── Canonical wheel inventory ────────────────────────────────────────
-# When a new ciris-* crate ships a wheel, add it here AND to
-# matrices/current.yaml. The pairwise import test iterates this list.
+# Python module names of the ciris-* wheels under cohabitation test.
+# NOTE: ciris-keyring + ciris-crypto are NOT here — they're Rust-only
+# crates inside CIRISVerify, embedded in `ciris_verify` and
+# `ciris_edge`'s compiled cdylibs. There's no separate Python wheel
+# to import for them.
+#
+# When a new ciris-* crate ships a Python wheel, add the module name
+# here AND the package version to matrices/current.yaml.
 ALL_WHEELS: tuple[str, ...] = (
     "ciris_persist",
-    "ciris_keyring",
-    "ciris_crypto",
+    "ciris_verify",
     "ciris_edge",
 )
 
@@ -217,7 +222,7 @@ def installed() -> list[str]:
 _REQUIREMENT_MARKERS = {
     "requires_persist": "ciris_persist",
     "requires_edge": "ciris_edge",
-    "requires_verify": "ciris_keyring",  # ciris_crypto rides along
+    "requires_verify": "ciris_verify",
 }
 
 
