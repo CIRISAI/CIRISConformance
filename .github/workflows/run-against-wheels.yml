@@ -4,23 +4,30 @@ name: run-against-wheels
 # tag-run verify cohabitation against its just-built artifact + the
 # rest of the pinned stack BEFORE that artifact ships to PyPI.
 #
+# Two-axis matrix per caller: (platform × backend). Caller drives both
+# via the `runs-on` and `backend` inputs — typically passed via the
+# caller's own `strategy.matrix`.
+#
 # Example usage from CIRISEdge/.github/workflows/ci.yml:
 #
-#   jobs:
-#     conformance:
-#       needs: [pyo3-wheel]
-#       uses: CIRISAI/CIRISConformance/.github/workflows/run-against-wheels.yml@main
-#       with:
-#         under-test-wheel-artifact: ciris_edge-wheel-linux-x86_64
-#         under-test-package: ciris-edge
-#         matrix-ref: main
-#
-# Semantics:
-#   1. Clone CIRISConformance at `matrix-ref`
-#   2. Install the pinned siblings from matrices/current.yaml
-#   3. Download the under-test wheel artifact from the caller's run
-#   4. pip install --force-reinstall that artifact (overrides any pin)
-#   5. Run the conformance suite
+#   conformance:
+#     needs: [pyo3-wheel]
+#     strategy:
+#       fail-fast: false
+#       matrix:
+#         include:
+#           - { platform: linux-x86_64,   runs-on: ubuntu-latest,    backend: sqlite }
+#           - { platform: linux-x86_64,   runs-on: ubuntu-latest,    backend: postgres }
+#           - { platform: linux-aarch64,  runs-on: ubuntu-24.04-arm, backend: sqlite }
+#           - { platform: linux-aarch64,  runs-on: ubuntu-24.04-arm, backend: postgres }
+#           - { platform: darwin-aarch64, runs-on: macos-14,         backend: sqlite }
+#           - { platform: darwin-aarch64, runs-on: macos-14,         backend: postgres }
+#     uses: CIRISAI/CIRISConformance/.github/workflows/run-against-wheels.yml@main
+#     with:
+#       runs-on: ${{ matrix.runs-on }}
+#       backend: ${{ matrix.backend }}
+#       under-test-wheel-artifact: ciris_edge-wheel-${{ matrix.platform }}
+#       under-test-package: ciris-edge
 #
 # A failure here in the caller's tag-run BLOCKS publish-pypi — the
 # under-test artifact failed its cohabitation contract.
@@ -28,6 +35,14 @@ name: run-against-wheels
 on:
   workflow_call:
     inputs:
+      runs-on:
+        description: "GitHub Actions runner label (ubuntu-latest, ubuntu-24.04-arm, macos-14)"
+        required: true
+        type: string
+      backend:
+        description: "Persist backend to exercise (sqlite | postgres)"
+        required: true
+        type: string
       under-test-wheel-artifact:
         description: "actions/upload-artifact name carrying the wheel under test"
         required: true
@@ -49,7 +64,11 @@ on:
 
 jobs:
   conformance:
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runs-on }}
+    env:
+      # The harness reads this; sqlite default keeps the env variable
+      # set unconditionally so test failures attribute correctly.
+      CIRIS_CONFORMANCE_DATABASE_URL: ${{ inputs.backend == 'postgres' && 'postgres://postgres:postgres@localhost:5432/conformance' || 'sqlite::memory:' }}
     steps:
       - name: clone CIRISConformance @ ${{ inputs.matrix-ref }}
         uses: actions/checkout@v4
@@ -62,6 +81,47 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ inputs.python-version }}
+
+      - name: start postgres (Linux) — backend=${{ inputs.backend }}
+        if: inputs.backend == 'postgres' && runner.os == 'Linux'
+        # GitHub-hosted ubuntu runners ship a pre-installed postgres
+        # (cluster `main`). Reset the auth + start the cluster + create
+        # the `conformance` database. Use peer-auth bypass via
+        # `sudo -u postgres` because the cluster's pg_hba.conf defaults
+        # don't permit md5 from localhost until we set it up.
+        run: |
+          sudo systemctl start postgresql || sudo service postgresql start || true
+          sudo -u postgres psql -c "ALTER USER postgres PASSWORD 'postgres';"
+          sudo -u postgres createdb conformance
+          # Switch pg_hba to permit md5 from localhost (the env URL uses
+          # password auth, not peer auth). Find the active config file
+          # and patch the localhost rules to md5.
+          PG_HBA=$(sudo -u postgres psql -tAc "SHOW hba_file;")
+          sudo sed -i 's/^\(host\s\+all\s\+all\s\+127.0.0.1\/32\s\+\)\w\+$/\1md5/' "$PG_HBA"
+          sudo sed -i 's/^\(host\s\+all\s\+all\s\+::1\/128\s\+\)\w\+$/\1md5/' "$PG_HBA"
+          sudo systemctl reload postgresql || sudo service postgresql reload || true
+          # Smoke check
+          PGPASSWORD=postgres psql -h localhost -U postgres -d conformance -c "SELECT version();"
+
+      - name: start postgres (macOS) — backend=${{ inputs.backend }}
+        if: inputs.backend == 'postgres' && runner.os == 'macOS'
+        # macos-14 runners ship postgresql@14 via homebrew. Start it,
+        # create the conformance role + db, and verify connectivity.
+        run: |
+          brew services start postgresql@14
+          # Give the server a moment to start accepting connections
+          for i in 1 2 3 4 5 6 7 8 9 10; do
+            if pg_isready -h localhost; then break; fi
+            sleep 1
+          done
+          # The brew install starts with the runner user as the
+          # superuser; create the `postgres` role + db to match the URL.
+          createuser --superuser postgres 2>/dev/null || true
+          psql -U postgres -d postgres -c "ALTER USER postgres PASSWORD 'postgres';" || \
+            psql postgres -c "CREATE USER postgres WITH SUPERUSER PASSWORD 'postgres';"
+          createdb -U postgres conformance 2>/dev/null || true
+          # Smoke check
+          PGPASSWORD=postgres psql -h localhost -U postgres -d conformance -c "SELECT version();"
 
       - name: install harness + dev tooling
         working-directory: conformance
@@ -76,9 +136,6 @@ jobs:
           import yaml, subprocess, sys
           matrix = yaml.safe_load(open('matrices/current.yaml'))
           pins = matrix['stack']
-          # Skip the under-test package — we install the just-built
-          # wheel of it next, with --force-reinstall so it overrides
-          # any pin pip resolved via transitives.
           under_test = '${{ inputs.under-test-package }}'.replace('-', '_')
           install_args = [
               f'{pkg}=={ver}'
@@ -107,6 +164,13 @@ jobs:
           pip install --force-reinstall --no-deps "$WHEEL"
           pip show "${{ inputs.under-test-package }}"
 
-      - name: run conformance suite against the under-test artifact
+      - name: run conformance suite against (${{ inputs.runs-on }} × ${{ inputs.backend }})
         working-directory: conformance
-        run: pytest -v --tb=short
+        run: |
+          echo "::group::Environment"
+          echo "runs-on:  ${{ inputs.runs-on }}"
+          echo "backend:  ${{ inputs.backend }}"
+          echo "url:      ${CIRIS_CONFORMANCE_DATABASE_URL}"
+          echo "python:   $(python --version)"
+          echo "::endgroup::"
+          pytest -v --tb=short

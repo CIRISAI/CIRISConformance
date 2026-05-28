@@ -22,6 +22,7 @@ Two principles drive every fixture here:
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import textwrap
@@ -35,6 +36,44 @@ import yaml
 
 REPO_ROOT = Path(__file__).resolve().parent
 MATRIX_PATH = REPO_ROOT / "matrices" / "current.yaml"
+
+
+# ─── Backend-under-test resolution ────────────────────────────────────
+# `CIRIS_CONFORMANCE_DATABASE_URL` chooses which persist backend the
+# scenarios exercise. The same conformance suite runs against BOTH
+# `sqlite::memory:` and `postgres://...` URLs — most cross-module
+# PyClass / cohabitation invariants are backend-agnostic, but some
+# (e.g. concurrent-cohabitation Engine construction against a shared
+# WAL/postgres pool) only surface under the right backend. Two runners
+# per platform per the v0.1.1 CI matrix.
+#
+# When unset, defaults to `sqlite::memory:` so a local `pytest` works
+# without standing up postgres.
+DEFAULT_DATABASE_URL = "sqlite::memory:"
+
+
+def get_database_url() -> str:
+    return os.environ.get("CIRIS_CONFORMANCE_DATABASE_URL", DEFAULT_DATABASE_URL)
+
+
+def get_backend_label() -> str:
+    """`sqlite` or `postgres` — derived from the URL scheme. For test ids."""
+    url = get_database_url()
+    if url.startswith("sqlite"):
+        return "sqlite"
+    if url.startswith("postgres"):
+        return "postgres"
+    return "unknown"
+
+
+@pytest.fixture(scope="session")
+def database_url() -> str:
+    return get_database_url()
+
+
+@pytest.fixture(scope="session")
+def backend_label() -> str:
+    return get_backend_label()
 
 
 # ─── Canonical wheel inventory ────────────────────────────────────────

@@ -31,58 +31,73 @@ from __future__ import annotations
 
 import pytest
 
+from conftest import get_database_url
 
-_INIT_HANDSHAKE_SCRIPT = """
-    import json, sys, tempfile, os
-    try:
-        import ciris_persist
-        from ciris_edge.ciris_edge import init_edge_runtime
-    except ImportError as exc:
-        print(json.dumps({"stage": "import", "error": str(exc)}))
-        sys.exit(2)
 
-    try:
-        engine = ciris_persist.Engine("sqlite::memory:", "test-key")
-    except Exception as exc:
-        print(json.dumps({"stage": "engine_construct", "error": str(exc), "type": type(exc).__name__}))
-        sys.exit(3)
+def _init_handshake_script(database_url: str) -> str:
+    """Build the cohabitation-init scenario as a self-contained Python script.
 
-    # Identity file path. The init constructor expects a file; it doesn't
-    # need to be a real Reticulum identity for the type-handshake to
-    # succeed (the failure we're testing fires BEFORE identity loading).
-    fd, identity_path = tempfile.mkstemp(suffix=".rid")
-    try:
-        os.write(fd, b"\\x00" * 64)  # placeholder identity bytes
-        os.close(fd)
-
-        try:
-            edge = init_edge_runtime(engine, identity_path)
-        except TypeError as exc:
-            # This is the persist#109 signature — surface it explicitly.
-            print(json.dumps({
-                "stage": "init_handshake",
-                "error": str(exc),
-                "type": "TypeError",
-                "is_persist_109": "'Engine' object is not an instance of 'Engine'" in str(exc),
-            }))
-            sys.exit(4)
-        except Exception as exc:
-            print(json.dumps({
-                "stage": "init_handshake",
-                "error": str(exc),
-                "type": type(exc).__name__,
-            }))
-            sys.exit(5)
-
-        print(json.dumps({
-            "stage": "ok",
-            "edge_has_signer_key_id": hasattr(edge, "signer_key_id"),
-            "edge_version": edge.crate_version() if hasattr(edge, "crate_version") else None,
-        }))
-    finally:
-        try: os.unlink(identity_path)
-        except OSError: pass
-"""
+    The database URL is interpolated as a Python string literal so the
+    test runs against whatever backend the harness's environment selects
+    (sqlite::memory: by default; postgres://... when CI flips the env).
+    """
+    # `db_url_repr` produces a valid Python string literal we can drop
+    # straight into the script body. Avoids tangled f-string brace
+    # escaping for the rest of the script.
+    db_url_repr = repr(database_url)
+    return (
+        "import json, sys, tempfile, os\n"
+        "try:\n"
+        "    import ciris_persist\n"
+        "    from ciris_edge.ciris_edge import init_edge_runtime\n"
+        "except ImportError as exc:\n"
+        "    print(json.dumps({'stage': 'import', 'error': str(exc)}))\n"
+        "    sys.exit(2)\n"
+        "\n"
+        "try:\n"
+        f"    engine = ciris_persist.Engine({db_url_repr}, 'test-key')\n"
+        "except Exception as exc:\n"
+        "    print(json.dumps({\n"
+        "        'stage': 'engine_construct',\n"
+        "        'error': str(exc),\n"
+        "        'type': type(exc).__name__,\n"
+        f"        'database_url': {db_url_repr},\n"
+        "    }))\n"
+        "    sys.exit(3)\n"
+        "\n"
+        "# Identity file path. The init constructor expects a file; it doesn't\n"
+        "# need to be a real Reticulum identity for the type-handshake to\n"
+        "# succeed (the failure we're testing fires BEFORE identity loading).\n"
+        "fd, identity_path = tempfile.mkstemp(suffix='.rid')\n"
+        "try:\n"
+        "    os.write(fd, b'\\x00' * 64)\n"
+        "    os.close(fd)\n"
+        "    try:\n"
+        "        edge = init_edge_runtime(engine, identity_path)\n"
+        "    except TypeError as exc:\n"
+        "        print(json.dumps({\n"
+        "            'stage': 'init_handshake',\n"
+        "            'error': str(exc),\n"
+        "            'type': 'TypeError',\n"
+        "            'is_persist_109': \"'Engine' object is not an instance of 'Engine'\" in str(exc),\n"
+        "        }))\n"
+        "        sys.exit(4)\n"
+        "    except Exception as exc:\n"
+        "        print(json.dumps({\n"
+        "            'stage': 'init_handshake',\n"
+        "            'error': str(exc),\n"
+        "            'type': type(exc).__name__,\n"
+        "        }))\n"
+        "        sys.exit(5)\n"
+        "    print(json.dumps({\n"
+        "        'stage': 'ok',\n"
+        "        'edge_has_signer_key_id': hasattr(edge, 'signer_key_id'),\n"
+        "        'edge_version': edge.crate_version() if hasattr(edge, 'crate_version') else None,\n"
+        "    }))\n"
+        "finally:\n"
+        "    try: os.unlink(identity_path)\n"
+        "    except OSError: pass\n"
+    )
 
 
 @pytest.mark.cohabitation
@@ -97,7 +112,7 @@ _INIT_HANDSHAKE_SCRIPT = """
 )
 def test_init_edge_runtime_succeeds(python_subprocess):
     """The actual cohabitation init handshake completes successfully."""
-    result = python_subprocess(_INIT_HANDSHAKE_SCRIPT, expect_ok=False)
+    result = python_subprocess(_init_handshake_script(get_database_url()), expect_ok=False)
     assert result.ok, (
         f"init_edge_runtime cohabitation handshake failed "
         f"(exit {result.returncode}):\n"
@@ -124,7 +139,7 @@ def test_init_handshake_fails_with_persist_109_signature(python_subprocess):
 
     Remove this test when persist#109 closes.
     """
-    result = python_subprocess(_INIT_HANDSHAKE_SCRIPT, expect_ok=False)
+    result = python_subprocess(_init_handshake_script(get_database_url()), expect_ok=False)
     if result.ok:
         pytest.skip("init_handshake unexpectedly succeeded — persist#109 may be fixed")
 

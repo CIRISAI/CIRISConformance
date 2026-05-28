@@ -17,6 +17,8 @@ from __future__ import annotations
 
 import pytest
 
+from conftest import get_database_url
+
 
 @pytest.mark.cohabitation
 @pytest.mark.requires_persist
@@ -26,14 +28,15 @@ def test_persist_engine_constructable_from_module(python_subprocess):
     A failure here means persist's wheel is broken regardless of
     cohabitation.
     """
+    db_url = repr(get_database_url())
     result = python_subprocess(
-        """
+        f"""
         import ciris_persist, json
-        engine = ciris_persist.Engine("sqlite::memory:", "test-key")
-        print(json.dumps({
+        engine = ciris_persist.Engine({db_url}, "test-key")
+        print(json.dumps({{
             "type_module": type(engine).__module__,
             "type_qualname": type(engine).__qualname__,
-        }))
+        }}))
         """,
         expect_ok=True,
     )
@@ -63,8 +66,9 @@ def test_persist_engine_type_identity_across_imports(python_subprocess):
     PyClass registration breaks this invariant for statically-linked
     cross-crate deps.
     """
+    db_url = repr(get_database_url())
     result = python_subprocess(
-        """
+        f"""
         import ciris_persist, ciris_edge, json
         from ciris_edge.ciris_edge import init_edge_runtime
 
@@ -77,7 +81,7 @@ def test_persist_engine_type_identity_across_imports(python_subprocess):
         # Construct an Engine instance and ask Python whether it's an
         # instance of `ciris_persist.Engine`. Trivially True under
         # normal circumstances.
-        engine = engine_type("sqlite::memory:", "test-key")
+        engine = engine_type({db_url}, "test-key")
         is_instance_via_module = isinstance(engine, ciris_persist.Engine)
 
         # The bug: even though `engine` was constructed from
@@ -90,11 +94,11 @@ def test_persist_engine_type_identity_across_imports(python_subprocess):
         # instance — that's the integration check we delegate to
         # test_030_cohabitation_init.
 
-        print(json.dumps({
+        print(json.dumps({{
             "is_instance_via_module": is_instance_via_module,
             "engine_type_id": id(engine_type),
             "init_signature": sig,
-        }))
+        }}))
         """,
         expect_ok=True,
     )
