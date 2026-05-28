@@ -84,41 +84,78 @@ jobs:
 
       - name: start postgres (Linux) — backend=${{ inputs.backend }}
         if: inputs.backend == 'postgres' && runner.os == 'Linux'
-        # GitHub-hosted ubuntu runners ship a pre-installed postgres
-        # (cluster `main`). Reset the auth + start the cluster + create
-        # the `conformance` database. Use peer-auth bypass via
-        # `sudo -u postgres` because the cluster's pg_hba.conf defaults
-        # don't permit md5 from localhost until we set it up.
+        # Pre-install posture varies across GitHub-hosted Linux images:
+        #   ubuntu-latest (ubuntu-24.04, x86_64): postgresql 16 PRE-INSTALLED
+        #   ubuntu-24.04-arm                    : NO postgres pre-installed
+        # Install on-demand if missing. `pg_ctlcluster` is more reliable
+        # than `systemctl` on these runners (the postgresql.service unit
+        # is sometimes not registered even when binaries are present).
         run: |
-          sudo systemctl start postgresql || sudo service postgresql start || true
+          if ! command -v psql >/dev/null; then
+            echo "Installing postgresql via apt (runner: $RUNNER_OS / $(uname -m))"
+            sudo apt-get update -qq
+            sudo apt-get install -y --no-install-recommends postgresql postgresql-client
+          fi
+          # Find the version directory (handles both pre-installed and
+          # apt-installed cases; ls /etc/postgresql lists one entry per
+          # installed major version).
+          PG_VERSION=$(ls /etc/postgresql 2>/dev/null | head -1)
+          if [ -z "$PG_VERSION" ]; then
+            echo "::error::PostgreSQL install appears broken — /etc/postgresql is empty"
+            exit 1
+          fi
+          echo "Detected PostgreSQL major version: $PG_VERSION"
+          # Start the `main` cluster. pg_ctlcluster is the
+          # Debian/Ubuntu canonical management command; works whether
+          # or not systemd recognizes the unit.
+          sudo pg_ctlcluster "$PG_VERSION" main start || \
+            sudo systemctl start postgresql || \
+            sudo service postgresql start
+          # Auth + db setup
           sudo -u postgres psql -c "ALTER USER postgres PASSWORD 'postgres';"
           sudo -u postgres createdb conformance
-          # Switch pg_hba to permit md5 from localhost (the env URL uses
-          # password auth, not peer auth). Find the active config file
-          # and patch the localhost rules to md5.
+          # Switch pg_hba to permit md5 from localhost.
           PG_HBA=$(sudo -u postgres psql -tAc "SHOW hba_file;")
           sudo sed -i 's/^\(host\s\+all\s\+all\s\+127.0.0.1\/32\s\+\)\w\+$/\1md5/' "$PG_HBA"
           sudo sed -i 's/^\(host\s\+all\s\+all\s\+::1\/128\s\+\)\w\+$/\1md5/' "$PG_HBA"
-          sudo systemctl reload postgresql || sudo service postgresql reload || true
+          sudo pg_ctlcluster "$PG_VERSION" main reload || \
+            sudo systemctl reload postgresql || \
+            sudo service postgresql reload
           # Smoke check
           PGPASSWORD=postgres psql -h localhost -U postgres -d conformance -c "SELECT version();"
 
       - name: start postgres (macOS) — backend=${{ inputs.backend }}
         if: inputs.backend == 'postgres' && runner.os == 'macOS'
-        # macos-14 runners ship postgresql@14 via homebrew. Start it,
-        # create the conformance role + db, and verify connectivity.
+        # macos-14 runner pre-installs vary by image revision — the
+        # @14 / @15 / @16 formula availability shifts. Probe what's
+        # installed; install the latest non-deprecated otherwise.
+        # Use a fallback chain so the harness keeps working as the
+        # runner image rotates its pre-installed postgres version.
         run: |
-          brew services start postgresql@14
-          # Give the server a moment to start accepting connections
-          for i in 1 2 3 4 5 6 7 8 9 10; do
-            if pg_isready -h localhost; then break; fi
+          PG_FORMULA=""
+          for f in postgresql@16 postgresql@15 postgresql@14 postgresql; do
+            if brew list "$f" >/dev/null 2>&1; then
+              PG_FORMULA="$f"
+              echo "Found pre-installed: $f"
+              break
+            fi
+          done
+          if [ -z "$PG_FORMULA" ]; then
+            echo "No pre-installed postgresql formula found; installing postgresql@16"
+            brew install postgresql@16
+            PG_FORMULA="postgresql@16"
+          fi
+          brew services start "$PG_FORMULA"
+          # Wait for the server to accept connections
+          for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+            if pg_isready -h localhost; then echo "ready after ${i}s"; break; fi
             sleep 1
           done
-          # The brew install starts with the runner user as the
-          # superuser; create the `postgres` role + db to match the URL.
-          createuser --superuser postgres 2>/dev/null || true
-          psql -U postgres -d postgres -c "ALTER USER postgres PASSWORD 'postgres';" || \
-            psql postgres -c "CREATE USER postgres WITH SUPERUSER PASSWORD 'postgres';"
+          # brew's postgres starts with the runner user as superuser,
+          # NOT `postgres`. Create the postgres role + db to match the
+          # CIRIS_CONFORMANCE_DATABASE_URL the harness expects.
+          psql postgres -c "CREATE USER postgres WITH SUPERUSER PASSWORD 'postgres';" 2>/dev/null || \
+            psql postgres -c "ALTER USER postgres PASSWORD 'postgres';"
           createdb -U postgres conformance 2>/dev/null || true
           # Smoke check
           PGPASSWORD=postgres psql -h localhost -U postgres -d conformance -c "SELECT version();"

@@ -59,19 +59,31 @@ jobs:
 
       - name: start postgres (backend=${{ matrix.backend }})
         if: matrix.backend == 'postgres'
-        # ubuntu-latest ships postgresql pre-installed; start it,
-        # reset the auth, create the conformance db. Mirror the
-        # exact same setup the reusable run-against-wheels.yml uses
-        # so any drift here surfaces against the same SQL surface
-        # caller repos exercise.
+        # ubuntu-latest pre-installs postgresql; install on-demand if
+        # absent. Mirror the same setup logic the reusable
+        # run-against-wheels.yml uses so any drift here surfaces against
+        # the same SQL surface caller repos exercise.
         run: |
-          sudo systemctl start postgresql || sudo service postgresql start || true
+          if ! command -v psql >/dev/null; then
+            sudo apt-get update -qq
+            sudo apt-get install -y --no-install-recommends postgresql postgresql-client
+          fi
+          PG_VERSION=$(ls /etc/postgresql 2>/dev/null | head -1)
+          if [ -z "$PG_VERSION" ]; then
+            echo "::error::PostgreSQL install broken — /etc/postgresql empty"
+            exit 1
+          fi
+          sudo pg_ctlcluster "$PG_VERSION" main start || \
+            sudo systemctl start postgresql || \
+            sudo service postgresql start
           sudo -u postgres psql -c "ALTER USER postgres PASSWORD 'postgres';"
           sudo -u postgres createdb conformance
           PG_HBA=$(sudo -u postgres psql -tAc "SHOW hba_file;")
           sudo sed -i 's/^\(host\s\+all\s\+all\s\+127.0.0.1\/32\s\+\)\w\+$/\1md5/' "$PG_HBA"
           sudo sed -i 's/^\(host\s\+all\s\+all\s\+::1\/128\s\+\)\w\+$/\1md5/' "$PG_HBA"
-          sudo systemctl reload postgresql || sudo service postgresql reload || true
+          sudo pg_ctlcluster "$PG_VERSION" main reload || \
+            sudo systemctl reload postgresql || \
+            sudo service postgresql reload
           PGPASSWORD=postgres psql -h localhost -U postgres -d conformance -c "SELECT version();"
 
       - name: install harness + dev tooling
