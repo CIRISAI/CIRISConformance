@@ -48,23 +48,24 @@ def test_persist_engine_constructable_from_module(python_subprocess):
 @pytest.mark.cohabitation
 @pytest.mark.requires_persist
 @pytest.mark.requires_edge
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "persist#109 — when edge statically links ciris-persist, the "
-        "PyTypeInfo for Engine in ciris_edge.abi3.so is DIFFERENT from "
-        "the one in ciris_persist.abi3.so. Same Rust struct, different "
-        "Python types. Remove this xfail when persist#109 ships the "
-        "cross-module identity fix."
-    ),
-)
 def test_persist_engine_type_identity_across_imports(python_subprocess):
     """
-    The Engine type object visible after `import ciris_persist` MUST
-    be the same Python type the `ciris_edge.init_edge_runtime`
-    pymethod expects as its `engine` argument. PyO3's per-module
-    PyClass registration breaks this invariant for statically-linked
-    cross-crate deps.
+    Sanity baseline for the cross-module identity story: a fresh
+    Engine instance constructed via `ciris_persist.Engine` IS an
+    `isinstance` of that same type, AND both `ciris_persist` and
+    `ciris_edge` can be co-resident in the same interpreter without
+    one's import disturbing the other's type registry.
+
+    This test does NOT directly observe edge's compiled-in PyTypeInfo
+    for `PyEngine` — that pointer lives inside ciris_edge.abi3.so and
+    isn't exposed to Python. The actual cross-module identity check
+    that catches persist#109 is delegated to
+    `test_030_cohabitation_init.py::test_init_edge_runtime_succeeds`
+    (which IS xfail-marked against #109; flips xpass when fixed).
+
+    Keep this test as a defensive sanity floor: if these trivial
+    invariants ever fail, persist's wheel is corrupt independent of
+    any cohabitation issue, and every downstream test is unreliable.
     """
     db_url = repr(get_database_url())
     result = python_subprocess(

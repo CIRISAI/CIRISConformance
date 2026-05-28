@@ -41,4 +41,3 @@ known_failures:
     url: "https://github.com/CIRISAI/CIRISPersist/issues/109"
     affects:
       - tests/test_030_cohabitation_init.py::test_init_edge_runtime_succeeds
-      - tests/test_040_pyclass_identity.py::test_persist_engine_type_identity_across_imports
