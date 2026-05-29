@@ -1,6 +1,6 @@
 # CIRISConformance
 
-Cross-artifact conformance harness for the CIRIS federation stack.
+Cross-artifact conformance harness for the CIRIS federation stack — the substrate and fabric of **CEWP**, the **CIRIS Epistemic Web Platform** ([FSD](reference/CEWP.md)). It doubles as the **CEWP reference**: the specs it conforms against are vendored under [`reference/`](reference/).
 
 ## What this tests
 
