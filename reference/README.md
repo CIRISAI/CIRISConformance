@@ -19,7 +19,8 @@ numbers in these documents.
 | [`FEDERATION_SCALING_MODEL.md`](FEDERATION_SCALING_MODEL.md) — what carrying the internet costs at v1 | `CIRISNodeCore/FSD/FEDERATION_SCALING_MODEL.md` | NodeCore @ `0a94a64` |
 | [`scale_model.rs`](scale_model.rs) — the scaling "toy" (`cargo run --example scale_model`) | `CIRISNodeCore/examples/scale_model.rs` | NodeCore @ `0a94a64` |
 | [`CEG/`](CEG/) — the CEG 0.x wire-format spec (19 sections) | `CIRISRegistry/FSD/CEG/` | Registry @ `fd37a30` |
-| `synthesis/` — the research synthesis (reasoning-shape / corridor metrics / trace commons) | _pending — see below_ | _tbd_ |
+| [`synthesis/Corridor_Dynamics.tex`](synthesis/) — the flagship synthesis paper, *Corridor Dynamics in Coordinated Systems* (v2; reasoning-shape / ρ / k_eff corridor / trace commons) | `coherence-ratchet/papers/Corridor Dynamics.tex` | coherence-ratchet @ `ffcd62a` |
+| [`synthesis/research_status_entry.md`](synthesis/research_status_entry.md) — the ciris.ai/research-status catalog entry (DOI + summary) | `coherence-ratchet/copy/web/` | coherence-ratchet @ `ffcd62a` |
 
 Snapshot date: 2026-05-29.
 
@@ -38,7 +39,8 @@ Snapshot date: 2026-05-29.
 
 ## External references (not vendored)
 
-- The research synthesis — `https://ciris.ai/research-status/`
-- CIRIS Architecture paper — `https://doi.org/10.5281/zenodo.18137161`
+- Research-status index — `https://ciris.ai/research-status/`
+- *Corridor Dynamics in Coordinated Systems* (the vendored synthesis, published PDF) — `https://doi.org/10.5281/zenodo.20300774` (v1, 2026-05-20; the vendored `.tex` is v2)
+- CIRISAgent Framework v2 — `https://doi.org/10.5281/zenodo.18137161`
 - Coherence Ratchet paper — `https://doi.org/10.5281/zenodo.18142668`
 - The Accord — `https://ciris.ai/ciris_accord.pdf`
