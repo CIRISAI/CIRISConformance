@@ -50,6 +50,11 @@ markers = [
     "requires_edge: test needs ciris-edge installed",
     "requires_verify: test needs ciris-keyring + ciris-crypto installed",
     "version_skew: test deliberately pairs non-current versions",
+    # CEG §0.2 conformance profiles (the cross-artifact test organizing principle).
+    "ceg: CEG-grammar conformance test (any profile)",
+    "ccp: CEG-Conforming Producer — emits well-formed signed envelopes (§0.2)",
+    "ccc: CEG-Conforming Consumer — verifies hybrid sigs + composes policy (§0.2)",
+    "ccs: CEG-Conforming Substrate — storage/transport/crypto guarantees (§0.2)",
 ]
 
 [tool.ruff]

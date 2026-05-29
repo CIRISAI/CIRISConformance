@@ -183,6 +183,42 @@ def python_subprocess():
     return run_python_script
 
 
+# ─── CEG conformance-profile script preamble ──────────────────────────
+# The CCP / CCC / CCS profile tests (CEG §0.2) all need a persist Engine
+# carrying a 32-byte Ed25519 LocalSigner so they can sign + verify
+# canonical bytes. This builds that engine as `engine` and its base64
+# public key as `pk` inside a fresh subprocess. On import/construction
+# failure it prints a JSON diagnostic and exits non-zero, so the test
+# sees a parseable signal rather than a bare traceback.
+
+
+def ceg_local_signer_preamble(database_url: str) -> str:
+    """Return a subprocess-script prefix that binds `engine` + `pk`.
+
+    Shared by the CEG CCP/CCC/CCS conformance scripts. Append scenario
+    code that builds a `report` dict and prints it as JSON to stdout.
+    """
+    header = f"DB_URL = {database_url!r}\n"
+    body = r'''
+import json, sys, base64, hashlib, os, tempfile
+try:
+    import ciris_persist as cp
+except ImportError as exc:
+    print(json.dumps({"stage": "import", "error": str(exc)}))
+    sys.exit(2)
+_seed_path = os.path.join(tempfile.mkdtemp(), "local.seed")
+with open(_seed_path, "wb") as _fh:
+    _fh.write(b"\x37" * 32)
+cp.reset_engine()
+engine = cp.Engine(
+    DB_URL, "ceg-conformance-key",
+    local_key_id="ceg-conformance-key", local_key_path=_seed_path,
+)
+pk = engine.local_public_key_b64()
+'''
+    return header + body
+
+
 # ─── Installed-wheel discovery ────────────────────────────────────────
 
 
