@@ -263,13 +263,20 @@ _REQUIREMENT_MARKERS = {
 
 
 def pytest_collection_modifyitems(config: pytest.Config, items: Iterable[pytest.Item]) -> None:
-    """Auto-skip tests whose required wheel isn't installed.
+    """Auto-skip tests whose required wheel isn't installed, and tier them.
 
     Lets CI install a subset (e.g. edge-only) and have the harness
     cleanly skip the cohabitation tests rather than fail — useful for
     pre-merge runs where the under-test artifact isn't yet on PyPI.
+
+    Tiering: any test not explicitly marked `fabric` is the `substrate`
+    tier, so `pytest -m substrate` / `-m fabric` partition the suite
+    without hand-tagging every existing module.
     """
     have = set(installed_wheels())
+    for item in items:
+        if item.get_closest_marker("fabric") is None:
+            item.add_marker(pytest.mark.substrate)
     for item in items:
         for marker_name, module in _REQUIREMENT_MARKERS.items():
             if item.get_closest_marker(marker_name) and module not in have:

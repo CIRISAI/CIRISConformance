@@ -55,6 +55,9 @@ markers = [
     "ccp: CEG-Conforming Producer — emits well-formed signed envelopes (§0.2)",
     "ccc: CEG-Conforming Consumer — verifies hybrid sigs + composes policy (§0.2)",
     "ccs: CEG-Conforming Substrate — storage/transport/crypto guarantees (§0.2)",
+    # The two conformance tiers (FEDERATION_SCALING_MODEL).
+    "substrate: substrate tier — per-primitive cohabitation of the ciris-* wheels",
+    "fabric: fabric tier — replication discipline + scaling factors of the federation",
 ]
 
 [tool.ruff]

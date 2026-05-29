@@ -135,3 +135,51 @@ def test_ephemeral_send_to_unresolvable_peer_refuses_cleanly(send_receive):
 def test_inline_text_loopback_round_trip(send_receive):
     """A message sent to one's own key is observed by the registered handler."""
     assert send_receive["loopback_delivered"] is True, send_receive
+
+
+def _durable_send_script(database_url: str) -> str:
+    """Repro for CIRISEdge#50: send_durable_inline_text crashes (SIGSEGV) in
+    the sync cohabitation embedding. Disables core dumps so the (expected)
+    crash leaves no core file. On a fixed wheel this prints JSON and exits 0.
+    """
+    header = f"DB_URL = {database_url!r}\n"
+    body = r'''
+import json, sys, os, tempfile, resource
+resource.setrlimit(resource.RLIMIT_CORE, (0, 0))  # no core file on the expected crash
+import ciris_persist as cp
+from ciris_edge.ciris_edge import init_edge_runtime
+_d = tempfile.mkdtemp()
+_seed = os.path.join(_d, "s"); open(_seed, "wb").write(b"\x11" * 32)
+_idp = os.path.join(_d, "t.id"); open(_idp, "wb").write(b"\x00" * 64)
+cp.reset_engine()
+engine = cp.Engine(DB_URL, "durable-key", local_key_id="durable-key", local_key_path=_seed)
+edge = init_edge_runtime(engine, _idp, listen_addr="127.0.0.1:0")
+handle = edge.send_durable_inline_text("peer-xyz", "durable-hello")  # SIGSEGV today (#50)
+outbound = engine.list_outbound(json.dumps({}), None, 10)
+print(json.dumps({"durable_returned": type(handle).__name__,
+                  "enqueued": "pending" in str(outbound)}))
+sys.stdout.flush()
+os._exit(0)
+'''
+    return header + body
+
+
+@pytest.mark.cohabitation
+@pytest.mark.requires_persist
+@pytest.mark.requires_edge
+@pytest.mark.xfail(
+    reason="send_durable_inline_text crashes (SIGSEGV — null fn-ptr on a tokio worker "
+    "spawned from persist's runtime) in the sync cohab embedding — CIRISEdge#50",
+    strict=False,
+)
+def test_durable_send_enqueues_to_outbound_queue():
+    """A durable send returns a handle and lands in persist's edge_outbound_queue.
+
+    Permanent repro artifact for CIRISEdge#50: today the subprocess segfaults
+    before producing JSON, so this xfails; it flips to a real gate once the
+    cross-cdylib durable dispatch is fixed.
+    """
+    result = run_python_script(_durable_send_script(get_database_url()))
+    payload = result.parsed_stdout()  # raises on the crash → xfail
+    assert payload["durable_returned"] == "DurableHandle", payload
+    assert payload["enqueued"] is True, payload

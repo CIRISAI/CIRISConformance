@@ -26,6 +26,15 @@ This harness exists to close that test gap.
 
 The name comes from the W3C / Khronos conformance-suite tradition: independent implementations of a contract are exercised against a separate, neutral suite that proves they conform to the contract.
 
+## Two tiers: substrate + fabric
+
+The suite is partitioned into two tiers (`pytest -m substrate` / `pytest -m fabric`):
+
+- **Substrate** — the independently-built ciris-* wheels cohabit in one process, and each primitive conforms to the CEG contract (cohabitation scenarios + the CEG CCP/CCC/CCS profiles).
+- **Fabric** — the *emergent* federation behaviour: the replication discipline (per-actor eviction, eviction sweeper, trust-threshold intake) and the scaling factors (`effective_trust_set_multiplier`, the `k_eff` corridor, retention) from [FEDERATION_SCALING_MODEL](https://github.com/CIRISAI/CIRISNodeCore/blob/main/FSD/FEDERATION_SCALING_MODEL.md) — how the CEWP "we don't need big tech" claim becomes a checked property.
+
+See [`docs/FABRIC_CONFORMANCE.md`](docs/FABRIC_CONFORMANCE.md) for the tier coverage matrix.
+
 ## CEG conformance profiles
 
 Beyond cohabitation, this harness verifies the three [CEG 0.1](https://github.com/CIRISAI/CIRISRegistry/tree/main/FSD/CEG) conformance profiles (§0.2) — **CCP** (producer), **CCC** (consumer), **CCS** (substrate). See [`docs/CEG_CONFORMANCE.md`](docs/CEG_CONFORMANCE.md) for the profile definitions, the §0.5 fractal-self reading discipline, and a coverage matrix tracking which CEG paths are tested today vs. pending an upstream surface. Profile tests carry the `ceg` marker plus `ccp`/`ccc`/`ccs`; run one with `pytest -m ccc`.
