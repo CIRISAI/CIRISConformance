@@ -17,9 +17,9 @@ stack:
   # CIRISVerify; they have NO Python wheels — they ride statically
   # inside ciris-verify + ciris-edge's compiled cdylib via Cargo.
   # ciris-verify is the Python surface that wraps them.
-  ciris-persist: "2.12.0"  # bumped 2.8.0 → 2.12.0: brings in typed Goal primitive (#114, v2.10.0), envelope-occurrence fields (#115/v2.11.0+), v2.12.0 follow-ups. Required floor for edge v0.11.1 GoalDeclaration wire types.
-  ciris-verify:  "3.9.0"   # bumped 3.0.1 → 3.9.0: federation-provenance attack surface closed (#37 Phase 2 SkillImportManifest + LocaleMerkle); edge's Cargo pin on ciris-keyring/crypto v3.0.1 remains compatible (verify's Python wheel != Rust crate floor).
-  ciris-edge:    "0.11.1"  # bumped 0.11.0 → 0.11.1: persist 2.12 currency + #41 GoalDeclaration + GoalRetirement wire types.
+  ciris-persist: "3.0.0"  # bumped 2.8.0 → 2.12.0: brings in typed Goal primitive (#114, v2.10.0), envelope-occurrence fields (#115/v2.11.0+), v2.12.0 follow-ups. Required floor for edge v0.11.1 GoalDeclaration wire types.
+  ciris-verify:  "4.0.0"   # bumped 3.0.1 → 3.9.0: federation-provenance attack surface closed (#37 Phase 2 SkillImportManifest + LocaleMerkle); edge's Cargo pin on ciris-keyring/crypto v3.0.1 remains compatible (verify's Python wheel != Rust crate floor).
+  ciris-edge:    "0.13.0"  # bumped 0.11.0 → 0.11.1: persist 2.12 currency + #41 GoalDeclaration + GoalRetirement wire types.
   # ciris-lens-core (0.1.1 on PyPI) and ciris-node-core (not yet on
   # PyPI) get added here when they ship federation-relevant Python
   # surfaces requiring cohabitation verification.
