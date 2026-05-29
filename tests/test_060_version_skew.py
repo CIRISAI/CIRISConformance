@@ -34,8 +34,10 @@ from __future__ import annotations
 
 import pytest
 
-pytestmark = pytest.mark.skip(
-    reason="Version-skew suite pending the clean-venv-per-matrix fixture"
+pytestmark = pytest.mark.xfail(
+    reason="Version-skew suite needs the clean-venv-per-matrix fixture (installs "
+    "non-current wheels into isolated venvs) — not yet wired. Tracked, not skipped.",
+    strict=False,
 )
 
 

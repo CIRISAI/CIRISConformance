@@ -12,11 +12,13 @@ the SHA-256 of the body and rejects a mismatch with `blob_hash_mismatch`
 before any holder-attestation is emitted. That rejection is the
 cross-wheel-observable half of §10.1.1 and is exercised here.
 
-The *positive* round-trip (store a valid blob + read it back) additionally
-requires a substrate-signed holder attestation, which is not yet
-constructible from the cross-wheel Python boundary — tracked upstream as
-CIRISPersist#124. The positive test is marked skipped until that seam
-lands; see `test_blob_positive_round_trip`.
+The *positive* round-trip (store a valid blob + read it back) uses
+persist v3.3.0's one-call `put_blob_signing` (CIRISPersist#121 — the seam
+filed as CIRISPersist#124, now shipped): persist owns the holds_bytes
+envelope construction, canonicalization, signing (via the engine's
+composed signer), and atomic commit. The attesting key must first be
+registered in the federation directory, otherwise attestation emission
+fails (`blob_attestation_emission_failed`).
 
 See CEG §10.1 / §10.1.1 — CIRISRegistry/FSD/CEG/10_endpoints.md.
 """
@@ -67,6 +69,27 @@ except ValueError as exc:
     report["mismatch_rejected"] = True
     report["mismatch_error"] = str(exc)
 
+# Positive round-trip via persist's one-call put_blob_signing (v3.3.0).
+# The attesting key must be in the federation directory first.
+key_id = engine.register_federation_key("agent", "ceg-ccs-ref", None, None, None)
+try:
+    engine.put_blob_signing(
+        good_sha, b64, None, None, key_id,
+        "2026-05-28T13:45:09.000Z", "33333333-3333-4333-8333-333333333333",
+    )
+    fetched = engine.get_blob_json(good_sha)
+    report["positive_intact"] = (
+        fetched is not None and base64.b64decode(json.loads(fetched)["inline"]) == body
+    )
+    report["positive_has_blob"] = engine.has_blob_json(good_sha)
+    # The holds_bytes holder attestation was emitted for the attesting key.
+    holders = json.loads(engine.list_attestations_for(key_id))
+    report["holder_attestation_emitted"] = any(
+        h.get("attestation_type", "").startswith("holds_bytes:sha256:") for h in holders
+    )
+except Exception as exc:
+    report["positive_error"] = f"{type(exc).__name__}: {str(exc)[:160]}"
+
 report["stage"] = "done"
 print(json.dumps(report))
 sys.exit(0)
@@ -110,10 +133,11 @@ def test_absent_blob_returns_none(ccs_blob):
 @pytest.mark.ceg
 @pytest.mark.ccs
 @pytest.mark.requires_persist
-@pytest.mark.skip(
-    reason="Positive blob round-trip needs the substrate-signed holder-attestation "
-    "seam — tracked upstream as CIRISPersist#124"
-)
-def test_blob_positive_round_trip():
-    """Store a valid blob + read it back intact (pending CIRISPersist#124)."""
-    pytest.fail("Not implemented — see CIRISPersist#124")
+def test_blob_positive_round_trip(ccs_blob):
+    """§10.1: a valid blob stores via put_blob_signing and reads back intact."""
+    assert "positive_error" not in ccs_blob, ccs_blob.get("positive_error")
+    assert ccs_blob["positive_intact"] is True, ccs_blob
+    assert ccs_blob["positive_has_blob"] is True, ccs_blob
+    assert ccs_blob["holder_attestation_emitted"] is True, (
+        f"put_blob_signing did not emit a holds_bytes holder attestation: {ccs_blob}"
+    )

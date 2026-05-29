@@ -46,10 +46,10 @@ seam · 🏛 governance/process tier (not a substrate behavior).
 | §0.2 profile organizing principle | — | ✅ | `ccp`/`ccc`/`ccs`/`ceg` markers; this doc |
 | Hybrid-signature verify + policy matrix | CCC | ✅ | `test_100_ccc_hybrid_verify.py` (strict / ed25519_fallback / soft_freshness / directory) |
 | §10.1.1 blob full-SHA integrity (reject mismatch) | CCS | ✅ | `test_110_ccs_blob_integrity.py` (`blob_hash_mismatch`) |
+| §10.1.1 blob positive round-trip + holder attestation | CCS | ✅ | `test_110` via persist v3.3.0 `put_blob_signing` (CIRISPersist#124 shipped) |
 | Canonical-bytes determinism + sign/verify round-trip | CCP | ✅ | `test_120_ccp_canonical_bytes.py` |
-| §10.1.1 blob positive round-trip | CCS | ⏳ | needs substrate-signed holder attestation → **CIRISPersist#124** |
-| §6.1 concurrent-write precedence + dedup-on-triple | CCS | ⏳ | needs signed-attestation seam → **CIRISPersist#124** |
-| §7.0 reserved-prefix admission rejection | CCS | ⏳ | needs signed-attestation seam → **CIRISPersist#124** |
+| §6.1 concurrent-write precedence + dedup-on-triple | CCS | ⏳ | needs generic `put_attestation` schema (arbitrary dimension) → **CIRISPersist#124** |
+| §7.0 reserved-prefix admission rejection | CCS | ⏳ | needs generic `put_attestation` schema → **CIRISPersist#124** |
 | §0.5/§0.6/§0.7 canonicalization rejection | CCC | ⏳ (xfail) | wheel accepts `+00:00`/uppercase hex/future ts → **CIRISPersist#126** |
 | §4/§0.5 `witness_relation`/`oversight_mode` + self-attestation | CCP/CCC | ⏳ | fields absent in Python surface → **CIRISVerify#40** |
 | §9.2.1 HUMANITY_ACCORD invocation anti-replay | CCC | ⏳ | surface absent → **CIRISVerify#41** |

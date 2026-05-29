@@ -1,54 +1,137 @@
 """
-Full federation send/receive round-trip conformance.
+Federation send/receive conformance — what the cross-wheel boundary
+actually supports today (edge 0.19.0 + persist 3.3.1).
 
-After CIRISPersist#109 ships + CIRISEdge v0.9.2 consumes the fix, this
-file holds the actual end-to-end coexistence proof: persist + edge in
-one process, edge sends an inline-text message, edge receives it back
-via the loopback transport, the message body survives the round-trip
-unmodified.
+This file used to be a blanket `skip` "pending CIRISPersist#109" — long
+closed. The honest, current state, established empirically against the
+real wheels:
 
-Until #109 ships these tests skip (the init handshake fails before
-send/receive can be exercised). Once #109 is in, remove the
-`pytest.skip` guard and the harness becomes a strict regression gate
-on the whole federation flow.
+- ✅ `init_edge_runtime` composes persist + edge in one process; the
+  resulting `Edge` exposes `signer_key_id`, `register_inline_text_handler`,
+  and `metrics_snapshot` (8 counters).
+- ✅ An ephemeral `send_inline_text` to an **unresolvable** peer refuses
+  cleanly with a typed `RuntimeError` ("destination unreachable") — the
+  edge cohabits with persist and fails closed, it does not crash.
+- ❌ A true **loopback round-trip** (deliver to self) is not achievable
+  in a single process: Reticulum has no self-route without a peer
+  announce / directory resolution, so the message can't be delivered
+  back. This needs a multi-node fixture (tracked as Conformance#4) and
+  is marked `xfail` below — visible, not skipped.
+- ❌ `send_durable_inline_text` currently aborts the process in this
+  synchronous cohabitation embedding ("no reactor running" → SIGABRT);
+  filed upstream. It is intentionally NOT exercised here so it can't take
+  the suite down; see the module note.
 
-Planned test cases:
-
-- `test_inline_text_loopback_round_trip` — agent sends to its own
-  key_id; the registered handler observes the body.
-- `test_durable_inline_text_acks` — durable send; receiver-side ACK
-  flips `DurableHandle.is_acknowledged()` to True within timeout.
-- `test_content_fetch_round_trip` — request bytes by SHA, receiver
-  returns ContentBody, SHA integrity verifies on receipt.
-- `test_subscription_handle_lifecycle_under_cohabitation` — the v0.9.0
-  Tier 2 subscription primitive works when persist and edge are
-  loaded as separate wheels (not just statically linked).
-
-Each will live as its own self-contained subprocess script that:
-1. Imports both wheels
-2. Builds an Engine + Edge via init_edge_runtime
-3. Configures the loopback transport
-4. Exercises the scenario
-5. Asserts outcomes via JSON to stdout
+Scripts end with `os._exit(0)` after flushing: an `Edge` holding a live
+Reticulum transport can panic on drop during interpreter teardown, which
+would otherwise lose the JSON result.
 """
 
 from __future__ import annotations
 
 import pytest
 
-pytestmark = pytest.mark.skip(reason="Pending CIRISPersist#109 + CIRISEdge v0.9.2 cohabitation fix")
+from conftest import get_database_url, run_python_script
 
 
-def test_inline_text_loopback_round_trip(python_subprocess):
-    """Send `send_inline_text` to self; registered handler observes the body."""
-    pytest.fail("Not implemented yet — see file docblock")
+def _send_receive_script(database_url: str) -> str:
+    header = f"DB_URL = {database_url!r}\n"
+    body = r'''
+import json, sys, os, time, tempfile
+try:
+    import ciris_persist as cp
+    from ciris_edge.ciris_edge import init_edge_runtime
+except ImportError as exc:
+    print(json.dumps({"stage": "import", "error": str(exc)})); sys.exit(2)
+
+_d = tempfile.mkdtemp()
+_seed = os.path.join(_d, "local.seed"); open(_seed, "wb").write(b"\x11" * 32)
+_idp = os.path.join(_d, "transport.id"); open(_idp, "wb").write(b"\x00" * 64)
+cp.reset_engine()
+engine = cp.Engine(DB_URL, "send-recv-key",
+                   local_key_id="send-recv-key", local_key_path=_seed)
+# Ephemeral ports so this never collides with other transport scenarios.
+edge = init_edge_runtime(engine, _idp, listen_addr="127.0.0.1:0")
+
+report = {"stage": "start"}
+report["signer_key_id"] = edge.signer_key_id()
+report["metrics_keys"] = sorted(edge.metrics_snapshot().keys())
+
+observed = []
+edge.register_inline_text_handler(lambda *a: observed.append(a))
+report["handler_registered"] = True
+
+# Ephemeral send to an unresolvable peer → clean typed refusal.
+try:
+    edge.send_inline_text("unresolvable-peer-key", "hello")
+    report["ephemeral"] = {"error": None}
+except Exception as exc:
+    report["ephemeral"] = {
+        "type": type(exc).__name__,
+        "unreachable": "destination unreachable" in str(exc),
+    }
+
+# Loopback delivery to self (aspirational — see module docstring).
+try:
+    edge.send_inline_text(edge.signer_key_id(), "loopback-body")
+    time.sleep(0.3)
+    report["loopback_delivered"] = any("loopback-body" in str(a) for a in observed)
+except Exception as exc:
+    report["loopback_delivered"] = False
+    report["loopback_error"] = f"{type(exc).__name__}: {str(exc)[:140]}"
+
+report["stage"] = "done"
+print(json.dumps(report))
+sys.stdout.flush()
+os._exit(0)
+'''
+    return header + body
 
 
-def test_durable_inline_text_acks(python_subprocess):
-    """Durable send to self; ACK lands within timeout."""
-    pytest.fail("Not implemented yet — see file docblock")
+@pytest.fixture(scope="module")
+def send_receive():
+    result = run_python_script(_send_receive_script(get_database_url()))
+    try:
+        payload = result.parsed_stdout()
+    except Exception:
+        pytest.fail(
+            f"send/receive script produced no parseable JSON (exit {result.returncode}):\n"
+            f"STDOUT: {result.stdout}\nSTDERR: {result.stderr}"
+        )
+    assert payload.get("stage") == "done", f"{payload}\nSTDERR: {result.stderr}"
+    return payload
 
 
-def test_content_fetch_round_trip(python_subprocess):
-    """Request bytes by SHA; ContentBody returned; integrity verifies."""
-    pytest.fail("Not implemented yet — see file docblock")
+@pytest.mark.cohabitation
+@pytest.mark.requires_persist
+@pytest.mark.requires_edge
+def test_edge_runtime_surface_present(send_receive):
+    """The composed Edge exposes the send/receive + observability surface."""
+    assert send_receive["signer_key_id"] == "send-recv-key", send_receive
+    assert send_receive["handler_registered"] is True
+    # The per-transport parity counters Conformance#4 builds on.
+    for counter in ("envelopes_sent_total", "envelopes_received_total"):
+        assert counter in send_receive["metrics_keys"], send_receive["metrics_keys"]
+
+
+@pytest.mark.cohabitation
+@pytest.mark.requires_persist
+@pytest.mark.requires_edge
+def test_ephemeral_send_to_unresolvable_peer_refuses_cleanly(send_receive):
+    """Edge + persist cohabit: a send to an unknown peer fails closed, no crash."""
+    eph = send_receive["ephemeral"]
+    assert eph.get("type") == "RuntimeError", eph
+    assert eph.get("unreachable") is True, eph
+
+
+@pytest.mark.cohabitation
+@pytest.mark.requires_persist
+@pytest.mark.requires_edge
+@pytest.mark.xfail(
+    reason="In-process Reticulum has no self-route (no peer announce / directory "
+    "resolution) — true loopback delivery needs a multi-node fixture (Conformance#4)",
+    strict=False,
+)
+def test_inline_text_loopback_round_trip(send_receive):
+    """A message sent to one's own key is observed by the registered handler."""
+    assert send_receive["loopback_delivered"] is True, send_receive
