@@ -73,7 +73,7 @@ def _init_handshake_script(database_url: str) -> str:
         "    os.write(fd, b'\\x00' * 64)\n"
         "    os.close(fd)\n"
         "    try:\n"
-        "        edge = init_edge_runtime(engine, identity_path)\n"
+        "        edge = init_edge_runtime(engine, identity_path, listen_addr='127.0.0.1:0')\n"
         "    except TypeError as exc:\n"
         "        print(json.dumps({\n"
         "            'stage': 'init_handshake',\n"

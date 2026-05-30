@@ -119,7 +119,9 @@ if WITH_LOCAL_SIGNER:
     )
 
 try:
-    init_edge_runtime(engine, identity_path)
+    # Ephemeral port so the test never collides with a running agent / a
+    # sibling test on the default Reticulum port (4242).
+    init_edge_runtime(engine, identity_path, listen_addr="127.0.0.1:0")
     report["init"] = {"ok": True}
 except Exception as exc:
     msg = str(exc)
