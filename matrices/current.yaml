@@ -17,7 +17,7 @@ stack:
   # CIRISVerify; they have NO Python wheels — they ride statically
   # inside ciris-verify + ciris-edge's compiled cdylib via Cargo.
   # ciris-verify is the Python surface that wraps them.
-  ciris-persist: "3.6.4"  # bumped 3.6.3 → 3.6.4: #130 list_holders_json now reports LOCAL holdings (and the takedown holder lookup with it) — the §9.1 "whose bytes do I hold?" query + §5.4 takedown-evicts-local-holder are now real gates (test_200, test_130). Carries 3.6.3's #134 multimedia tier + #128/#129 trust_scoring_capsule + the libsqlite3 cross-cdylib closure chain. (put_blob_signing ~82ms #137 still open.)
+  ciris-persist: "3.6.5"  # bumped 3.6.4 → 3.6.5: CLOSES #137 — put_blob_signing dropped from ~82ms to ~0.16ms (≈500× — the per-call sync round-trip is gone; the conformance benchmark tier surfaced it and verifies the win). Carries 3.6.4's #130 local-holder fix + 3.6.3's #134 multimedia tier + #128/#129 trust_scoring_capsule + libsqlite3 cross-cdylib closure.
   ciris-verify:  "4.4.2"   # bumped 4.2.0 → 4.4.2: lockstep with the persist v3.5.3+ verify-pin recovery (v4.3.0 never reached PyPI; v4.4.2 is the clean recovery).
   ciris-edge:    "1.0.1"  # bumped 1.0.0 → 1.0.1: CIRISEdge#50 durable-send SIGSEGV CLOSED end-to-end — edge now does `auditwheel repair --exclude libsqlite3.so.0` so it no longer vendors its own uninitialized libsqlite3 (the null-xMalloc-in-sqlite3Malloc crash on the send_durable SQL path). Verified: send_durable_inline_text to a registered key returns a DurableHandle, no crash. Carries the 1.0 milestone (0.20.x cohort_scope rework + trust short-circuit consuming persist#129's trust_scoring_capsule).
   # ciris-lens-core (0.1.1 on PyPI) and ciris-node-core (not yet on
