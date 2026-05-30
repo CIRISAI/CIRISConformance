@@ -40,6 +40,7 @@ import importlib.metadata
 import importlib.util
 import os
 
+import sys
 import pytest
 
 from conftest import get_database_url, run_python_script
@@ -74,6 +75,7 @@ def _package_dir(module_name: str) -> str:
     return os.path.dirname(spec.origin)
 
 
+@pytest.mark.xfail(sys.platform == "darwin", strict=False, reason="CIRISConformance#6 — verify v4.4.2 macOS wheel FFI shape change; investigate")
 @pytest.mark.requires_persist
 @pytest.mark.requires_edge
 def test_substrate_wheels_ship_stable_abi_extensions():

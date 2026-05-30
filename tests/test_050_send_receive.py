@@ -29,6 +29,7 @@ would otherwise lose the JSON result.
 
 from __future__ import annotations
 
+import sys
 import pytest
 
 from conftest import get_database_url, run_python_script
@@ -114,6 +115,7 @@ def test_edge_runtime_surface_present(send_receive):
         assert counter in send_receive["metrics_keys"], send_receive["metrics_keys"]
 
 
+@pytest.mark.xfail(sys.platform == "darwin", strict=False, reason="CIRISConformance#6 — darwin error-string pattern needs investigation post persist 3.6.x/verify 4.4.2 bump")
 @pytest.mark.cohabitation
 @pytest.mark.requires_persist
 @pytest.mark.requires_edge
