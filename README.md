@@ -168,6 +168,7 @@ Each test file is self-contained — no shared imports between test files — so
 | `test_100_ccc_hybrid_verify.py` | substrate (CCC) | Hybrid-signature verify policy matrix | ✅ |
 | `test_110_ccs_blob_integrity.py` | substrate (CCS) | Blob full-SHA integrity + signed round-trip | ✅ |
 | `test_120_ccp_canonical_bytes.py` | substrate (CCP) | Canonical-bytes determinism + sign/verify round-trip | ✅ (§0.5 reject `xfail` [persist#126](https://github.com/CIRISAI/CIRISPersist/issues/126)) |
+| `test_130_multimedia.py` | substrate + fabric | CEG 0.3 multimedia: media blob storage, perceptual-hash gate, takedown scheduling, key-grant retire, budget eviction | ✅ (takedown local-holder `xfail` [persist#130](https://github.com/CIRISAI/CIRISPersist/issues/130)) |
 | `test_200_fabric_eviction.py` | fabric | Per-actor eviction + `withdraws`, sweeper, trust threshold | ✅ (holders/gate `xfail` [persist#130](https://github.com/CIRISAI/CIRISPersist/issues/130)/[#129](https://github.com/CIRISAI/CIRISPersist/issues/129)) |
 | `test_210_fabric_scaling_factors.py` | fabric | Scaling-factor contract (multiplier curve, `k_eff`, retention) | ✅ |
 
