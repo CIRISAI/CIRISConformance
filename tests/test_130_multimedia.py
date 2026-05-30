@@ -127,11 +127,13 @@ engine.set_multimedia_config_json(json.dumps(
     {"immediate_legal_bases": ["ncmec_csam", "tvec_terrorist"], "counter_notice_window_days": 7}))
 report["config_after_set"] = json.loads(engine.get_multimedia_config_json())
 
-# (xfail #130) Takedown should see + evict the local holder of the content.
+# Takedown sees + evicts the local holder of the content (persist#130, fixed 3.6.4).
 engine.set_multimedia_config_json(None)
-report["takedown_local_holders_seen"] = json.loads(
-    engine.cirisnode_process_takedown_admission_json(
-        _notice(sha, "ncmec_csam"), kid, "2026-05-28T14:00:00.000Z"))["holders_seen"]
+_td = json.loads(engine.cirisnode_process_takedown_admission_json(
+    _notice(sha, "ncmec_csam"), kid, "2026-05-28T14:00:00.000Z"))
+report["takedown_local_holders_seen"] = _td["holders_seen"]
+report["takedown_withdraws_emitted"] = _td["withdraws_emitted"]
+report["takedown_blob_evicted"] = not engine.has_blob_json(sha)
 
 report["stage"] = "done"
 print(json.dumps(report))
@@ -210,14 +212,14 @@ def test_multimedia_config_round_trips(media_substrate):
 
 @pytest.mark.ceg
 @pytest.mark.requires_persist
-@pytest.mark.xfail(
-    reason="takedown admission reports holders_seen=0 for a locally-held blob — the "
-    "same local-holder blind spot as list_holders_json → CIRISPersist#130",
-    strict=False,
-)
 def test_takedown_evicts_local_holder(media_substrate):
-    """§5.4: a takedown for content this node holds should see (and evict) the local holder."""
+    """§5.4: a takedown for content this node holds sees + evicts the local holder.
+
+    Real gate as of persist 3.6.4 (CIRISPersist#130 fixed).
+    """
     assert media_substrate["takedown_local_holders_seen"] >= 1, media_substrate
+    assert media_substrate["takedown_withdraws_emitted"] >= 1, media_substrate
+    assert media_substrate["takedown_blob_evicted"] is True, media_substrate
 
 
 # ─── Fabric flow: capacity-driven eviction (the §1.2 claim, now drivable) ──

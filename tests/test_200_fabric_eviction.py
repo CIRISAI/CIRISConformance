@@ -165,14 +165,11 @@ def test_trust_threshold_setter_clamps(fabric_eviction):
 
 
 @pytest.mark.requires_persist
-@pytest.mark.xfail(
-    reason="list_holders_json still returns [] for locally-held blobs at persist "
-    "3.6.3 — CIRISPersist#130 (closed but unfixed at this surface; reopened with "
-    "evidence). Don't work around with list_attestations.",
-    strict=False,
-)
 def test_list_holders_reports_local_holdings(fabric_eviction):
-    """§9.1: 'whose bytes do I hold?' — list_holders_json includes local holdings."""
+    """§9.1: 'whose bytes do I hold?' — list_holders_json includes local holdings.
+
+    Real gate as of persist 3.6.4 (CIRISPersist#130 fixed).
+    """
     assert fabric_eviction["kid"] in fabric_eviction["list_holders_local"], (
         fabric_eviction["list_holders_local"]
     )
