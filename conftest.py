@@ -138,8 +138,24 @@ class ScriptResult:
         return self.returncode == 0
 
     def parsed_stdout(self) -> dict | list:
-        """Parse stdout as JSON (the canonical script-to-test channel)."""
-        return json.loads(self.stdout)
+        """Parse stdout as JSON (the canonical script-to-test channel).
+
+        On JSON-decode failure (typically a subprocess that died before
+        flushing its result) re-raise with the captured stderr +
+        returncode embedded — pytest's failure message then shows the
+        real crash signature instead of just "Expecting value: line 1
+        column 1 (char 0)" (CIRISEdge#50 darwin × sqlite debug pass).
+        """
+        try:
+            return json.loads(self.stdout)
+        except json.JSONDecodeError as e:
+            raise json.JSONDecodeError(
+                f"{e.msg}  [subprocess rc={self.returncode}]\n"
+                f"--- STDOUT (len={len(self.stdout)}) ---\n{self.stdout!r}\n"
+                f"--- STDERR (len={len(self.stderr)}) ---\n{self.stderr}",
+                e.doc,
+                e.pos,
+            ) from None
 
 
 def run_python_script(
