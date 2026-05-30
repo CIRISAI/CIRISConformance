@@ -43,17 +43,15 @@ jobs:
         # with py3.10+). The py3.10 consumer that matters (Chaquopy on Android)
         # bundles the wheel directly, bypassing pip's requires-python check —
         # that path is validated by the separate `chaquopy-bundle-py310` job.
+        # Both backends, fully, on every platform — sqlite and postgres
+        # must have parity. x86_64 covers py3.11 + py3.12 × {sqlite, postgres};
+        # the include adds the aarch64 production architecture (the agent
+        # ships on Android arm64) for BOTH backends too.
         python: ["3.11", "3.12"]
         backend: ["sqlite", "postgres"]
         include:
-          # aarch64 cell — the agent ships on Android (arm64); the substrate
-          # sisters cohabit in that arm process. PyPI carries cp310-abi3
-          # manylinux aarch64 wheels, so a GitHub arm64 runner exercises the
-          # same cross-cdylib surface on the production architecture. sqlite
-          # only (keeps the arm cell lean; postgres is covered on x86_64).
-          - python: "3.12"
-            backend: sqlite
-            runner: ubuntu-24.04-arm
+          - { python: "3.12", backend: sqlite,   runner: ubuntu-24.04-arm }
+          - { python: "3.12", backend: postgres, runner: ubuntu-24.04-arm }
     env:
       CIRIS_CONFORMANCE_DATABASE_URL: ${{ matrix.backend == 'postgres' && 'postgres://postgres:postgres@localhost:5432/conformance' || 'sqlite::memory:' }}
     steps:
@@ -66,32 +64,28 @@ jobs:
 
       - name: start postgres (backend=${{ matrix.backend }})
         if: matrix.backend == 'postgres'
-        # ubuntu-latest pre-installs postgresql; install on-demand if
-        # absent. Mirror the same setup logic the reusable
-        # run-against-wheels.yml uses so any drift here surfaces against
-        # the same SQL surface caller repos exercise.
+        # Self-healing: PostgreSQL as a Docker container (Docker is
+        # pre-installed on GitHub Linux runners, x86_64 AND arm). The
+        # official image self-initializes cluster + role + database from
+        # env — no apt, no `/etc/postgresql` cluster fragility, no pg_hba
+        # editing. Same approach as run-against-wheels.yml so the self-test
+        # and the caller-facing reusable workflow exercise identical setup.
         run: |
-          if ! command -v psql >/dev/null; then
-            sudo apt-get update -qq
-            sudo apt-get install -y --no-install-recommends postgresql postgresql-client
-          fi
-          PG_VERSION=$(ls /etc/postgresql 2>/dev/null | head -1)
-          if [ -z "$PG_VERSION" ]; then
-            echo "::error::PostgreSQL install broken — /etc/postgresql empty"
-            exit 1
-          fi
-          sudo pg_ctlcluster "$PG_VERSION" main start || \
-            sudo systemctl start postgresql || \
-            sudo service postgresql start
-          sudo -u postgres psql -c "ALTER USER postgres PASSWORD 'postgres';"
-          sudo -u postgres createdb conformance
-          PG_HBA=$(sudo -u postgres psql -tAc "SHOW hba_file;")
-          sudo sed -i 's/^\(host\s\+all\s\+all\s\+127.0.0.1\/32\s\+\)\w\+$/\1md5/' "$PG_HBA"
-          sudo sed -i 's/^\(host\s\+all\s\+all\s\+::1\/128\s\+\)\w\+$/\1md5/' "$PG_HBA"
-          sudo pg_ctlcluster "$PG_VERSION" main reload || \
-            sudo systemctl reload postgresql || \
-            sudo service postgresql reload
-          PGPASSWORD=postgres psql -h localhost -U postgres -d conformance -c "SELECT version();"
+          docker run -d --name conformance-pg \
+            -e POSTGRES_USER=postgres \
+            -e POSTGRES_PASSWORD=postgres \
+            -e POSTGRES_DB=conformance \
+            -p 5432:5432 \
+            --health-cmd "pg_isready -U postgres -d conformance" \
+            --health-interval 5s --health-timeout 5s --health-retries 10 \
+            postgres:16
+          for i in $(seq 1 30); do
+            status=$(docker inspect -f '{{.State.Health.Status}}' conformance-pg 2>/dev/null || echo starting)
+            if [ "$status" = "healthy" ]; then echo "postgres healthy after ~$((i*2))s"; break; fi
+            if [ "$status" = "unhealthy" ]; then docker logs conformance-pg; echo "::error::postgres unhealthy"; exit 1; fi
+            sleep 2
+          done
+          docker exec conformance-pg psql -U postgres -d conformance -c "SELECT version();"
 
       - name: install harness + dev tooling
         run: |

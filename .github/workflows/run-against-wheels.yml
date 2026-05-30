@@ -84,45 +84,35 @@ jobs:
 
       - name: start postgres (Linux) — backend=${{ inputs.backend }}
         if: inputs.backend == 'postgres' && runner.os == 'Linux'
-        # Pre-install posture varies across GitHub-hosted Linux images:
-        #   ubuntu-latest (ubuntu-24.04, x86_64): postgresql 16 PRE-INSTALLED
-        #   ubuntu-24.04-arm                    : NO postgres pre-installed
-        # Install on-demand if missing. `pg_ctlcluster` is more reliable
-        # than `systemctl` on these runners (the postgresql.service unit
-        # is sometimes not registered even when binaries are present).
+        # Self-healing: run PostgreSQL as a Docker container instead of the
+        # apt `pg_ctlcluster` dance. Docker is pre-installed on every
+        # GitHub-hosted Linux runner (x86_64 AND arm), and the official
+        # `postgres` image self-initializes the cluster + role + database
+        # from env — so there is no `/etc/postgresql is empty`, no
+        # systemd/cluster fragility, no pg_hba editing. This mirrors the
+        # `services:` postgres container CIRISPersist + CIRISAgent CI use
+        # (we use a step, not a `services:` block, because this reusable
+        # job's runner is parameterized and may be macOS, where `services:`
+        # containers are unavailable).
         run: |
-          if ! command -v psql >/dev/null; then
-            echo "Installing postgresql via apt (runner: $RUNNER_OS / $(uname -m))"
-            sudo apt-get update -qq
-            sudo apt-get install -y --no-install-recommends postgresql postgresql-client
-          fi
-          # Find the version directory (handles both pre-installed and
-          # apt-installed cases; ls /etc/postgresql lists one entry per
-          # installed major version).
-          PG_VERSION=$(ls /etc/postgresql 2>/dev/null | head -1)
-          if [ -z "$PG_VERSION" ]; then
-            echo "::error::PostgreSQL install appears broken — /etc/postgresql is empty"
-            exit 1
-          fi
-          echo "Detected PostgreSQL major version: $PG_VERSION"
-          # Start the `main` cluster. pg_ctlcluster is the
-          # Debian/Ubuntu canonical management command; works whether
-          # or not systemd recognizes the unit.
-          sudo pg_ctlcluster "$PG_VERSION" main start || \
-            sudo systemctl start postgresql || \
-            sudo service postgresql start
-          # Auth + db setup
-          sudo -u postgres psql -c "ALTER USER postgres PASSWORD 'postgres';"
-          sudo -u postgres createdb conformance
-          # Switch pg_hba to permit md5 from localhost.
-          PG_HBA=$(sudo -u postgres psql -tAc "SHOW hba_file;")
-          sudo sed -i 's/^\(host\s\+all\s\+all\s\+127.0.0.1\/32\s\+\)\w\+$/\1md5/' "$PG_HBA"
-          sudo sed -i 's/^\(host\s\+all\s\+all\s\+::1\/128\s\+\)\w\+$/\1md5/' "$PG_HBA"
-          sudo pg_ctlcluster "$PG_VERSION" main reload || \
-            sudo systemctl reload postgresql || \
-            sudo service postgresql reload
-          # Smoke check
-          PGPASSWORD=postgres psql -h localhost -U postgres -d conformance -c "SELECT version();"
+          docker run -d --name conformance-pg \
+            -e POSTGRES_USER=postgres \
+            -e POSTGRES_PASSWORD=postgres \
+            -e POSTGRES_DB=conformance \
+            -p 5432:5432 \
+            --health-cmd "pg_isready -U postgres -d conformance" \
+            --health-interval 5s --health-timeout 5s --health-retries 10 \
+            postgres:16
+          # Wait until the container reports healthy (max ~60s) — robust to
+          # slow image pulls / cold runners.
+          for i in $(seq 1 30); do
+            status=$(docker inspect -f '{{.State.Health.Status}}' conformance-pg 2>/dev/null || echo starting)
+            if [ "$status" = "healthy" ]; then echo "postgres healthy after ~$((i*2))s"; break; fi
+            if [ "$status" = "unhealthy" ]; then docker logs conformance-pg; echo "::error::postgres container unhealthy"; exit 1; fi
+            sleep 2
+          done
+          # Smoke check via the container's own psql (no runner-side client needed).
+          docker exec conformance-pg psql -U postgres -d conformance -c "SELECT version();"
 
       - name: start postgres (macOS) — backend=${{ inputs.backend }}
         if: inputs.backend == 'postgres' && runner.os == 'macOS'
@@ -146,11 +136,14 @@ jobs:
             PG_FORMULA="postgresql@16"
           fi
           brew services start "$PG_FORMULA"
-          # Wait for the server to accept connections
-          for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
-            if pg_isready -h localhost; then echo "ready after ${i}s"; break; fi
-            sleep 1
+          # Wait for the server to accept connections (self-healing: up to ~60s
+          # to absorb a cold formula install / slow service start).
+          ready=""
+          for i in $(seq 1 30); do
+            if pg_isready -h localhost >/dev/null 2>&1; then ready=1; echo "ready after ~$((i*2))s"; break; fi
+            sleep 2
           done
+          if [ -z "$ready" ]; then echo "::error::brew postgres did not become ready"; exit 1; fi
           # brew's postgres starts with the runner user as superuser,
           # NOT `postgres`. Create the postgres role + db to match the
           # CIRIS_CONFORMANCE_DATABASE_URL the harness expects.

@@ -76,12 +76,15 @@ def test_trust_set_multiplier_dampened_below_naive_geometric():
     depth-1 multiplier), naive growth would be 4^depth = 64 at depth 3;
     the dampened curve caps at 100, but the per-hop *ratio* collapses.
     """
-    # Per-hop growth ratio strictly shrinks (dampening), not constant.
+    # Per-hop growth ratio peaks early then decays (overlap dampening).
     r1 = effective_trust_set_multiplier(1) / effective_trust_set_multiplier(0)  # 4.0
     r2 = effective_trust_set_multiplier(2) / effective_trust_set_multiplier(1)  # 5.0
     r3 = effective_trust_set_multiplier(3) / effective_trust_set_multiplier(2)  # 5.0
-    # Growth does not accelerate hop over hop (no runaway geometric blowup).
-    assert r3 <= r2 + 1e-9 and effective_trust_set_multiplier(4) / effective_trust_set_multiplier(3) < r2
+    r4 = effective_trust_set_multiplier(4) / effective_trust_set_multiplier(3)
+    # No hop's growth ratio exceeds the early peak, and late hops decay —
+    # no runaway geometric blowup.
+    assert max(r1, r3, r4) <= r2 + 1e-9
+    assert r4 < r2
 
 
 def test_k_eff_corridor_endpoints():

@@ -45,11 +45,6 @@ from conftest import ceg_local_signer_preamble, get_database_url, run_python_scr
 pytestmark = pytest.mark.fabric
 
 
-# Two valid v4-shaped UUIDs for the two holder attestations.
-_AID1 = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
-_AID2 = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
-
-
 def _fabric_eviction_script(database_url: str) -> str:
     return ceg_local_signer_preamble(database_url) + r'''
 report = {"stage": "start"}
@@ -59,17 +54,19 @@ report = {"stage": "start"}
 kid = engine.register_federation_key("agent", "fabric-evict-ref", None, None, None)
 report["kid"] = kid
 
-def _store(tag, aid):
-    body = ("fabric-blob-" + tag).encode()
+# Unique blob content + attestation_id per subprocess so tests stay
+# isolated on a shared (postgres) backend — see the conftest preamble note.
+def _store(tag):
+    body = ("fabric-blob-" + kid + "-" + tag).encode()
     sha = hashlib.sha256(body).hexdigest()
     engine.put_blob_signing(
         sha, base64.b64encode(body).decode(), None, None,
-        kid, "2026-05-28T13:45:09.000Z", aid,
+        kid, "2026-05-28T13:45:09.000Z", str(uuid.uuid4()),
     )
     return sha
 
-sha1 = _store("one", "''' + _AID1 + r'''")
-sha2 = _store("two", "''' + _AID2 + r'''")
+sha1 = _store("one")
+sha2 = _store("two")
 report["stored_present"] = engine.has_blob_json(sha1) and engine.has_blob_json(sha2)
 
 # Holder attestations exist for the actor (the local "whose bytes" answer).
@@ -87,7 +84,7 @@ report["list_holders_local"] = engine.list_holders_json(sha1)
 # threshold 1.0 — today it is, which is the gap.
 engine.set_trust_threshold(1.0)
 try:
-    sha3 = _store("under-max-threshold", "cccccccc-cccc-4ccc-8ccc-cccccccccccc")
+    sha3 = _store("under-max-threshold")
     report["admitted_under_max_threshold"] = engine.has_blob_json(sha3)
 except Exception as exc:
     report["admitted_under_max_threshold"] = False
@@ -135,7 +132,6 @@ def fabric_eviction():
     return payload
 
 
-@pytest.mark.xfail(strict=False, reason="CIRISConformance#6 — fixture federation_conflict after persist 3.5.0→3.6.3")
 @pytest.mark.requires_persist
 def test_per_actor_eviction_removes_blobs_and_emits_withdraws(fabric_eviction):
     """§9: evict_actor drops all of an actor's blobs and emits a withdraws each."""
@@ -155,7 +151,6 @@ def test_per_actor_eviction_removes_blobs_and_emits_withdraws(fabric_eviction):
     assert fabric_eviction["withdraws_present"] == expected, fabric_eviction
 
 
-@pytest.mark.xfail(strict=False, reason="CIRISConformance#6 — fixture federation_conflict after persist 3.5.0→3.6.3")
 @pytest.mark.requires_persist
 def test_eviction_sweeper_runs(fabric_eviction):
     """§1.2: the popularity×freshness sweeper drives one cycle and reports a count."""
@@ -163,7 +158,6 @@ def test_eviction_sweeper_runs(fabric_eviction):
     assert fabric_eviction["sweep_count"] >= 0, fabric_eviction
 
 
-@pytest.mark.xfail(strict=False, reason="CIRISConformance#6 — fixture federation_conflict after persist 3.5.0→3.6.3")
 @pytest.mark.requires_persist
 def test_trust_threshold_setter_clamps(fabric_eviction):
     """§1.1: the admission threshold setter accepts [0,1] and clamps out-of-range."""

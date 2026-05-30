@@ -190,29 +190,45 @@ def python_subprocess():
 # public key as `pk` inside a fresh subprocess. On import/construction
 # failure it prints a JSON diagnostic and exits non-zero, so the test
 # sees a parseable signal rather than a bare traceback.
+#
+# CRITICAL — backend parity: each subprocess gets a UNIQUE key_id +
+# Ed25519 seed (`key_id` is exposed for the scenario code). With
+# sqlite::memory: every subprocess has its own DB, so a fixed key id was
+# invisible — but under postgres ALL subprocesses share one database, and
+# a fixed `local_key_id` made the second test's `register_federation_key`
+# collide with `federation_conflict` (CIRISConformance#6, an order-
+# dependent isolation bug, not a platform bug). A per-subprocess unique
+# identity isolates the tests on the shared backend and gives sqlite +
+# postgres full parity.
 
 
 def ceg_local_signer_preamble(database_url: str) -> str:
-    """Return a subprocess-script prefix that binds `engine` + `pk`.
+    """Return a subprocess-script prefix that binds `engine`, `pk`, `key_id`.
 
     Shared by the CEG CCP/CCC/CCS conformance scripts. Append scenario
     code that builds a `report` dict and prints it as JSON to stdout.
+    `key_id` is the engine's unique local key id for this subprocess —
+    use it instead of a hard-coded label so tests stay isolated on a
+    shared (postgres) backend.
     """
     header = f"DB_URL = {database_url!r}\n"
     body = r'''
-import json, sys, base64, hashlib, os, tempfile
+import json, sys, base64, hashlib, os, tempfile, secrets, uuid
 try:
     import ciris_persist as cp
 except ImportError as exc:
     print(json.dumps({"stage": "import", "error": str(exc)}))
     sys.exit(2)
+# Unique per-subprocess identity so concurrent tests don't collide in a
+# shared postgres database (sqlite::memory: is already per-process).
+key_id = "ceg-conformance-" + secrets.token_hex(8)
 _seed_path = os.path.join(tempfile.mkdtemp(), "local.seed")
 with open(_seed_path, "wb") as _fh:
-    _fh.write(b"\x37" * 32)
+    _fh.write(secrets.token_bytes(32))  # a fresh 32-byte Ed25519 seed
 cp.reset_engine()
 engine = cp.Engine(
-    DB_URL, "ceg-conformance-key",
-    local_key_id="ceg-conformance-key", local_key_path=_seed_path,
+    DB_URL, key_id,
+    local_key_id=key_id, local_key_path=_seed_path,
 )
 pk = engine.local_public_key_b64()
 '''

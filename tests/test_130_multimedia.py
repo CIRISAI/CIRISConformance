@@ -39,7 +39,6 @@ See MEDIA_SHARING.md + CEG 0.3 §5.6.8 / §8.1.10 (vendored under reference/).
 
 from __future__ import annotations
 
-import sys
 import pytest
 
 from conftest import ceg_local_signer_preamble, get_database_url, run_python_script
@@ -63,10 +62,12 @@ def _notice(sha, basis):
     })
 
 # (1) A media blob rides the same blob storage + holder attestation.
-body = b"\xff\xd8\xff\xe0 conformance-jpeg"
+# Content + attestation_id are salted/unique per subprocess so tests stay
+# isolated on a shared (postgres) backend.
+body = b"\xff\xd8\xff\xe0 conformance-jpeg-" + kid.encode()
 sha = hashlib.sha256(body).hexdigest()
 engine.put_blob_signing(sha, base64.b64encode(body).decode(), None, "image/jpeg",
-                        kid, "2026-05-28T13:45:09.000Z", "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
+                        kid, "2026-05-28T13:45:09.000Z", str(uuid.uuid4()))
 fetched = engine.get_blob_json(sha)
 report["media_intact"] = fetched is not None and base64.b64decode(json.loads(fetched)["inline"]) == body
 holders = json.loads(engine.list_attestations_for(kid))
@@ -75,7 +76,7 @@ report["media_holds_bytes_emitted"] = any(
 )
 
 # (2) Perceptual-hash gate refuses a known-bad blob at write.
-bad = b"known-bad-content"; bad_sha = hashlib.sha256(bad).hexdigest()
+bad = b"known-bad-content-" + kid.encode(); bad_sha = hashlib.sha256(bad).hexdigest()
 class _Matcher:
     def check(self, sha256_hex, body):
         if sha256_hex == bad_sha:
@@ -84,16 +85,16 @@ class _Matcher:
 engine.set_perceptual_hash_matcher(_Matcher())
 try:
     engine.put_blob_signing(bad_sha, base64.b64encode(bad).decode(), None, "image/png",
-                            kid, "2026-05-28T13:45:09.000Z", "dddddddd-dddd-4ddd-8ddd-dddddddddddd")
+                            kid, "2026-05-28T13:45:09.000Z", str(uuid.uuid4()))
     report["perceptual_refused"] = False
 except ValueError as exc:
     report["perceptual_refused"] = True
     report["perceptual_error"] = str(exc)
 # A non-matching blob is still admitted with the matcher installed.
-ok = b"clean-content"; ok_sha = hashlib.sha256(ok).hexdigest()
+ok = b"clean-content-" + kid.encode(); ok_sha = hashlib.sha256(ok).hexdigest()
 try:
     engine.put_blob_signing(ok_sha, base64.b64encode(ok).decode(), None, "image/png",
-                            kid, "2026-05-28T13:45:09.000Z", "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee")
+                            kid, "2026-05-28T13:45:09.000Z", str(uuid.uuid4()))
     report["clean_admitted"] = engine.has_blob_json(ok_sha)
 except Exception as exc:
     report["clean_admitted"] = False
@@ -152,7 +153,6 @@ def media_substrate():
     return payload
 
 
-@pytest.mark.xfail(sys.platform == "darwin", strict=False, reason="CIRISConformance#6 — test_130 media_substrate fixture blob_attestation_emission_failed on darwin sqlite; linux passes")
 @pytest.mark.ceg
 @pytest.mark.requires_persist
 def test_media_blob_rides_existing_storage(media_substrate):
@@ -161,7 +161,6 @@ def test_media_blob_rides_existing_storage(media_substrate):
     assert media_substrate["media_holds_bytes_emitted"] is True, media_substrate
 
 
-@pytest.mark.xfail(sys.platform == "darwin", strict=False, reason="CIRISConformance#6 — test_130 media_substrate fixture blob_attestation_emission_failed on darwin sqlite; linux passes")
 @pytest.mark.ceg
 @pytest.mark.requires_persist
 def test_perceptual_hash_gate_refuses_known_bad(media_substrate):
@@ -172,7 +171,6 @@ def test_perceptual_hash_gate_refuses_known_bad(media_substrate):
     assert media_substrate["clean_admitted"] is True, media_substrate
 
 
-@pytest.mark.xfail(sys.platform == "darwin", strict=False, reason="CIRISConformance#6 — test_130 media_substrate fixture blob_attestation_emission_failed on darwin sqlite; linux passes")
 @pytest.mark.ceg
 @pytest.mark.requires_persist
 def test_takedown_immediate_vs_windowed_scheduling(media_substrate):
@@ -184,7 +182,6 @@ def test_takedown_immediate_vs_windowed_scheduling(media_substrate):
     assert sched["dsa_article_16"] is not None, sched
 
 
-@pytest.mark.xfail(sys.platform == "darwin", strict=False, reason="CIRISConformance#6 — test_130 media_substrate fixture blob_attestation_emission_failed on darwin sqlite; linux passes")
 @pytest.mark.ceg
 @pytest.mark.requires_persist
 def test_takedown_rejects_unknown_legal_basis(media_substrate):
@@ -192,7 +189,6 @@ def test_takedown_rejects_unknown_legal_basis(media_substrate):
     assert media_substrate["unknown_basis_rejected"] is True, media_substrate
 
 
-@pytest.mark.xfail(sys.platform == "darwin", strict=False, reason="CIRISConformance#6 — test_130 media_substrate fixture blob_attestation_emission_failed on darwin sqlite; linux passes")
 @pytest.mark.ceg
 @pytest.mark.requires_persist
 def test_key_grant_retire_uses_supersedes_not_withdraws(media_substrate):
@@ -202,7 +198,6 @@ def test_key_grant_retire_uses_supersedes_not_withdraws(media_substrate):
     assert "withdraws_emitted" not in rep, rep
 
 
-@pytest.mark.xfail(sys.platform == "darwin", strict=False, reason="CIRISConformance#6 — test_130 media_substrate fixture blob_attestation_emission_failed on darwin sqlite; linux passes")
 @pytest.mark.ceg
 @pytest.mark.requires_persist
 def test_multimedia_config_round_trips(media_substrate):
@@ -238,11 +233,10 @@ kid = engine.register_federation_key("agent", "budget-ref", None, None, None)
 engine.set_storage_budget_bytes(2000)
 stored = 0
 for i in range(8):
-    body = (b"media-payload-" + bytes([i])) * 40
+    body = (b"media-payload-" + kid.encode() + bytes([i])) * 40
     sha = hashlib.sha256(body).hexdigest()
     engine.put_blob_signing(sha, base64.b64encode(body).decode(), None, "image/png",
-                            kid, "2026-05-28T13:45:09.000Z",
-                            "%08d-0000-4000-8000-000000000000" % i)
+                            kid, "2026-05-28T13:45:09.000Z", str(uuid.uuid4()))
     stored += 1
 report["stored"] = stored
 report["swept"] = engine.sweep_evictions_once()
@@ -266,7 +260,6 @@ def budget_eviction():
     return payload
 
 
-@pytest.mark.xfail(sys.platform == "darwin", strict=False, reason="CIRISConformance#6 — test_130 media_substrate fixture blob_attestation_emission_failed on darwin sqlite; linux passes")
 @pytest.mark.fabric
 @pytest.mark.requires_persist
 def test_budget_driven_eviction(budget_eviction):

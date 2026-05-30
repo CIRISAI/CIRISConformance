@@ -32,7 +32,9 @@ from conftest import ceg_local_signer_preamble, get_database_url, run_python_scr
 
 def _ccs_blob_script(database_url: str) -> str:
     return ceg_local_signer_preamble(database_url) + r'''
-body = b"ceg-10.1.1-blob-under-test"
+# Unique content per subprocess so tests stay isolated on a shared
+# (postgres) backend — see the conftest preamble note.
+body = b"ceg-10.1.1-blob-under-test-" + key_id.encode()
 good_sha = hashlib.sha256(body).hexdigest()
 bad_sha = "0" * 64
 b64 = base64.b64encode(body).decode()
@@ -51,12 +53,12 @@ def _payload(sha):
         "body": {"inline": b64},
         "media_type": None,
         "attestation": {
-            "attesting_key_id": "ceg-conformance-key",
-            "attestation_id": "00000000-0000-4000-8000-000000000001",
+            "attesting_key_id": key_id,
+            "attestation_id": str(uuid.uuid4()),
             "original_content_hash_hex": sha,
             "scrub_signature_classical": base64.b64encode(engine.local_sign(b"x")).decode(),
             "scrub_signature_pqc": None,
-            "scrub_key_id": "ceg-conformance-key",
+            "scrub_key_id": key_id,
             "scrub_timestamp": "2026-05-28T13:45:09.000Z",
         },
     })
@@ -75,7 +77,7 @@ key_id = engine.register_federation_key("agent", "ceg-ccs-ref", None, None, None
 try:
     engine.put_blob_signing(
         good_sha, b64, None, None, key_id,
-        "2026-05-28T13:45:09.000Z", "33333333-3333-4333-8333-333333333333",
+        "2026-05-28T13:45:09.000Z", str(uuid.uuid4()),
     )
     fetched = engine.get_blob_json(good_sha)
     report["positive_intact"] = (
@@ -110,7 +112,6 @@ def ccs_blob():
     return payload
 
 
-@pytest.mark.xfail(strict=False, reason="CIRISConformance#6 — fixture federation_conflict after persist 3.5.0→3.6.3")
 @pytest.mark.ceg
 @pytest.mark.requires_persist
 def test_mismatched_hash_rejected_at_admission(ccs_blob):
@@ -122,7 +123,6 @@ def test_mismatched_hash_rejected_at_admission(ccs_blob):
     assert ccs_blob["mismatch_error"] == "blob_hash_mismatch", ccs_blob["mismatch_error"]
 
 
-@pytest.mark.xfail(strict=False, reason="CIRISConformance#6 — fixture federation_conflict after persist 3.5.0→3.6.3")
 @pytest.mark.ceg
 @pytest.mark.requires_persist
 def test_absent_blob_returns_none(ccs_blob):
@@ -130,7 +130,6 @@ def test_absent_blob_returns_none(ccs_blob):
     assert ccs_blob["absent_is_none"] is True, ccs_blob
 
 
-@pytest.mark.xfail(strict=False, reason="CIRISConformance#6 — fixture federation_conflict after persist 3.5.0→3.6.3")
 @pytest.mark.ceg
 @pytest.mark.requires_persist
 def test_blob_positive_round_trip(ccs_blob):
