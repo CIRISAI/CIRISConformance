@@ -57,69 +57,73 @@ Each scenario runs in a fresh Python subprocess because PyO3 type registration i
 
 ## How this works
 
-The suite is small and opinionated. Expand the part you need — deepest mechanics first.
+The CIRIS stack ships as several separate libraries (storage, crypto, networking) that are built and released independently but are meant to run **together inside one program**. This suite checks that they actually do. Expand a section for the details.
 
 <details>
-<summary><b>Why each scenario runs in its own subprocess</b></summary>
+<summary><b>Why each test runs in its own fresh Python process</b></summary>
 
-PyO3 `#[pyclass]` type registration is **process-global**. The moment `import ciris_persist` runs, the `Engine` `PyTypeInfo` is registered in the interpreter's type table for the life of the process — you cannot rewind it. A test that imports persist cannot be cleanly followed by one that must *not* see that registration. So every cohabitation scenario runs in a **fresh `subprocess`** — plain `subprocess` + an inline script, **not** `pytest-forked` (forked children inherit the parent's import state at fork time). `conftest.py` itself imports no `ciris-*` module at module level for the same reason; module names cross into the subprocess scripts as strings, and results come back over stdout as JSON.
+These libraries are compiled extensions (written in Rust). When Python imports one, the import permanently registers things into the running interpreter — there's no way to "un-import" it afterward. So a test that loaded one library would leave traces that contaminate the next test.
 
-An `Edge` holding a live Reticulum transport can panic on drop at interpreter teardown, so transport scripts `flush()` then `os._exit(0)` to land their JSON before the destructor runs.
+To keep every check clean, the harness launches a **brand-new Python process for each scenario**, hands it a short script, and reads the result back as JSON. The test runner file itself deliberately imports none of the CIRIS libraries, so nothing leaks in by accident.
 </details>
 
 <details>
-<summary><b>What "cohabitation" means — and why per-crate tests can't catch these bugs</b></summary>
+<summary><b>What "cohabitation" means — and why the libraries' own tests miss these bugs</b></summary>
 
-Each wheel ships its **own** compiled `.so` with its **own** embedded `PyTypeInfo`. When persist and edge are separate wheels, a naïve cross-module `isinstance(engine, Engine)` *fails* — the type ids don't match (the v0.9.1 production regression). The fix is the **PyCapsule** pattern: persist exposes opaque substrate handles (`federation_directory_capsule`, `keyring_signer_capsule`, `local_signer_capsule`, …) and edge extracts them by name tag rather than by type identity.
+"Cohabitation" is just the situation where all these independently-shipped libraries run side by side in one process — which is exactly how they run in production.
 
-Per-crate unit and integration tests run in a **single binary**, where all that `.so` content is one module and these cross-module problems vanish by construction. This harness loads the real, independently-built wheels in one process — the only place the capsule extraction, the shared tokio runtime, and the cross-cdylib statics can actually break.
+That situation has its own failure modes that don't exist anywhere else: two libraries can each define what looks like "the same" type, but the program treats them as different and rejects the hand-off; they can fight over a shared resource; the order you load them in can matter. Each library's own test suite compiles everything into a **single combined build**, where these cross-library problems simply can't happen. This harness installs the **real, separately-published** libraries together — the only place those bugs actually surface.
 </details>
 
 <details>
-<summary><b>The two tiers: substrate vs fabric</b></summary>
+<summary><b>The two kinds of checks: the building blocks vs. the whole network</b></summary>
 
-`pytest -m substrate` / `pytest -m fabric` partition the suite (anything not marked `fabric` is auto-tagged `substrate`).
+Two test groups, selectable with `pytest -m substrate` or `pytest -m fabric`:
 
-- **Substrate** (`test_0xx` / `test_1xx`) — the wheels cohabit and each primitive conforms to the [CEG wire spec](reference/CEG/): cohabitation init, cross-module PyClass identity, send/receive, the HSM transport-identity gate, and the CEG **CCP / CCC / CCS** profiles.
-- **Fabric** (`test_2xx`) — the *emergent* federation: per-actor eviction + `withdraws`, the popularity×freshness eviction sweeper, the trust-threshold intake gate (replication discipline, [scaling model](reference/FEDERATION_SCALING_MODEL.md) §1/§9), and the scaling factors (`effective_trust_set_multiplier`, the `k_eff` corridor, retention) pinned as an executable contract.
+- **Substrate** — do the building-block libraries load and work together, and does each one correctly produce, read, and store the shared message format the components use to talk to each other?
+- **Fabric** — does the network behave correctly *as a whole*: the rules for which data a node keeps, whose data it's allowed to delete, when it drops stale data, and the math behind the claim that this scales to internet size on ordinary hardware.
 
-Full coverage matrices: [`docs/FABRIC_CONFORMANCE.md`](docs/FABRIC_CONFORMANCE.md) and [`docs/CEG_CONFORMANCE.md`](docs/CEG_CONFORMANCE.md).
+Detailed coverage tables: [`docs/CEG_CONFORMANCE.md`](docs/CEG_CONFORMANCE.md) (building blocks) and [`docs/FABRIC_CONFORMANCE.md`](docs/FABRIC_CONFORMANCE.md) (network).
 </details>
 
 <details>
-<summary><b>The CEG conformance profiles (CCP / CCC / CCS)</b></summary>
+<summary><b>What "conforming" means for each component (producer / consumer / storage)</b></summary>
 
-[CEG](reference/CEG/) §0.2 defines three normative profiles, adopted here as the substrate-tier organising principle (markers `ceg` + `ccp`/`ccc`/`ccs`):
+The components talk to each other using a shared, signed message format — the **CEG** ("CIRIS Epistemic Grammar"; full spec under [`reference/CEG/`](reference/CEG/)). Every claim ("this content is genuine," "I trust this peer") is a signed message. A component can play three roles, and the spec says what *correct* means for each:
 
-- **CCP** — *Producer*: emits well-formed signed envelopes, respects reserved prefixes, declares `oversight_mode` + `witness_relation`.
-- **CCC** — *Consumer*: verifies hybrid Ed25519 + ML-DSA-65 signatures, enforces reserved-prefix admission, applies the §8 composition policies.
-- **CCS** — *Substrate*: storage/transport/crypto guarantees — full-SHA blob verify, idempotent replication, witness-quorum admission.
+- **Producer** — writes well-formed messages and signs them properly.
+- **Consumer** — checks those signatures and applies the agreed rules before acting on a message.
+- **Storage** — keeps and forwards messages without corrupting them (verifies content against its hash, doesn't silently duplicate, etc.).
 
-The §0.5 *fractal-self* reading discipline (a conformant substrate **admits**, never **gates**, self-attestation) is anchored in [`docs/CEG_CONFORMANCE.md`](docs/CEG_CONFORMANCE.md).
+Signatures use both a standard algorithm and a post-quantum one, so they stay valid for decades.
 </details>
 
 <details>
-<summary><b>The wheel matrix + pin protocol</b></summary>
+<summary><b>How the tested versions are pinned</b></summary>
 
-[`matrices/current.yaml`](matrices/current.yaml) is the canonical "what's expected to work together right now" — CI installs exactly these pins into a clean venv. Update protocol: bump the pin → run `pytest` locally → flip any `xfail` that now passes → PR. Downstream consumer repos pick up the new floor on their next merge via the reusable workflow (below).
+[`matrices/current.yaml`](matrices/current.yaml) lists the exact library versions expected to work together right now; CI installs precisely those into a clean environment. To move it forward: bump a version, run the tests, and update any test whose expected-failure now passes.
 </details>
 
 <details>
-<summary><b>Why <code>xfail</code>, never <code>skip</code> — and how a gap becomes an upstream issue</b></summary>
+<summary><b>Why tests are marked "expected failure" instead of skipped</b></summary>
 
-A `skip` green-washes untested code. This suite has **zero skips**: a test either passes (the behaviour works against the real wheel) or it is an **`xfail` pinned to a tracked upstream issue**. When a substrate surface is missing or broken, we **file upstream and `xfail`** — never route around it with a workaround (e.g. scraping `list_attestations` to fake a broken `list_holders`). The `xfail` flips to a passing gate automatically the moment the fix ships. Open seams are catalogued in the coverage-matrix docs.
+A *skipped* test silently hides untested code, which is easy to mistake for "it works." This suite never skips. A test either **passes** against the real library, or it's marked an **expected failure** linked to a specific bug report we've filed upstream.
+
+The rule: when a library is missing a feature or has a bug, we **report it upstream and mark the test expected-to-fail** — we don't paper over it with a workaround that tests something easier. The moment the upstream fix ships, that test automatically becomes a real, enforced check.
 </details>
 
 <details>
-<summary><b>The production mobile path (Android / Chaquopy / abi3)</b></summary>
+<summary><b>Running inside the phone app (the Android build)</b></summary>
 
-CIRISAgent bundles persist + verify + edge into one Android process via **Chaquopy**, which runs its own Python 3.10 and bundles the wheels directly — bypassing pip's `Requires-Python` (edge floors at `>=3.11`). That is safe only because the extensions are CPython **abi3** (`*.abi3.so`) / a version-independent uniffi cdylib. `test_080_mobile_target.py` pins that ABI claim, the keystore storage-kind taxonomy (Android Keystore → `hardware_hsm_only`), and the 32-byte transport-identity bring-up gate. CI exercises an **aarch64** runner (the production architecture) and a **`chaquopy-bundle-py310`** job that reproduces the `--ignore-requires-python` bundle on py3.10.
+The CIRIS agent packages three of these libraries into a single **Android app** and runs them on the phone. Android does this with a tool that bundles the compiled libraries directly and runs them on its own bundled Python — skipping the usual version checks. That only works because the libraries are built against Python's *stable* binary interface, so one build runs across Python versions.
+
+These tests confirm that's actually true, that the libraries cope with the phone's secure-key hardware, and that startup produces a valid network identity. CI also runs on ARM chips (what phones use) and reproduces the Android bundling trick, so a break shows up before it reaches an app store.
 </details>
 
 <details>
-<summary><b>The reference materials (this repo <em>as</em> the CEWP reference)</b></summary>
+<summary><b>The specs this suite checks against (the reference copies)</b></summary>
 
-[`reference/`](reference/) vendors provenance-tagged snapshots of the specs the suite conforms against: the [CEWP FSD](reference/CEWP.md), the [scaling model](reference/FEDERATION_SCALING_MODEL.md) + its `scale_model.rs` toy, the 19-section [CEG wire spec](reference/CEG/), and the synthesis paper *Corridor Dynamics in Coordinated Systems*. Each is a snapshot, not the source of truth — [`reference/README.md`](reference/README.md) records the source repo + commit pin for every file.
+[`reference/`](reference/) holds copies of the specifications this suite verifies: the platform overview ([CEWP](reference/CEWP.md)), the [scaling model](reference/FEDERATION_SCALING_MODEL.md) and the small program that computes it, the [message-format spec](reference/CEG/), and the research paper behind the scaling claims. These are snapshots for convenience — [`reference/README.md`](reference/README.md) records exactly where each one came from.
 </details>
 
 ## How sibling repos invoke this harness
