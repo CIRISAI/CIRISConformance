@@ -32,7 +32,7 @@ from __future__ import annotations
 import sys
 import pytest
 
-from conftest import get_database_url, run_python_script
+from conftest import get_backend_label, get_database_url, run_python_script
 
 
 def _send_receive_script(database_url: str) -> str:
@@ -172,15 +172,23 @@ os._exit(0)
 @pytest.mark.cohabitation
 @pytest.mark.requires_persist
 @pytest.mark.requires_edge
+@pytest.mark.xfail(
+    get_backend_label() == "postgres",
+    reason="durable send hangs under postgres at persist 3.6.5 — 'no reactor running' "
+    "on the async outbound-enqueue (regression vs 3.6.3, alongside the #137 native-ingest "
+    "rework) → CIRISPersist#139. The sqlite path works.",
+    strict=False,
+)
 def test_durable_send_enqueues_to_outbound_queue():
     """A durable send returns a handle and lands in persist's edge_outbound_queue.
 
     Hard regression gate for CIRISEdge#50: the cross-wheel durable path used
     to SIGSEGV (edge's bundled, never-`sqlite3_initialize()`d libsqlite3).
     Closed in edge 1.0.1 via `auditwheel --exclude libsqlite3.so.0`; any
-    return of that crash fails this directly.
+    return of that crash fails this directly. (Postgres durable hang tracked
+    separately — CIRISPersist#139.)
     """
-    result = run_python_script(_durable_send_script(get_database_url()))
+    result = run_python_script(_durable_send_script(get_database_url()), timeout=15)
     payload = result.parsed_stdout()
     assert payload["durable_returned"] == "DurableHandle", payload
     assert payload["enqueued"] is True, payload
