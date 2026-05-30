@@ -1,0 +1,63 @@
+name: bench
+
+# Cross-wheel substrate benchmarks — the conformance benchmark tier.
+#
+# Mirrors the substrate sisters' bench.yml discipline: runs the suite and
+# PUBLISHES the numbers as artifacts; it is NOT a pass/fail gate (GitHub's
+# shared runners are too noisy for that). It answers "what are our numbers"
+# for the CEWP scaling model at ciris.ai/cewp, and surfaces drift as the
+# pinned wheels move. The per-PR bit-rot gate lives in the normal test job
+# (tests/test_900_bench_smoke.py).
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  bench:
+    name: cross-wheel bench (py${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: set up Python ${{ matrix.python }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: install harness + pinned ciris-* wheels
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+          python -c "
+          import yaml, subprocess, sys
+          pins = yaml.safe_load(open('matrices/current.yaml'))['stack']
+          subprocess.check_call([sys.executable, '-m', 'pip', 'install',
+                                 *[f'{p}=={v}' for p, v in pins.items()]])
+          "
+
+      - name: run cross-wheel benchmarks
+        run: |
+          echo "::group::Environment"
+          python --version
+          pip list | grep -i ciris || true
+          echo "::endgroup::"
+          python benchmarks/bench_substrate.py --json bench-results.json | tee bench-summary.md
+
+      - name: publish results (artifact — not a gate)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-results-py${{ matrix.python }}
+          path: |
+            bench-results.json
+            bench-summary.md
+
+      - name: job summary
+        if: always()
+        run: cat bench-summary.md >> "$GITHUB_STEP_SUMMARY" || true

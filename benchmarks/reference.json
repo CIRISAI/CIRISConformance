@@ -1,0 +1,15 @@
+{
+  "_comment": "Authoritative per-operation costs MEASURED by the substrate sisters' own criterion benchmark suites. CIRISConformance does NOT re-measure these in isolation — the sister suites own them. These are the numbers the CEWP scaling model (ciris.ai/cewp, src/app/cewp/lib/model.ts) is calibrated against. The conformance benchmark tier measures the CROSS-WHEEL composite + Python-boundary cost on top of these (see bench_substrate.py); the delta is the cohabitation/FFI tax a real cohabiting caller pays.",
+  "source": "model.ts empirical constants + the sister-repo criterion suites",
+  "per_op_reference": {
+    "hybrid_sign": {"value_us": 466.0, "repo": "CIRISVerify", "bench": "federation_crypto/hybrid_sign", "note": "Ed25519 + ML-DSA-65"},
+    "hybrid_verify": {"value_us": 276.0, "repo": "CIRISVerify", "bench": "federation_crypto/hybrid_verify", "note": "Ed25519 + ML-DSA-65"},
+    "canonicalize": {"value_ns_per_kib": 250.0, "repo": "CIRISEdge", "bench": "envelope_canonicalize", "also": "CIRISPersist/canonicalize_python"},
+    "aes_gcm_encrypt": {"value_ns_per_byte": 0.175, "repo": "CIRISVerify", "bench": "federation_crypto", "note": "~5.45 GiB/s @ 64 KiB"},
+    "aes_gcm_decrypt": {"value_ns_per_byte": 0.161, "repo": "CIRISVerify", "bench": "federation_crypto"},
+    "scrub": {"value_ns_per_byte": 10.0, "repo": "CIRISEdge", "bench": "inline_text_pipeline"},
+    "dispatch_inbound": {"value_us": 120.0, "repo": "CIRISEdge", "bench": "dispatch_inbound", "note": "DISPATCH_OVERHEAD_US"},
+    "ingest_pipeline": {"repo": "CIRISPersist", "bench": "ingest_pipeline", "note": "~85K rows/s @ 768 rows"},
+    "raw_sqlite_write": {"repo": "CIRISPersist", "bench": "raw_sqlite_write", "note": "~1.5 ms/row incl async wrapper"}
+  }
+}
