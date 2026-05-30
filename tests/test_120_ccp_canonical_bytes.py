@@ -64,13 +64,25 @@ try:
 except ValueError as exc:
     report["roundtrip_error"] = str(exc)
 
-# (d) §0.5 gap probe: does canonicalization reject a +00:00 offset?
-try:
-    engine.canonicalize_envelope(json.dumps({"signed_at": "2026-05-28T13:45:09.000+00:00"}))
-    report["noncanonical_ts_rejected"] = False
-except ValueError as exc:
-    report["noncanonical_ts_rejected"] = True
-    report["noncanonical_ts_error"] = str(exc)
+# (d) CEG §0.5/§0.6/§0.7 canonicalization rejection — the opt-in validator
+# persist v3.5.0 shipped for CIRISPersist#126 (separate from canonicalize_*).
+def _vchk(payload, now=None):
+    try:
+        engine.validate_envelope_canonical_form(json.dumps(payload), now)
+        return "accepted"
+    except ValueError as exc:
+        return str(exc).split(":")[0]  # the rejection kind token
+
+report["canon_validation"] = {
+    "ts_ok":      _vchk({"signed_at": "2026-05-28T13:45:09.000Z"}),
+    "ts_offset":  _vchk({"signed_at": "2026-05-28T13:45:09.000+00:00"}),
+    "ts_lowerz":  _vchk({"signed_at": "2026-05-28T13:45:09.000z"}),
+    "hex_lower":  _vchk({"root_hash": "ff00aa"}),
+    "hex_upper":  _vchk({"root_hash": "FF00AA"}),
+    # §0.7: signed_at more than 5 min in the future, relative to now_iso.
+    "ts_present": _vchk({"signed_at": "2026-05-28T13:46:00.000Z"}, "2026-05-28T13:45:00.000Z"),
+    "ts_future":  _vchk({"signed_at": "2026-05-28T13:51:00.000Z"}, "2026-05-28T13:45:00.000Z"),
+}
 
 report["stage"] = "done"
 print(json.dumps(report))
@@ -123,13 +135,20 @@ def test_producer_consumer_round_trip(ccp_canonical):
 @pytest.mark.ceg
 @pytest.mark.ccp
 @pytest.mark.requires_persist
-@pytest.mark.xfail(
-    reason="CEG §0.5 canonicalization rejection not enforced at this surface yet "
-    "— tracked upstream as CIRISPersist#126",
-    strict=False,
-)
-def test_canonicalization_rejects_noncanonical_timestamp(ccp_canonical):
-    """§0.5: a `+00:00` offset (instead of `Z`) MUST be rejected when canonicalizing."""
-    assert ccp_canonical["noncanonical_ts_rejected"], (
-        "canonicalize_envelope accepted a +00:00 timestamp; §0.5 requires rejection"
-    )
+def test_canonicalization_validator_rejects_noncanonical_forms(ccp_canonical):
+    """CEG §0.5/§0.6/§0.7: validate_envelope_canonical_form rejects non-canonical forms.
+
+    persist v3.5.0 (CIRISPersist#126) shipped this as an opt-in validator
+    distinct from `canonicalize_envelope`; the harness opts in explicitly.
+    """
+    v = ccp_canonical["canon_validation"]
+    # §0.5 datetime — only `…Z` with 3 fractional digits is canonical.
+    assert v["ts_ok"] == "accepted", v
+    assert v["ts_offset"] == "canonicalization_timestamp", v
+    assert v["ts_lowerz"] == "canonicalization_timestamp", v
+    # §0.6 hex — lowercase only.
+    assert v["hex_lower"] == "accepted", v
+    assert v["hex_upper"] == "canonicalization_hex", v
+    # §0.7 — signed_at more than 5 min in the future is rejected.
+    assert v["ts_present"] == "accepted", v
+    assert v["ts_future"] == "signed_at_in_future", v

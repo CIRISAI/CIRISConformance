@@ -166,8 +166,9 @@ def test_trust_threshold_setter_clamps(fabric_eviction):
 
 @pytest.mark.requires_persist
 @pytest.mark.xfail(
-    reason="list_holders_json returns [] for locally-held blobs — tracked upstream "
-    "as CIRISPersist#130 (don't work around with list_attestations)",
+    reason="list_holders_json still returns [] for locally-held blobs at persist "
+    "3.6.3 — CIRISPersist#130 (closed but unfixed at this surface; reopened with "
+    "evidence). Don't work around with list_attestations.",
     strict=False,
 )
 def test_list_holders_reports_local_holdings(fabric_eviction):
@@ -179,12 +180,14 @@ def test_list_holders_reports_local_holdings(fabric_eviction):
 
 @pytest.mark.requires_persist
 @pytest.mark.xfail(
-    reason="set_trust_threshold sets the threshold but no AdmissionGate is wired via "
-    "PyO3, so the trust×capacity intake gate never refuses — tracked as CIRISPersist#129",
+    reason="persist's put_blob_signing does not refuse on trust — by design. "
+    "CIRISPersist#129 (closed) exposed trust_scoring_capsule for *consumers*; the "
+    "trust×capacity intake gate is enforced edge-side at dispatch_inbound "
+    "(CIRISEdge#48) and needs a multi-node fabric fixture (Conformance#4).",
     strict=False,
 )
 def test_intake_gate_refuses_below_threshold(fabric_eviction):
-    """§1.1: under threshold 1.0, a write from an un-scored (trust≈0) actor is refused."""
+    """§1.1: a low-trust source is refused at the intake gate (edge dispatch_inbound)."""
     assert fabric_eviction["admitted_under_max_threshold"] is False, (
         "write was admitted under trust threshold 1.0 — the intake gate is not enforcing"
     )
