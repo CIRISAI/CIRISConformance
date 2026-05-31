@@ -24,6 +24,15 @@ numbers in these documents.
 
 Snapshot date: 2026-05-29.
 
+## Prior art & state-of-the-art comparison
+
+[`comparison/`](comparison/) positions CEWP **as a whole platform** against
+the deployed/published state of the art — decentralized storage,
+AI governance, the federated web, and crypto/transparency — complementing
+the per-layer `STANDARDS_COMPARISON.md` docs the substrate sisters carry.
+It names the property the field has not unified (identity-aware storage +
+per-actor eviction) and is honest about where the prior art is better.
+
 ## How the tiers map to these specs
 
 - **Substrate tier** (`pytest -m substrate`) conforms the wheels to
