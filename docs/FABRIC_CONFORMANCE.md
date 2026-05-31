@@ -46,6 +46,9 @@ substrate-behaviour side is tracked under CIRISNodeCore#21):
 | `effective_trust_set_multiplier(depth)` (§1.4) | ✅ | anchors 0→1×, 1→4×, 2→20×, 3→100×; monotonic; overlap-dampened (sub-geometric) |
 | `k_eff = k/(1+ρ(k−1))` corridor (CEWP §4) | ✅ | ρ→1 ⇒ k_eff→1 (rigidity); ρ→0 ⇒ k_eff→k (chaos); bounded [1,k], monotonic in ρ |
 | retention ∝ 1/effective-set (§5.1) | ✅ | retention strictly decreasing in trust depth (full_internet_v1 anchors) |
+| retention-floor gate (v0.6) | ✅ | `test_211` — soft-feasibility floor = 2.0 days of trust-pool churn |
+| F-AV cost-asymmetry (v0.6 `fav_findings`, Verify Fed TM v1.1) | ✅ | `test_211` — F-AV-1 Sybil ≈ $876/identity/yr for **0% federation admit** (SOFTWARE_ONLY tier-cap); F-AV-DORMANT $120/yr; the 7-finding catalog |
+| F-AV substrate *enforcement* (tier-cap actually refuses Sybil at federation scope) | ⏳ | edge trust-gate + multi-node fixture → **Conformance#7 / #4** |
 
 When an ⏳ upstream seam lands, the corresponding `xfail` flips and the
 row moves to ✅. The fabric tier is how the CEWP "we don't need big tech"

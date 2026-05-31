@@ -129,8 +129,10 @@ federation's runtime, not the agent's pre-training**.
 
 ## 2. The Agent 3.0 architecture — seven repos
 
-Agent 3.0 is the integrated stack. Three substrate sisters, three
-fabric sisters, the agent runtime, and the unified client:
+Agent 3.0 is the integrated stack. **Three substrate sisters + three
+fabric sisters + one agent runtime + unified client = 7 repos.** The
+seventh repo (CIRISAgent) plays BOTH roles: it's the H3ERE-pipeline
+runtime where agents reason AND the UI where users interact:
 
 ### 2.1 The three substrate sisters
 
@@ -148,24 +150,19 @@ fabric sisters, the agent runtime, and the unified client:
 | **[CIRISLensCore](https://github.com/CIRISAI/CIRISLensCore)** | Science layer — routes traces to cohorts, scores conformity to the alignment manifold, signs detection events for misalignment patterns | F-3 detector family; Coherence-Ratchet detectors; Counter-RII; cohort/distributive readings; RATCHET integration |
 | **[CIRISRegistry](https://github.com/CIRISAI/CIRISRegistry)** | Identity bootstrap + canonical-attester rule + CEG spec authority | [CEG 0.2 spec](https://github.com/CIRISAI/CIRISRegistry/tree/main/FSD/CEG) (18-section wire-format authority); steward triple; agent_files canonical attestation |
 
-### 2.3 Agent runtime + unified client
+### 2.3 The seventh repo — agent runtime + unified client (single repo, both roles)
 
 | Repo | Role |
 |---|---|
-| **[CIRISAgent](https://github.com/CIRISAI/CIRISAgent)** | The agent runtime — H3ERE pipeline (DMA → CSDMA → DSDMA → ASPDMA → conscience → action), policy adapters, the runtime humans + LLMs cohabit |
-| **[CIRISGUI](https://github.com/CIRISAI/CIRISGUI)** | Unified user interface + API runtime for the CIRIS agent (the human face on the platform) |
+| **[CIRISAgent](https://github.com/CIRISAI/CIRISAgent)** | The agent runtime AND the unified client. H3ERE pipeline (DMA → CSDMA → DSDMA → ASPDMA → conscience → action) + policy adapters + UI + API runtime. Where users interact with the platform AND where agents reason. One repo, both roles, cohabited. |
 
 ### 2.4 How the seven compose
 
 ```
                           ┌─────────────────────────────┐
-                          │      CIRISGUI               │  ← humans interact here
-                          │   (unified client)          │
-                          └────────────┬────────────────┘
-                                       │
-                          ┌────────────▼────────────────┐
-                          │      CIRISAgent             │  ← agent runtime; H3ERE pipeline
-                          │   (agent runtime)           │     agents reason here
+                          │      CIRISAgent             │  ← agent runtime + unified client
+                          │  (H3ERE pipeline + UI)      │     users interact here;
+                          │                             │     agents reason here
                           └────────────┬────────────────┘
                                        │
             ┌──────────────────────────┼──────────────────────────┐
@@ -670,14 +667,14 @@ maturities; this is a real running system, not a paper architecture.
 * **CIRISRegistry** — CEG 0.2 PWD published 2026-05-28; steward
   triple operational; v1.5+ wire-format candidates under review.
 
-### 11.3 Agent + client
+### 11.3 Agent runtime + unified client
 
 * **CIRISAgent** — H3ERE pipeline stable; CEG 0.2 §5.1 slice (#834)
   + 3.0 adoption plan in progress; trace replication wire form
-  (#830) + disclosure_version (#832) D17–D22 sequence active.
-* **CIRISGUI** — unified UI + API runtime; consumes NodeCore feeds
-  (local / community / global per #19), article quality (just
-  shipped), trust-depth admission oracle (just shipped).
+  (#830) + disclosure_version (#832) D17–D22 sequence active. Same
+  repo carries the unified UI + API runtime that consumes NodeCore
+  feeds (local / community / global per #19), article quality (just
+  shipped), and the trust-depth admission oracle (just shipped).
 
 ### 11.4 What's not yet done
 
@@ -766,8 +763,8 @@ soup is for everyone; come participate.*
 * [CIRISRegistry](https://github.com/CIRISAI/CIRISRegistry) — CEG
   spec authority + identity bootstrap
 * [CIRISAgent](https://github.com/CIRISAI/CIRISAgent) — agent
-  runtime (H3ERE pipeline)
-* [CIRISGUI](https://github.com/CIRISAI/CIRISGUI) — unified client
+  runtime + unified client (H3ERE pipeline + UI; one repo, both
+  roles)
 
 ### External
 

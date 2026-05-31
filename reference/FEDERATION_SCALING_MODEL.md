@@ -143,6 +143,28 @@ conservative-by-design baseline. Dev-host CPUs run 2–3× faster.
 | Software signer | ~100 µs/sign |
 | H3ERE trace per agent decision | ~14 KB |
 
+### 2.4 Multimedia primitives (Persist v3.6.x)
+
+| Op | Cost / shape |
+|---|---|
+| `put_blob_signing` (16 MiB inline cap; matcher off) | per-row write + hybrid_sign, ~1.6 ms |
+| Perceptual-hash check at `put_blob_signing` (matcher on) | matcher-dependent; PDQ ~1 ms / image, fails closed if unreachable per operator policy |
+| `takedown_notice` Contribution write + propagation | ~1.5 ms write + `withdraws` emission against matched `holds_bytes` rows |
+| `key_grant` Contribution write | ~1.5 ms write + per-subscriber wrap (~10 µs HKDF-SHA256 + ~10 µs AES-256-GCM + ~250 µs X25519) |
+| `list_held_by(actor_key)` (identity-aware-storage seam) | indexed read |
+| `evict_actor(actor_key)` (per-actor eviction + `withdraws` emission) | linear in actor's holdings; fail-honest contract |
+| `list_local_holders` (local-truth bypass of CEG §10.1.2 TTL) | indexed read |
+
+**Triple currency note.** Empirical inputs §2.1-§2.3 reference the
+substrate baselines circa Verify v2.8.0 / Edge v0.10.0 / Persist
+v3.3.0. The model now ships at the substrate triple keyring v4.4.2 /
+persist v3.6.4 / edge v1.0.1 (FY2026 spring federation triple).
+Underlying op costs (hybrid_sign, envelope_canonicalize, SQLite row
+write) are within noise of the baselines; the §2.4 multimedia
+primitives are net-new since CEG 0.3. Refresh cadence is per
+substrate release per [NodeCore#23](https://github.com/CIRISAI/CIRISNodeCore/issues/23)
+living-document audit.
+
 ---
 
 ## 3. v1 tier model (L0 / L1 server gradient)
@@ -172,6 +194,115 @@ attestations, become discoverable as holders.
 | Disk | 256 GB | 1 TB | Eric's spec |
 | Bandwidth | 1 Gbps (10.8 TB/day sustained) | 1 Gbps | Residential fiber |
 | CPU | 1 full-utilization core (86.4 K cpu-sec/day) | Per-process CIRIS share |
+| Retention | 2-day admitted-trust floor (soft failure under this) | v0.4 — anti-thrash gate |
+
+### 3.4 Device-class realism (v0.4)
+
+The tier model `client / proxy / server` says *what a node does* in
+the federation; the device class says *what hardware it runs on*.
+Different device classes have radically different idle power,
+marginal-share availability (a phone serving CEWP costs ~5% of its
+idle draw — the human pays the rest), always-on reachability, and
+useful-work-per-watt efficiency.
+
+| Class | idle_W | marginal_share | always_on | efficiency | net_new |
+|---|---|---|---|---|---|
+| phone | 2.5 W | 5% | 15% | 0.50× | no |
+| laptop | 10 W | 10% | 20% | 0.40× | no |
+| tablet | 5 W | 7% | 10% | 0.45× | no |
+| ARM mini-PC | 5 W | 100% | 100% | 0.60× | yes |
+| home x86 | 25 W | 100% | 100% | 0.40× | yes |
+| old desktop | 60 W | 100% | 100% | 0.20× | no |
+
+Fleet styles (per-tier device composition presets):
+
+- **PhoneFirst** — substrate rides hardware that's already on.
+  Server slice is mostly ARM mini-PCs; very few dedicated x86 boxes.
+- **Realistic 2026** — what you'd see today: phones for clients and
+  proxies; L1 is a mix of dedicated ARM boxes, laptops left on, and
+  some x86 home servers.
+- **Homelab** — dedicated home servers everywhere. Worst-case for
+  net-new buildout + per-watt efficiency.
+
+### 3.5 Regional realism (v0.4)
+
+Nine GSMA-aligned regions with real 2024-2026 data. The website's
+model assumed a uniform global pool; in reality smartphone
+penetration, broadband reach, and grid CO2 differ by an order of
+magnitude across the world. Per-region tier mix is computed from
+penetration data, not hand-set.
+
+| Region | Pop (M) | Smartphone | Broadband | L1-capable | Grid CO2 |
+|---|---|---|---|---|---|
+| North America | 378 | 85% | 82% | 75% | 0.38 |
+| Europe | 743 | 83% | 77% | 70% | 0.27 |
+| East Asia | 1660 | 79% | 73% | 65% | 0.51 |
+| South Asia | 2010 | 61% | 42% | 25% | 0.71 |
+| Southeast Asia | 695 | 70% | 55% | 35% | 0.55 |
+| MENA | 581 | 66% | 58% | 40% | 0.55 |
+| Sub-Saharan Africa | 1280 | 52% | 28% | 12% | 0.45 |
+| Latin America | 660 | 72% | 65% | 45% | 0.21 |
+| Oceania | 45 | 80% | 75% | 65% | 0.55 |
+
+**Sources** — UN World Population Prospects 2024 medium variant /
+GSMA Mobile Economy 2024 / ITU Facts and Figures 2024 + Speedtest
+Global Index 2024 / IEA Energy Statistics 2024 weighted regional
+averages.
+
+The regional model surfaces the truer comparison: South Asia's grid
+is 3× dirtier than Latin America's; CEWP power spent in hydro-heavy
+Iceland or Norway has near-zero CO2 cost; sub-Saharan Africa's home-
+server capability is real but small (12%), so substrate participation
+there is dominated by the phone-class client tier at first.
+
+### 3.6 Environmental footprint (v0.4)
+
+Two perspectives in parallel:
+
+1. **Centralized internet substrate today** — datacenter-counted.
+   Calibrated against the IEA 2024 global DC electricity estimate
+   (~415 TWh/yr at 5 B users); ~10 K facilities × 5 MW avg.
+2. **CEWP substrate** — device-class-counted. Most participation
+   rides hardware already on for other reasons; marginal power per
+   device, not full draw. Regional CEWP footprint uses each region's
+   grid CO2 (Latin America 0.21 / South Asia 0.71 kg/kWh).
+
+At the `full_internet_v1` scenario (5 B users):
+
+| Posture | Power | Electricity | CO2 | vs Internet |
+|---|---|---|---|---|
+| Internet substrate (today) | 50 GW | 438 TWh/yr | 175 Mt/yr | baseline |
+| CEWP PhoneFirst | 5.3 GW | 47 TWh/yr | 18.6 Mt/yr | **9.4× less** |
+| CEWP Realistic 2026 | 10.3 GW | 90 TWh/yr | 36.2 Mt/yr | **4.8× less** |
+| CEWP Homelab | 16.9 GW | 148 TWh/yr | 59.3 Mt/yr | 3.0× less |
+| CEWP Regional Realism (Realistic 2026, per-region grid CO2) | 14.3 GW | 125 TWh/yr | 61.4 Mt/yr | 3.5× less power, 2.9× less CO2 |
+
+The marginal vs new-buildout split shows where the joules actually
+come from: at Realistic 2026, ~47% is marginal (rides phones /
+laptops already on) and ~53% is new buildout (ARM mini-PCs + home
+x86). At PhoneFirst it flips to ~55% marginal / ~45% new buildout —
+the phone-class population is the largest fleet but contributes
+little new hardware.
+
+### 3.7 Latency model (v0.4)
+
+First-order p50 RTT estimate driven by the same sliders that drive
+storage and bandwidth. Numbers come from measured residential ISP
+RTTs, CDN edge cache RTTs, and great-circle backbone delays.
+
+| Component | Cost | Source |
+|---|---|---|
+| CEWP cache hit (same box / metro) | 2 ms | local SSD read + LAN hop |
+| CEWP local-cohort hop (metro) | 18 ms | typical residential ISP intra-metro |
+| CEWP regional hop (continent) | 55 ms | continental backbone RTT |
+| CEWP global hop (cross-ocean) | 195 ms | submarine cable great-circle |
+| CEWP trust-depth hop penalty | 14 ms / hop | friend-of-friends resolution |
+| Internet CDN edge cache | 28 ms | Akamai / Cloudflare typical |
+| Internet hyperscale origin fetch | 180 ms | TLS + auth + cross-region |
+| Sparseness penalty | +5 ms / decade above 10 users/server | server density |
+
+At `full_internet_v1` with default cohort + 60% cache hit rate +
+depth 1: CEWP p50 ≈ 22.6 ms vs Internet ≈ 88.8 ms (**75% reduction**).
 
 ---
 
@@ -222,6 +353,29 @@ configured.
 | `full_internet_local_heavy` | 5×10⁹ | 35/55/10 | 250 | 1K | 50 MB | 30% | 736 GB / 50 KB/s / 36 s/d | ✓ 44 d |
 | `full_internet_global_heavy` | 5×10⁹ | 30/55/15 | 250 | 1K | 50 MB | 60% | 743 GB / 109 KB/s / 73 s/d | ✓ 22 d |
 | `village_dense` | 10³ | 40/40/20 | 50 | 200 | 30 MB | 30% | 721 GB / 8 KB/s / 27 s/d | ✓ ~1.1 yr |
+
+**Multimedia / video-replacement scenarios** (added per
+[FSD/MEDIA_SHARING.md §2.6-2.7](MEDIA_SHARING.md) inline/external
+split + real-world traffic anchors from
+Sandvine/DataReportal/Ericsson Mobility Report):
+
+| Scenario | N | Tier (c/p/s) | R | env | D/user | fetch/u | ext_frac | Storage / BW / CPU |
+|---|---|---|---|---|---|---|---|---|
+| `tiktok_replacement` | 5×10⁹ | 40/55/5 | 250 | 15 MB | 0.5 MB | 95 MB | 0.0 (all inline) | 788 GB / 3 KB/s / 0.5 s/d |
+| `youtube_replacement` | 5×10⁹ | 40/55/5 | 200 | 30 MB | 0.5 MB | 1 GB | 0.75 (mix) | 788 GB / 7 KB/s / 0.5 s/d |
+| `netflix_replacement` | 5×10⁹ | 40/55/5 | 100 | 5 KB | 1 KB | 1.5 GB | 1.0 (all external) | 133 GB / 13 KB/s / 1 s/d |
+| **`full_internet_with_video`** | **5×10⁹** | **35/55/10** | **250** | **50 KB** | **11 MB** | **1.7 GB** | **0.88** | **743 GB / 55 KB/s / 40 s/d** |
+
+The `full_internet_with_video` numbers (11 MB/user/day produced,
+1.7 GB/user/day consumed — combined TikTok + YouTube + Netflix +
+text + photos + everything) **all fit per-server at v1**.
+Netflix-class streaming is *the easiest scenario* — at 13% of disk
+because external_fetch_fraction=1.0 means the substrate routes
+metadata and the bytes ride the publisher's CDN (Netflix's own Open
+Connect / studio S3 / community film co-op MinIO). The substrate's
+"no datacenters required" claim holds for streaming because
+*publishers' existing storage IS the substrate's storage tier for
+that content* — we compose with what already exists.
 
 ### 5.1 What the numbers say
 
