@@ -53,3 +53,30 @@ substrate-behaviour side is tracked under CIRISNodeCore#21):
 When an ⏳ upstream seam lands, the corresponding `xfail` flips and the
 row moves to ✅. The fabric tier is how the CEWP "we don't need big tech"
 scaling claim becomes a checked property rather than a slide.
+
+## Multi-node federation (`test_300`)
+
+Some fabric properties only exist *between* nodes. The `federation` fixture
+(`conftest.py`) runs N PyO3-isolated node subprocesses sharing one
+substrate — a single on-disk SQLite federation directory + blob store
+(persist's `sqlite:////abs.db` 4-slash DSN). No transport is needed: a
+shared store *is* how peers see each other at the substrate level, which
+sidesteps the Reticulum-self-route / HTTPS-not-in-wheel blockers. (Field
+precedent: libp2p dropped heavyweight multi-node frameworks for "start N
+nodes and have them interact" — the simplest thing that works.)
+
+| Property (§) | Status | Where |
+|---|---|---|
+| Cross-node directory visibility (§10.1) | ✅ | `test_300` — node B sees node A's blob + `holds_bytes` |
+| Multi-holder discovery (§9.1) | ✅ | `test_300` — two holders → `list_holders` returns both (federation-scoped; `list_holders` is relative to content the querying node holds) |
+| Per-operator eviction (§9.5) | ✅ | `test_300` — B evicting its own holdings doesn't withdraw A's holder attestation |
+
+This fixture is the **foundation** for the still-pending multi-node
+scenarios — they build on `federation(...)` rather than needing new infra:
+
+| Pending scenario | Tracking |
+|---|---|
+| Trust × capacity intake gate refuses a low-trust peer | #129/edge#48 — needs the edge trust-gate consumed cross-node |
+| Trust-recursion-depth admission (depth-0/1/N) | CIRISNodeCore#21 + node-core wheel |
+| F-AV enforcement (SOFTWARE_ONLY tier-caps to 0% federation admit) | Conformance#8 substrate half + the tier-cap surface |
+| Cross-transport delivery (HTTPS↔Reticulum) | Conformance#4 — needs the transport-http wheel (CIRISEdge#56) |

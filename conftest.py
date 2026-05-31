@@ -199,6 +199,78 @@ def python_subprocess():
     return run_python_script
 
 
+# ─── Multi-node federation fixture ────────────────────────────────────
+# The cross-wheel suite's nodes are PyO3-isolated subprocesses, so a
+# "federation" is N node subprocesses sharing one substrate. The shared
+# substrate is a single on-disk SQLite file (persist's `sqlite:////abs.db`
+# 4-slash DSN) — every node's Engine points at it, so they see each other's
+# `federation_keys` / `federation_attestations` / `federation_blobs`. This
+# is the substrate-level federation directory; it needs no transport (which
+# sidesteps the Reticulum-self-route / HTTPS-not-in-wheel blockers) and no
+# postgres.
+#
+# Design note — why not multiple processes over a real transport: the field
+# precedent (libp2p) abandoned heavyweight multi-node frameworks (Testground)
+# for "start N nodes and have them interact" in favour of the simplest thing
+# that works. For the *substrate* fabric scenarios (federation directory,
+# holder discovery, per-actor eviction, trust graph), a shared store IS how
+# peers see each other — no wire round-trip required. Transport-level
+# multi-node (cross-transport delivery, #4) is a separate fixture pending
+# the HTTPS wheel.
+
+
+def _federation_node_script(db_url: str, identity_ref: str, context: dict, body: str) -> str:
+    header = f"DB_URL = {db_url!r}\nIDENTITY_REF = {identity_ref!r}\n"
+    header += "".join(f"{k} = {v!r}\n" for k, v in context.items())
+    preamble = r'''
+import json, sys, base64, hashlib, os, tempfile, secrets, uuid
+try:
+    import ciris_persist as cp
+except ImportError as exc:
+    print(json.dumps({"_node_error": "import", "error": str(exc)})); sys.exit(2)
+key_id = "node-" + secrets.token_hex(8)           # unique federation identity per node
+_seed = os.path.join(tempfile.mkdtemp(), "seed"); open(_seed, "wb").write(secrets.token_bytes(32))
+cp.reset_engine()
+engine = cp.Engine(DB_URL, key_id, local_key_id=key_id, local_key_path=_seed)
+kid = engine.register_federation_key("agent", IDENTITY_REF, None, None, None)
+report = {"key_id": key_id}
+'''
+    post = '\nprint(json.dumps(report)); sys.stdout.flush(); os._exit(0)\n'
+    return header + preamble + body + post
+
+
+@pytest.fixture
+def federation(tmp_path):
+    """Run multi-node federation steps over a shared substrate.
+
+    Returns `node(body, *, identity_ref="node", **context)`: runs `body` as a
+    fresh node subprocess (its own unique federation key as `key_id` / `kid`,
+    its own Engine bound as `engine`) against a SHARED sqlite file all nodes
+    see. Inject prior steps' values via keyword `context`; read results from
+    the `report` dict the body fills. Steps run sequentially and observe each
+    other's federation state.
+    """
+    db_file = tmp_path / "federation.db"
+    db_file.touch()
+    db_url = f"sqlite:///{db_file}"  # sqlite:// + /abs/path → 4 leading slashes
+
+    def node(body: str, *, identity_ref: str = "node", **context):
+        script = _federation_node_script(db_url, identity_ref, context, body)
+        result = run_python_script(script)
+        try:
+            payload = result.parsed_stdout()
+        except Exception:
+            pytest.fail(
+                f"federation node ({identity_ref}) produced no parseable JSON "
+                f"(exit {result.returncode}):\nSTDOUT: {result.stdout}\nSTDERR: {result.stderr}"
+            )
+        assert "_node_error" not in payload, payload
+        return payload
+
+    node.db_url = db_url
+    return node
+
+
 # ─── CEG conformance-profile script preamble ──────────────────────────
 # The CCP / CCC / CCS profile tests (CEG §0.2) all need a persist Engine
 # carrying a 32-byte Ed25519 LocalSigner so they can sign + verify
