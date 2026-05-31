@@ -58,18 +58,17 @@ def _https_init_script(database_url: str) -> str:
 @pytest.mark.cohabitation
 @pytest.mark.requires_persist
 @pytest.mark.requires_edge
-@pytest.mark.xfail(
-    reason="published edge wheel built without the transport-http feature — HTTPS "
-    "init API present (edge#49) but raises 'built without it' → CIRISEdge#56. Blocks "
-    "Conformance#3 (transport axis) + #4 (cross-transport).",
-    strict=False,
-)
 def test_https_edge_stands_up():
-    """The published edge wheel can init an HTTPS transport (mTLS/bearer build base)."""
+    """The published edge wheel stands up an HTTPS transport (mTLS/bearer build base).
+
+    Real gate as of edge 1.1.4 (CIRISEdge#56 closed — the published wheel is
+    built with `transport-http`). The base for the #3 transport axis + the
+    #4 cross-transport HTTPS round-trips.
+    """
     result = run_python_script(_https_init_script(get_database_url()))
     payload = result.parsed_stdout()
     assert payload.get("stage") == "done", payload
     assert payload.get("https_ok") is True, (
-        f"HTTPS edge init failed — likely the transport-http feature is not in the "
-        f"published wheel (CIRISEdge#56): {payload.get('error')}"
+        f"HTTPS edge init failed — transport-http should be in the published "
+        f"wheel as of edge 1.1.4 (CIRISEdge#56): {payload.get('error')}"
     )
