@@ -51,9 +51,13 @@ seam · 🏛 governance/process tier (not a substrate behavior).
 | §6.1 concurrent-write precedence + dedup-on-triple | CCS | ⏳ | needs generic `put_attestation` schema (arbitrary dimension) → **CIRISPersist#124** |
 | §7.0 reserved-prefix admission rejection | CCS | ⏳ | needs generic `put_attestation` schema → **CIRISPersist#124** |
 | §0.5/§0.6/§0.7 canonicalization rejection | CCC | ⏳ (xfail) | wheel accepts `+00:00`/uppercase hex/future ts → **CIRISPersist#126** |
-| §4/§0.5 `witness_relation`/`oversight_mode` + self-attestation | CCP/CCC | ⏳ | fields absent in Python surface → **CIRISVerify#40** |
-| §9.2.1 HUMANITY_ACCORD invocation anti-replay | CCC | ⏳ | surface absent → **CIRISVerify#41** |
-| §10.3.1 STH cosignature consistency-proof | CCS | ⏳ | HTTP-only, not cross-wheel → **CIRISVerify#42** |
+| §4/§0.5 `witness_relation`/`oversight_mode` + self-attestation | CCP/CCC | ⏳ | shipped in the verify **Rust crate** (v4.2.0 `witness_relation.rs`, CIRISVerify#40 closed) but **not on the published Python wheel surface** — verified absent at verify 4.6.0 / persist 3.6.9, so not cross-wheel-drivable yet |
+| §9.2.1 HUMANITY_ACCORD invocation anti-replay | CCC | ⏳ | shipped in the verify Rust crate (v4.2.0 `humanity_accord.rs`, CIRISVerify#41 closed) but **not on the published Python wheel surface** (no `invocation_canonical_bytes` on verify/persist) — not cross-wheel-drivable yet |
+| §10.3.1 STH cosignature consistency-proof | CCS | ⏳ | shipped in the verify Rust crate (v4.2.0 `WitnessConsistencyProof::verify`, CIRISVerify#42 closed) but **not on the published Python wheel surface** (no `verify_sth_cosignature_consistency_proof`) — not cross-wheel-drivable yet |
+| §5.6.8 `key_grant` wrap (`x25519-aes256-gcm-hkdf-sha256`) | CCS | ⏳ | verify v4.4.0 multimedia tier (CIRISVerify#44) — wrap primitive not on the Python wheel surface |
+| F-AV-RECONSIDER-DOS rate-limit / cumulative budget | CCC | ⏳ | verify v4.5.0 (CIRISVerify#46) — **Conformance#7** Scenario 1 |
+| Hybrid KEX (X25519 + ML-KEM-768) | CCC | ⏳ | verify v4.6.0 (CIRISVerify#47, `ml-kem` feature) — **Conformance#7** Scenario 2; not on the Python wheel surface |
+| R1/Q1 partition+heal merge contracts (Fed TM v1.1) | CCS | ⏳ | CIRISVerify#48/#49 — **Conformance#7** Scenario 3 |
 | §10.1.2 holds_bytes 24h TTL | CCS | ⏳ | needs injectable clock → folded into CIRISPersist#125 |
 | Identity-aware storage / per-actor eviction (scaling §9) | CCS | ⏳ | `list_holders` + evict-actor → **CIRISPersist#125** |
 | Trust-recursion-depth admission (scaling §1.4) | CCS | ⏳ | depth-N graph walk → **CIRISNodeCore#21** |
