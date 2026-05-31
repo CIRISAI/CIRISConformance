@@ -15,6 +15,7 @@ The field splits cleanly on two questions the CEWP substrate answers
 | **CEWP** | **Yes (byte-level)** | **Yes (substrate primitive)** | `put_blob_signing` welds attribution + eviction |
 | IPFS / Kubo | No | No | Anonymous content-addressing; LRU watermark GC only |
 | IPFS Cluster | Partial | Partial | Knows "the peer who pinned," not the author |
+| Iroh / iroh-blobs | Partial (node-level) | No | Content-addressed blobs over QUIC, ex-IPFS team; has **node** identity (NodeId + tickets) but not **author**-of-byte attribution; eviction is local GC |
 | Filecoin | Partial | **No (by design)** | Contract binds host to *keep* data; eviction = slashing |
 | Sia | Partial | **No (by design)** | Same — contract-bound hosting |
 | Storj | Partial (satellite) | Partial | Nodes see only erasure-coded ciphertext |
@@ -26,8 +27,17 @@ The field splits cleanly on two questions the CEWP substrate answers
 
 **The combination (identity-aware *and* per-actor-evictable at the byte
 storage layer) does not appear unified in any deployed system.** The
-closest are SSB/Hypercore (feed-level, not byte-level) and Mastodon
-(object-level, but at the application layer — see [`03`](03_federated_web_identity.md)).
+closest are SSB/Hypercore (feed-level, not byte-level), Iroh (node-level,
+not author-level), and Mastodon (object-level, but at the application layer
+— see [`03`](03_federated_web_identity.md)).
+
+Concretely, the gap the feed/node-level systems leave: if peers A and B
+both signed `holds_bytes` for the *same* SHA via different feeds/nodes,
+Hypercore/Iroh cannot answer "these bytes are A's contribution" across the
+feed/node boundary — identity rides the *container*, not the byte. CEWP's
+`attesting_key_id`-per-`holds_bytes`-row answers it directly, which is what
+makes per-author eviction (`evict_actor`) a substrate primitive rather than
+an application-layer bookkeeping exercise.
 
 ## Why the contract-storage systems reject per-actor eviction
 
@@ -51,6 +61,18 @@ this property forecloses:
 | IPFS pin-set bloat — no popularity/trust signal to drive GC; pinning services curate *outside* the protocol | Trust×capacity intake + popularity×freshness eviction are **in** the wire format (`scores` for trust, `holds_bytes` TTL for freshness) |
 | Freenet can't handle abuse — by-design anonymity ⇒ operators hold opaque content with no surface to refuse a specific actor | `attesting_key_id` per byte ⇒ refuse / evict by actor structurally |
 | IPFS Cluster: "untrusted peers lying about free space" — resource attestation with no identity-tied recourse | Resource + holder claims are signed attestations with identity-tied recourse |
+
+## Composability — unifier, not replacer
+
+CEWP does not aim to *replace* IPFS/Filecoin/Iroh — it composes **with**
+them. A `holds_bytes` row can carry an `ExternalRef` pointing at content
+parked on an external substrate (IPFS CID, Filecoin deal, S3, an Iroh
+ticket), so the prior art serves as a bulk-durability backing tier while
+CEWP supplies the identity-aware admission, trust×capacity intake, and
+per-actor eviction layer on top. The unique property (above) is the
+*governance/attribution* layer; the byte-durability layer is pluggable. So
+the comparison is not "CEWP vs IPFS" but "CEWP's accountability substrate
+*over* whichever durability substrate fits the deployment."
 
 ## Where the prior art is genuinely better
 

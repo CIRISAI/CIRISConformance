@@ -43,6 +43,38 @@ robustness rather than evasion. The bet is empirical:
 federation's collective measurement of that shape can substitute for a
 centralized alignment authority.
 
+## Where the prior art is genuinely better
+
+The honest peer-strength admission — and the strongest objection a critic
+will raise:
+
+- **Training-time methods shape *capability and disposition*; runtime
+  governance can only *sanction*.** RLHF / Constitutional AI / RLAIF act on
+  the model's actual propensities before it ever emits a token. CEWP's trust
+  graph + moderation + slashing operate on *emitted, attested* behavior —
+  *after the fact*. Against a **competently-misaligned** system (one that
+  models the governance layer and routes around it), post-hoc sanction is a
+  weaker lever than having shaped the disposition in the first place. CEWP
+  reduces the *value* of misbehaving and makes it *observable and
+  reversible*, but it does not make a capable adversary *unable* to
+  misbehave. Training-time alignment, where it works, is the stronger
+  guarantee — and CEWP depends on it remaining a live input, not a replaced
+  one.
+- **Mechanistic interpretability** offers something CEWP structurally
+  cannot: a window into *why*, not just *what was claimed*. A maturing
+  interp toolkit could catch deceptive cognition that never surfaces as a
+  flawed epistemic claim — exactly CEWP's blind spot (it governs claims, and
+  a sufficiently capable deceiver emits clean-looking claims).
+- **Centralized labs** ship faster and more coherently on frontier
+  capability + first-pass safety tuning; a federation's distributed
+  governance is slower to converge than a single team's decision.
+
+CEWP's bet is that *at the population and time scales that matter*, an
+observable, reversible, distributed governance layer beats an opaque,
+unaccountable, centralized one — **not** that runtime governance dominates
+training-time alignment head-to-head. The two are complementary; the
+honest framing is "governance the field lacks," not "alignment solved."
+
 ## What CEWP does **not** claim (honest limits)
 
 - It does **not** solve alignment. The substrate is necessary, not sufficient; bad actors still try, misalignment still occurs — the federation's *response* is the difference (CEWP §9).

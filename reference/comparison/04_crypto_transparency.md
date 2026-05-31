@@ -22,6 +22,7 @@ transparency-log field:
 | Sigstore / Rekor | Software signing events | Yes (Merkle, Trillian-backed) | Classical | Software supply chain |
 | Trillian | General verifiable log (backend) | Yes | Classical | Whatever you put in it |
 | Key Transparency (e.g. WhatsApp/Proton) | Identity-key bindings | Yes | Mostly classical | Key directories |
+| KERI (DIF) | Key-event sequences (rotation history) for autonomic identifiers | Witnessing + duplicity detection (not Merkle-STH) | Classical (pre-rotation hashes) | Identity-key continuity |
 
 CEWP's transparency log is **6962-lineage by design** (it cites RFC 6962
 and tracks 9162-bis where it supersedes) — so it inherits the proven CT
@@ -30,6 +31,15 @@ deployed logs do not combine: **(1) post-quantum hybrid signatures on log
 entries from day one**, and **(2) the log governs an open attestation
 vocabulary** (trust, content quality, moderation, AI-agent claims) rather
 than a single artifact type (certs / signatures / key bindings).
+
+The closest "general-purpose identity log" prior art is the **Decentralized
+Identity Foundation** family — **KERI** (key-event receipt infrastructure,
+with witnessing + duplicity detection) and the DID-method / DID-registry
+ecosystem. These show the "a log that governs an open identity vocabulary"
+problem is known and hard; CEWP differs in using a **Merkle-STH + consistency
+proof** discipline (CT lineage) rather than KERI's witness-receipt model,
+and in spanning trust/content/AI-governance vocabularies, not just identity
+key-state.
 
 ## Post-quantum posture (federation-wide)
 
@@ -47,7 +57,7 @@ not adopted (they remain classical-signature).
 
 ## Where the prior art is genuinely better / more proven
 
-- **Certificate Transparency** is battle-tested at internet PKI scale with a mature ecosystem of monitors/auditors; CEWP's log is younger.
+- **Certificate Transparency** is battle-tested at internet PKI scale with a mature ecosystem of monitors/auditors; CEWP's log is younger. CT's harder-to-replicate strength is **institutional**, not technical: the CA/Browser Forum, audited operation, and *browser-trust-store enforcement* give it teeth no young log has — CEWP's enforcement is federation-internal, not backed by a browser oligopoly.
 - **Sigstore** has broad supply-chain adoption and a polished UX (keyless signing via OIDC); CEWP's signing is key-custody-based by design.
 - **TLS 1.3 hybrid KEX** (X25519MLKEM768) is standardized and shipping in major browsers/servers — a larger deployment surface than any decentralized federation's PQC.
 
