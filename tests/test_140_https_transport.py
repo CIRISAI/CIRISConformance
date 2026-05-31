@@ -55,6 +55,54 @@ def _https_init_script(database_url: str) -> str:
     )
 
 
+def _https_config_script(database_url: str) -> str:
+    db_url_repr = repr(database_url)
+    return (
+        "import json, sys, os, tempfile, secrets\n"
+        "import ciris_persist as cp\n"
+        "from ciris_edge.ciris_edge import init_edge_runtime\n"
+        "d = tempfile.mkdtemp()\n"
+        "seed = os.path.join(d, 's'); open(seed, 'wb').write(secrets.token_bytes(32))\n"
+        "idp = os.path.join(d, 't.id'); open(idp, 'wb').write(b'\\x00' * 64)\n"
+        "cp.reset_engine()\n"
+        "k = 'https-' + secrets.token_hex(6)\n"
+        f"engine = cp.Engine({db_url_repr}, k, local_key_id=k, local_key_path=seed)\n"
+        "engine.register_federation_key('agent', 'https-ref', None, None, None)\n"
+        "report = {}\n"
+        "try:\n"
+        # Full production HTTPS shape: mTLS required + bearer-token (CDN edge).
+        "    edge = init_edge_runtime(engine, idp, https_listen_addr='127.0.0.1:0',\n"
+        "                             https_dev_self_signed=True, https_mtls_required=True,\n"
+        "                             https_bearer_secret=b'conformance-bearer', disable_reticulum=True)\n"
+        "    report['mtls_bearer_init'] = True\n"
+        "    report['metrics_keys'] = sorted(edge.metrics_snapshot().keys())\n"
+        "    try:\n"
+        "        edge.send_inline_text('unresolvable-peer', 'x')\n"
+        "        report['unresolved'] = {'error': None}\n"
+        "    except Exception as exc:\n"
+        "        report['unresolved'] = {'type': type(exc).__name__,\n"
+        "                                'no_https_url': 'no HTTPS URL configured' in str(exc)}\n"
+        "except Exception as exc:\n"
+        "    report['mtls_bearer_init'] = False; report['error'] = str(exc)[:160]\n"
+        "report['stage'] = 'done'\n"
+        "print(json.dumps(report)); sys.stdout.flush(); os._exit(0)\n"
+    )
+
+
+@pytest.fixture(scope="module")
+def https_config():
+    result = run_python_script(_https_config_script(get_database_url()))
+    try:
+        payload = result.parsed_stdout()
+    except Exception:
+        pytest.fail(
+            f"HTTPS config script produced no parseable JSON (exit {result.returncode}):\n"
+            f"STDOUT: {result.stdout}\nSTDERR: {result.stderr}"
+        )
+    assert payload.get("stage") == "done", payload
+    return payload
+
+
 @pytest.mark.cohabitation
 @pytest.mark.requires_persist
 @pytest.mark.requires_edge
@@ -72,3 +120,23 @@ def test_https_edge_stands_up():
         f"HTTPS edge init failed — transport-http should be in the published "
         f"wheel as of edge 1.1.4 (CIRISEdge#56): {payload.get('error')}"
     )
+
+
+@pytest.mark.cohabitation
+@pytest.mark.requires_persist
+@pytest.mark.requires_edge
+def test_https_accepts_mtls_and_bearer_config(https_config):
+    """§3: the HTTPS transport accepts the production shape — mTLS required + bearer token."""
+    assert https_config["mtls_bearer_init"] is True, https_config
+    # Observability counters are present for per-transport parity (#4).
+    assert "envelopes_sent_total" in https_config["metrics_keys"], https_config
+
+
+@pytest.mark.cohabitation
+@pytest.mark.requires_persist
+@pytest.mark.requires_edge
+def test_https_send_to_unresolvable_peer_refuses_cleanly(https_config):
+    """§3: an HTTPS send to a peer with no known HTTPS URL refuses cleanly (no crash)."""
+    u = https_config["unresolved"]
+    assert u.get("type") == "RuntimeError", u
+    assert u.get("no_https_url") is True, u
