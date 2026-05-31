@@ -74,6 +74,19 @@ per-actor eviction layer on top. The unique property (above) is the
 the comparison is not "CEWP vs IPFS" but "CEWP's accountability substrate
 *over* whichever durability substrate fits the deployment."
 
+## Emerging (not yet a claim): subject-side authority
+
+The two-property lens above is about the **holder** (`attesting_key_id` —
+*who stores* the byte). CEG 0.6 adds a **subject** axis: `subject_key_ids`
++ `withdraws_admission_rule` on `federation_attestations` (CIRISPersist
+v3.7.0, #146 Ask 1) let an attestation name *who the content is about* and
+who may withdraw it. If/when this is substrate-*enforced* (the property is
+schema-foundation today; enforcement + a callable surface land across
+#146 Asks 2-6), it adds a third differentiator the field does not unify —
+content that carries both its holder's *and* its subject's cryptographic
+authority. **This doc deliberately does not claim it yet** — the columns
+exist, the enforcement does not. Tracked for the refresh when it ships.
+
 ## Where the prior art is genuinely better
 
 Honest trade-offs CEWP does **not** beat:
