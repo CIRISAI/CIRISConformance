@@ -98,17 +98,27 @@ def test_substrate_wheels_ship_stable_abi_extensions():
 
 @pytest.mark.requires_edge
 def test_edge_abi3_outlives_its_requires_python_floor():
-    """edge declares Requires-Python >=3.11 but its abi3 .so runs on 3.10.
+    """edge declares Requires-Python >=3.10 AND ships an abi3 .so.
 
-    Pins the exact gap Chaquopy bypasses: pip refuses the wheel on 3.10,
-    but the bundled abi3 extension is binary-compatible. If edge ever
-    ships a non-abi3 (cp3xx-tagged) extension, the Android py3.10 bundle
-    breaks silently — this catches it.
+    Edge's abi3-py310 build guarantees one wheel covers 3.10+ regardless
+    of which interpreter installs it. The pyproject floor used to be
+    >=3.11 (edge v1.0.x–v1.1.11) — a 3.10/abi3 misalignment that
+    Chaquopy bypassed with --ignore-requires-python. v1.1.12 aligned the
+    floor to >=3.10 to match the wheel's actual binary compatibility +
+    the rest of the substrate (persist / verify / lens-core all >=3.10).
+
+    Guards two things: (a) the floor stays at >=3.10 (a silent regression
+    back to >=3.11 re-opens the misalignment), and (b) the wheel keeps
+    shipping a *.abi3.so (a non-abi3 cp3xx-tagged .so breaks Chaquopy's
+    Android bundle even with the aligned floor, since Chaquopy ships
+    its own py3.10 interpreter and reuses one .so across all 3.10+ ABIs).
     """
     requires_python = importlib.metadata.metadata("ciris-edge").get("Requires-Python")
-    assert requires_python is not None and "3.11" in requires_python, requires_python
+    assert requires_python is not None and "3.10" in requires_python, (
+        f"edge Requires-Python regressed off >=3.10: {requires_python}"
+    )
     abi3 = glob.glob(os.path.join(_package_dir("ciris_edge"), "*.abi3.so"))
-    assert abi3, "edge floors at py3.11 AND ships no abi3 .so → Android py3.10 bundle unsafe"
+    assert abi3, "edge ships no abi3 .so → Chaquopy py3.10 bundle would break"
 
 
 def _mobile_bringup_script(database_url: str) -> str:
