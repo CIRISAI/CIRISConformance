@@ -89,6 +89,7 @@ ALL_WHEELS: tuple[str, ...] = (
     "ciris_persist",
     "ciris_verify",
     "ciris_edge",
+    "ciris_lens_core",
 )
 
 
@@ -363,6 +364,7 @@ _REQUIREMENT_MARKERS = {
     "requires_persist": "ciris_persist",
     "requires_edge": "ciris_edge",
     "requires_verify": "ciris_verify",
+    "requires_lens": "ciris_lens_core",
 }
 
 
