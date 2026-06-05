@@ -49,6 +49,7 @@ markers = [
     "requires_persist: test needs ciris-persist installed",
     "requires_edge: test needs ciris-edge installed",
     "requires_verify: test needs ciris-keyring + ciris-crypto installed",
+    "requires_lens: test needs ciris-lens-core installed",
     "version_skew: test deliberately pairs non-current versions",
     # CEG §0.2 conformance profiles (the cross-artifact test organizing principle).
     "ceg: CEG-grammar conformance test (any profile)",

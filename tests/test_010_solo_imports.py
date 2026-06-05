@@ -90,3 +90,86 @@ def test_ciris_verify_imports_alone(python_subprocess):
         expect_ok=True,
     )
     assert result.parsed_stdout()["ok"] is True
+
+
+@pytest.mark.requires_lens
+def test_ciris_lens_core_imports_alone(python_subprocess):
+    """
+    `ciris_lens_core` is the science layer — capacity-score +
+    Coherence-Ratchet detectors + cohort manifold conformity. Solo
+    import must succeed; the cohabitation tests downstream depend on
+    this passing first.
+    """
+    result = python_subprocess(
+        """
+        import ciris_lens_core
+        import json
+        print(json.dumps({
+            "module": "ciris_lens_core",
+            "version": getattr(ciris_lens_core, "__version__", None),
+            "attrs": sorted(a for a in dir(ciris_lens_core) if not a.startswith("_"))[:20],
+        }))
+        """,
+        expect_ok=True,
+    )
+    payload = result.parsed_stdout()
+    assert payload["module"] == "ciris_lens_core"
+    # The v0.1.1 deployed-lens drop-in surface must still be reachable
+    # in v0.2.0+ (semver pre-1.0 preserves the 4-function contract).
+    for fn in ("process_trace_batch", "scrub_trace", "scrub_traces_batch", "ner_is_configured"):
+        assert fn in payload["attrs"], (
+            f"ciris_lens_core must expose `{fn}` (deployed-lens drop-in "
+            f"contract; preserved across v0.1.1 → v0.2.0). Got attrs: {payload['attrs']}"
+        )
+
+
+@pytest.mark.requires_lens
+def test_ciris_lens_core_exposes_install_relay(python_subprocess):
+    """
+    The v0.2.0 cohabitation bootstrap entry point. Every cohabitation
+    agent in production after v1.0 calls `ciris_lens_core.install_relay
+    (edge)` to register the lens handler on the shared `Arc<Edge>`.
+    This test asserts the symbol is importable — the cohabitation
+    cross-wheel test (test_030_cohabitation_init) asserts it actually
+    binds and registers a handler.
+    """
+    result = python_subprocess(
+        """
+        import ciris_lens_core
+        import json
+        print(json.dumps({
+            "found": "install_relay" in dir(ciris_lens_core),
+        }))
+        """,
+        expect_ok=True,
+    )
+    assert result.parsed_stdout() == {"found": True}, (
+        "ciris_lens_core.install_relay is the v0.2.0+ cohabitation "
+        "bootstrap entry; missing it breaks every Python cohabitation "
+        "agent."
+    )
+
+
+@pytest.mark.requires_lens
+def test_ciris_lens_core_exposes_projection_version(python_subprocess):
+    """
+    `PROJECTION_VERSION` is the module-level smoke-test attribute —
+    proves the cdylib loaded, the rlib's compiled, the PyO3 surface
+    is reachable. Currently `"crc-v1"`; bumps to `"crc-v2"` post-
+    RATCHET calibration (CIRISLensCore#3).
+    """
+    result = python_subprocess(
+        """
+        import ciris_lens_core
+        import json
+        print(json.dumps({
+            "version": ciris_lens_core.PROJECTION_VERSION,
+        }))
+        """,
+        expect_ok=True,
+    )
+    payload = result.parsed_stdout()
+    assert isinstance(payload["version"], str)
+    assert payload["version"].startswith("crc-v"), (
+        f"PROJECTION_VERSION must be `crc-vN` shape; got `{payload['version']}`"
+    )

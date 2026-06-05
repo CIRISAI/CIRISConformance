@@ -10,7 +10,7 @@ This repo verifies that **independently-distributed CIRIS wheels coexist correct
 - `ciris-verify` (`ciris-keyring` + `ciris-crypto`) — hybrid Ed25519 + ML-DSA-65 signing
 - `ciris-edge` — federation wire transport
 - `ciris-node-core` (planned) — node-mode serving + WA UX
-- `ciris-lens-core` (planned) — capacity-score + detector logic
+- `ciris-lens-core` — capacity-score + Coherence-Ratchet detectors + cohort manifold conformity + signed detection events (the science layer; matrix entry from v0.2.0)
 
 These wheels are built independently but designed to **cohabit** in one Python interpreter — the CIRIS 3.0 cohabitation EPIC (CIRISPersist#85). Cohabitation is its own engineering surface: shared substrate handles, cross-module type identity, version-skew compatibility, import order. Per-crate unit tests and per-crate integration tests cannot cover this surface — they all run in single-binary test environments where cross-module problems vanish by construction.
 
