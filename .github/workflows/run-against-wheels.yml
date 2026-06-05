@@ -31,6 +31,38 @@ name: run-against-wheels
 #
 # A failure here in the caller's tag-run BLOCKS publish-pypi — the
 # under-test artifact failed its cohabitation contract.
+#
+# Branch fire-tests via `pin-overrides`:
+#
+# To exercise an unpublished branch of any sibling alongside the rest
+# of the matrix (e.g. CIRISConformance#11 — fire-testing the
+# CIRISPersist `v4.0-das` branch before it tags), pass `pin-overrides`
+# as a JSON object mapping package name → `pip install` source spec.
+# A typical value is a `git+https://…@branch` URL.
+#
+# Example: persist's tag-run for the v4.0 cut builds a wheel locally
+# AND fire-tests it against the rest of the published stack:
+#
+#   conformance:
+#     uses: CIRISAI/CIRISConformance/.github/workflows/run-against-wheels.yml@main
+#     with:
+#       runs-on: ubuntu-latest
+#       backend: postgres
+#       under-test-wheel-artifact: ciris_persist-wheel-linux-x86_64
+#       under-test-package: ciris-persist
+#       # (no pin-overrides needed — persist IS the under-test)
+#
+# Edge's CI could fire-test a persist branch alongside its own wheel:
+#
+#       under-test-wheel-artifact: ciris_edge-wheel-linux-x86_64
+#       under-test-package: ciris-edge
+#       pin-overrides: |
+#         {"ciris-persist": "git+https://github.com/CIRISAI/CIRISPersist.git@v4.0-das"}
+#
+# An override for the under-test-package itself is ignored (the
+# artifact wins). Multiple overrides allowed — useful when an entire
+# consumer-migration cascade is in flight (e.g. persist v4.0 +
+# lens-core v0.5 together before either tags).
 
 on:
   workflow_call:
@@ -61,6 +93,28 @@ on:
         required: false
         type: string
         default: "3.12"
+      pin-overrides:
+        description: |
+          JSON object mapping sibling package name to a `pip install` source
+          spec (typically a git URL with a ref), overriding the version pin
+          from matrices/current.yaml for that one sibling. Use this to
+          fire-test an unpublished branch alongside the rest of the matrix
+          BEFORE the consumer-migration cascade triggers a chain of bumps.
+
+          Example: install persist's v4.0-das branch instead of the matrix-
+          pinned ciris-persist==3.14.3, keeping verify / edge / lens-core
+          at their matrix pins:
+
+            pin-overrides: |
+              {"ciris-persist": "git+https://github.com/CIRISAI/CIRISPersist.git@v4.0-das"}
+
+          Multiple overrides allowed. The under-test-package is filtered
+          out unconditionally (the artifact wins); an override for it is
+          ignored. Empty / `{}` means "no overrides — use matrix pins
+          verbatim, current default behavior".
+        required: false
+        type: string
+        default: "{}"
 
 jobs:
   conformance:
@@ -161,18 +215,35 @@ jobs:
 
       - name: install pinned siblings from matrices/current.yaml
         working-directory: conformance
+        env:
+          PIN_OVERRIDES: ${{ inputs.pin-overrides }}
         run: |
           python -c "
-          import yaml, subprocess, sys
+          import yaml, subprocess, sys, json, os
           matrix = yaml.safe_load(open('matrices/current.yaml'))
           pins = matrix['stack']
           under_test = '${{ inputs.under-test-package }}'.replace('-', '_')
-          install_args = [
-              f'{pkg}=={ver}'
-              for pkg, ver in pins.items()
-              if pkg.replace('-', '_') != under_test
-          ]
-          print(f'Installing pinned siblings: {install_args}')
+          try:
+              overrides = json.loads(os.environ.get('PIN_OVERRIDES') or '{}')
+          except json.JSONDecodeError as e:
+              sys.exit(f'pin-overrides is not valid JSON: {e}')
+          if not isinstance(overrides, dict):
+              sys.exit(f'pin-overrides must decode to a JSON object, got {type(overrides).__name__}')
+          install_args = []
+          for pkg, ver in pins.items():
+              if pkg.replace('-', '_') == under_test:
+                  continue
+              if pkg in overrides:
+                  install_args.append(overrides[pkg])
+              else:
+                  install_args.append(f'{pkg}=={ver}')
+          if overrides:
+              applied = {k: v for k, v in overrides.items() if k.replace('-', '_') != under_test}
+              ignored_for_under_test = set(overrides) - set(applied)
+              print(f'pin-overrides applied: {applied}')
+              if ignored_for_under_test:
+                  print(f'pin-overrides ignored (under-test wins): {sorted(ignored_for_under_test)}')
+          print(f'Installing siblings: {install_args}')
           subprocess.check_call([sys.executable, '-m', 'pip', 'install', *install_args])
           "
 
