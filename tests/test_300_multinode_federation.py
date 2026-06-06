@@ -48,7 +48,7 @@ report["kid"] = kid; report["sha"] = sha
     b = federation(
         r'''
 report["sees_blob"] = engine.has_blob_json(SHA)
-holders = json.loads(engine.list_attestations_for(KID_A))
+holders = json.loads(engine.list_attestations_for(KID_A))['items']
 report["sees_holder_attestation"] = any(
     h.get("attestation_type", "").startswith("holds_bytes:sha256:") for h in holders)
 ''',
@@ -113,7 +113,7 @@ report["evicted_own"] = rep["blobs_evicted"]
     # still active (B's per-operator eviction only withdrew B's own).
     c = federation(
         r'''
-atts = json.loads(engine.list_attestations_for(KID_A))
+atts = json.loads(engine.list_attestations_for(KID_A))['items']
 report["a_holds_bytes"] = sum(1 for x in atts if x.get("attestation_type","").startswith("holds_bytes:sha256:"))
 report["a_withdraws"] = sum(1 for x in atts if x.get("attestation_type","") == "withdraws")
 ''',

@@ -70,7 +70,7 @@ engine.put_blob_signing(sha, base64.b64encode(body).decode(), None, "image/jpeg"
                         kid, "2026-05-28T13:45:09.000Z", str(uuid.uuid4()))
 fetched = engine.get_blob_json(sha)
 report["media_intact"] = fetched is not None and base64.b64decode(json.loads(fetched)["inline"]) == body
-holders = json.loads(engine.list_attestations_for(kid))
+holders = json.loads(engine.list_attestations_for(kid))['items']
 report["media_holds_bytes_emitted"] = any(
     h.get("attestation_type", "").startswith("holds_bytes:sha256:") for h in holders
 )

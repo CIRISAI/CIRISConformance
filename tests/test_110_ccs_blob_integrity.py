@@ -85,7 +85,7 @@ try:
     )
     report["positive_has_blob"] = engine.has_blob_json(good_sha)
     # The holds_bytes holder attestation was emitted for the attesting key.
-    holders = json.loads(engine.list_attestations_for(key_id))
+    holders = json.loads(engine.list_attestations_for(key_id))['items']
     report["holder_attestation_emitted"] = any(
         h.get("attestation_type", "").startswith("holds_bytes:sha256:") for h in holders
     )

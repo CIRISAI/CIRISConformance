@@ -70,7 +70,7 @@ sha2 = _store("two")
 report["stored_present"] = engine.has_blob_json(sha1) and engine.has_blob_json(sha2)
 
 # Holder attestations exist for the actor (the local "whose bytes" answer).
-atts_before = json.loads(engine.list_attestations_for(kid))
+atts_before = json.loads(engine.list_attestations_for(kid))['items']
 report["holds_bytes_count_before"] = sum(
     1 for a in atts_before if a.get("attestation_type", "").startswith("holds_bytes:sha256:")
 )
@@ -95,7 +95,7 @@ engine.set_trust_threshold(0.0)  # restore admit-all
 evict_report = json.loads(engine.evict_actor_json(kid, "2026-05-28T14:00:00.000Z"))
 report["evict_report"] = evict_report
 report["evicted_gone"] = not engine.has_blob_json(sha1) and not engine.has_blob_json(sha2)
-atts_after = json.loads(engine.list_attestations_for(kid))
+atts_after = json.loads(engine.list_attestations_for(kid))['items']
 report["withdraws_present"] = sum(
     1 for a in atts_after if a.get("attestation_type", "") == "withdraws"
 )
