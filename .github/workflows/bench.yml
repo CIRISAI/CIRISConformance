@@ -31,15 +31,14 @@ jobs:
           python-version: ${{ matrix.python }}
 
       - name: install harness + pinned ciris-* wheels
+        # Retries only on a PyPI/CDN propagation race (a just-published pin not
+        # yet on this runner's edge); fails fast on a real conflict. This step
+        # was the reddest cell in the harness before the retry — a same-minute
+        # matrix bump routinely raced propagation here. See tools/install_pins.py.
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
-          python -c "
-          import yaml, subprocess, sys
-          pins = yaml.safe_load(open('matrices/current.yaml'))['stack']
-          subprocess.check_call([sys.executable, '-m', 'pip', 'install',
-                                 *[f'{p}=={v}' for p, v in pins.items()]])
-          "
+          python tools/install_pins.py
 
       - name: run cross-wheel benchmarks
         run: |
