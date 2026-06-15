@@ -10,6 +10,15 @@
     "scrub": {"value_ns_per_byte": 10.0, "repo": "CIRISEdge", "bench": "inline_text_pipeline"},
     "dispatch_inbound": {"value_us": 120.0, "repo": "CIRISEdge", "bench": "dispatch_inbound", "note": "DISPATCH_OVERHEAD_US"},
     "ingest_pipeline": {"repo": "CIRISPersist", "bench": "ingest_pipeline", "note": "~85K rows/s @ 768 rows"},
-    "raw_sqlite_write": {"repo": "CIRISPersist", "bench": "raw_sqlite_write", "note": "~1.5 ms/row incl async wrapper"}
+    "raw_sqlite_write": {"repo": "CIRISPersist", "bench": "raw_sqlite_write", "note": "~1.5 ms/row incl async wrapper"},
+
+    "_realtime_av_comment": "Realtime A/V mesh profile (CIRISEdge#62 realtime_av, CEG 0.13 §10.5.8) — the two-layer hybrid-PQC group-video crypto. Owned + measured by CIRISServer benches/pqc_av_streaming.rs (the realtime_av + federation_session KEX surfaces are Rust-only, not on the Python wheel, so the cross-wheel Python bench is pending CIRISEdge PyO3 exposure — these are the owner criterion numbers in the meantime). Triple: persist 6.8.1 / edge 3.5.0 / verify 5.4.0.",
+    "av_frame_seal": {"value_us": 12.8, "repo": "CIRISServer", "bench": "pqc_av_streaming/av_frame_halves/seal_64KiB", "note": "two-layer AES-256-GCM seal @ 64 KiB (~4.75 GiB/s)"},
+    "av_frame_open": {"value_us": 12.4, "repo": "CIRISServer", "bench": "pqc_av_streaming/av_frame_halves/open_64KiB", "note": "two-layer AES-256-GCM open @ 64 KiB"},
+    "av_frame_e2e": {"value_us": 7.37, "repo": "CIRISServer", "bench": "pqc_av_streaming/av_frame_e2e/16384", "note": "seal+wire-codec+open round-trip @ 16 KiB; asymptotes ~2.3 GiB/s"},
+    "av_kex_hybrid": {"value_us": 170.0, "repo": "CIRISServer", "bench": "pqc_av_streaming/pqc_kex", "note": "hybrid X25519+ML-KEM-768 full handshake (initiate 71us + respond 99us); per-link, one-time"},
+    "av_kex_classical": {"value_us": 81.0, "repo": "CIRISServer", "bench": "pqc_av_streaming/pqc_kex", "note": "classical X25519-only handshake; ML-KEM-768 adds ~89us once per peer-link"},
+    "av_mesh_fanout_naive_50": {"value_us": 173.0, "repo": "CIRISServer", "bench": "pqc_av_streaming/av_mesh_fanout/naive/50", "note": "per-frame sender CPU, 50-participant mesh, current seal_av_chunk x N"},
+    "av_mesh_fanout_shared_inner_50": {"value_us": 87.5, "repo": "CIRISServer", "bench": "pqc_av_streaming/av_mesh_fanout/shared_inner/50", "note": "inner-once/outer-N optimization (~2x); CIRISEdge#122"}
   }
 }

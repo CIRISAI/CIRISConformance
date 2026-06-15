@@ -48,6 +48,7 @@ seam · 🏛 governance/process tier (not a substrate behavior).
 | §10.1.1 blob full-SHA integrity (reject mismatch) | CCS | ✅ | `test_110_ccs_blob_integrity.py` (`blob_hash_mismatch`) |
 | §10.1.1 blob positive round-trip + holder attestation | CCS | ✅ | `test_110` via persist v3.3.0 `put_blob_signing` (CIRISPersist#124 shipped) |
 | Canonical-bytes determinism + sign/verify round-trip | CCP | ✅ | `test_120_ccp_canonical_bytes.py` |
+| §5.6.8.8.1.1 RNS destination-hash recompute (1.0-RC6) | CCS | ✅ | `test_150_rns_dest_hash.py` — executable golden vector of the pinned two-stage construction + the anti-flat-form regression (CIRISRegistry#80 / CIRISVerify#28). The wheel-recompute cross-check is `xfail` until the recompute is exposed on the Python surface |
 | §6.1 concurrent-write precedence + dedup-on-triple | CCS | ⏳ | needs generic `put_attestation` schema (arbitrary dimension) → **CIRISPersist#124** |
 | §7.0 reserved-prefix admission rejection | CCS | ⏳ | needs generic `put_attestation` schema → **CIRISPersist#124** |
 | §0.5/§0.6/§0.7 canonicalization rejection | CCC | ⏳ (xfail) | wheel accepts `+00:00`/uppercase hex/future ts → **CIRISPersist#126** |
@@ -56,7 +57,8 @@ seam · 🏛 governance/process tier (not a substrate behavior).
 | §10.3.1 STH cosignature consistency-proof | CCS | ⏳ | shipped in the verify Rust crate (v4.2.0 `WitnessConsistencyProof::verify`, CIRISVerify#42 closed) but **not on the published Python wheel surface** (no `verify_sth_cosignature_consistency_proof`) — not cross-wheel-drivable yet |
 | §5.6.8 `key_grant` wrap (`x25519-aes256-gcm-hkdf-sha256`) | CCS | ⏳ | verify v4.4.0 multimedia tier (CIRISVerify#44) — wrap primitive not on the Python wheel surface |
 | F-AV-RECONSIDER-DOS rate-limit / cumulative budget | CCC | ⏳ | verify v4.5.0 (CIRISVerify#46) — **Conformance#7** Scenario 1 |
-| Hybrid KEX (X25519 + ML-KEM-768) | CCC | ⏳ | verify v4.6.0 (CIRISVerify#47, `ml-kem` feature) — **Conformance#7** Scenario 2; not on the Python wheel surface |
+| Hybrid KEX (X25519 + ML-KEM-768) | CCC | ⏳ | verify v4.6.0 (CIRISVerify#47, `ml-kem` feature) — **Conformance#7** Scenario 2; not on the Python wheel surface. **Substrate now shipped** (edge v3.5.0 `transport::federation_session`) + **measured** by CIRISServer `pqc_av_streaming` (criterion; `benchmarks/reference.json` `av_kex_*`). Cross-wheel Python bench pending edge PyO3 exposure → **CIRISEdge#123** |
+| Realtime A/V mesh two-layer hybrid-PQC seal (CEG §10.5.8) | CCS | ⏳ | edge v3.5.0 `transport::realtime_av` (CIRISEdge#62) shipped + **measured** by CIRISServer `pqc_av_streaming` (`reference.json` `av_frame_*` / `av_mesh_fanout_*`; ~2.3 GiB/s steady-state, PQC cost amortized at KEX). Rust-only today → cross-wheel Python bench pending **CIRISEdge#123** PyO3 exposure |
 | R1/Q1 partition+heal merge contracts (Fed TM v1.1) | CCS | ⏳ | CIRISVerify#48/#49 — **Conformance#7** Scenario 3 |
 | §10.1.2 holds_bytes 24h TTL | CCS | ⏳ | needs injectable clock → folded into CIRISPersist#125 |
 | Identity-aware storage / per-actor eviction (scaling §9) | CCS | ⏳ | `list_holders` + evict-actor → **CIRISPersist#125** |

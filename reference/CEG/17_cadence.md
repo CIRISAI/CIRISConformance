@@ -16,7 +16,7 @@ CEG is updated:
 
 Each update lands as a single commit touching the relevant file(s) + a lineage row in [§16.1](16_references.md). The version number bumps per the [§0.3](00_conformance.md) SemVer rules.
 
-Last updated: 2026-05-28 (CEG 0.2 Public Working Draft wire-break — §5.2 attestation-ladder rename to mechanism-only + §8.1.9 Policy I Attestation-Ladder Composition + §13.1 deprecation entry).
+Last updated: 2026-06-01 (CEG 0.9 Public Working Draft — `federation_keys.identity_type` generalized to a set of roles for single-key cohabitation per [CIRISRegistry#49](https://github.com/CIRISAI/CIRISRegistry/issues/49) + [CIRISAgent#856](https://github.com/CIRISAI/CIRISAgent/issues/856); representation-only wire-break, 1+4 wire-format lockdown preserved; unblocks the CIRISAgent / LensCore fold-in).
 
 ---
 

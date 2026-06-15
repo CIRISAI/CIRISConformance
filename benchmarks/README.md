@@ -16,8 +16,14 @@ and those numbers calibrate the CEWP scaling model at
 | `hybrid_sign` (Ed25519+ML-DSA-65), `hybrid_verify`, AES-256-GCM, HKDF | CIRISVerify `federation_crypto` |
 | `canonicalize_python`, `ingest_pipeline`, `raw_sqlite_write`, `secrets_*`, `sign_*` | CIRISPersist `benches/` |
 | `envelope_canonicalize`, `dispatch_inbound`, `inline_text_pipeline`, `content_fetch_roundtrip` | CIRISEdge `benches/` |
+| `av_frame_*` (realtime A/V two-layer hybrid-PQC seal/open), `av_kex_*` (X25519+ML-KEM-768), `av_mesh_fanout_*` | CIRISServer `benches/pqc_av_streaming.rs` |
 
 Those reference numbers are vendored in [`reference.json`](reference.json).
+The realtime-A/V + KEX surfaces are Rust-only today (edge v3.5.0
+`transport::{realtime_av, federation_session}`), so they ride the
+owner-citation pattern here; the cross-wheel Python bench follows once
+[CIRISEdge#123](https://github.com/CIRISAI/CIRISEdge/issues/123) exposes them
+on the PyO3 wheel.
 
 ## What it DOES measure
 
