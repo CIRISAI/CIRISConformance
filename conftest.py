@@ -89,7 +89,12 @@ ALL_WHEELS: tuple[str, ...] = (
     "ciris_persist",
     "ciris_verify",
     "ciris_edge",
-    "ciris_lens_core",
+    # ciris_lens_core is ABSORBED into ciris_server (CIRISServer owns lens-core;
+    # the standalone wheel is retired). The lens Python surface
+    # (LensClient / install_relay / PROJECTION_VERSION) now ships INSIDE the
+    # ciris-server wheel via the same `register()` — so `requires_lens` maps to
+    # ciris_server below, and the lens cohabitation tests import ciris_server.
+    "ciris_server",     # the fabric-node wheel — carries lens; enters as the under-test artifact
 )
 
 
@@ -364,7 +369,8 @@ _REQUIREMENT_MARKERS = {
     "requires_persist": "ciris_persist",
     "requires_edge": "ciris_edge",
     "requires_verify": "ciris_verify",
-    "requires_lens": "ciris_lens_core",
+    # lens-core is absorbed into ciris-server; its surface ships in that wheel.
+    "requires_lens": "ciris_server",
 }
 
 

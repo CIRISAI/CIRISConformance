@@ -92,78 +92,87 @@ def test_ciris_verify_imports_alone(python_subprocess):
     assert result.parsed_stdout()["ok"] is True
 
 
+# ─── Lens surface, now ABSORBED into the ciris-server wheel ────────────
+# CIRISServer owns lens-core: the standalone `ciris_lens_core` wheel is
+# retired and its Python surface is re-exported INSIDE `ciris_server` via the
+# same `ffi::pyo3::register()`. So the lens drop-in contract is now asserted
+# against `ciris_server` (the proof that the absorption is a real drop-in:
+# `from ciris_server import LensClient`). `requires_lens` maps to ciris_server.
+
+
 @pytest.mark.requires_lens
-def test_ciris_lens_core_imports_alone(python_subprocess):
+def test_lens_surface_imports_in_ciris_server(python_subprocess):
     """
-    `ciris_lens_core` is the science layer — capacity-score +
-    Coherence-Ratchet detectors + cohort manifold conformity. Solo
-    import must succeed; the cohabitation tests downstream depend on
-    this passing first.
+    The lens science layer — capacity-score + Coherence-Ratchet detectors +
+    cohort manifold conformity — now ships INSIDE `ciris_server` (CIRISServer
+    absorbed lens-core). Solo import must succeed and expose the deployed-lens
+    drop-in contract; the downstream cohabitation tests depend on this.
     """
     result = python_subprocess(
         """
-        import ciris_lens_core
+        import ciris_server
         import json
         print(json.dumps({
-            "module": "ciris_lens_core",
-            "version": getattr(ciris_lens_core, "__version__", None),
-            "attrs": sorted(a for a in dir(ciris_lens_core) if not a.startswith("_"))[:20],
+            "module": "ciris_server",
+            "version": getattr(ciris_server, "__version__", None),
+            "attrs": sorted(a for a in dir(ciris_server) if not a.startswith("_")),
         }))
         """,
         expect_ok=True,
     )
     payload = result.parsed_stdout()
-    assert payload["module"] == "ciris_lens_core"
-    # The v0.1.1 deployed-lens drop-in surface must still be reachable
-    # in v0.2.0+ (semver pre-1.0 preserves the 4-function contract).
+    assert payload["module"] == "ciris_server"
+    # The deployed-lens drop-in surface is preserved through the absorption
+    # (CIRISServer re-exports lens-core's register() verbatim).
     for fn in ("process_trace_batch", "scrub_trace", "scrub_traces_batch", "ner_is_configured"):
         assert fn in payload["attrs"], (
-            f"ciris_lens_core must expose `{fn}` (deployed-lens drop-in "
-            f"contract; preserved across v0.1.1 → v0.2.0). Got attrs: {payload['attrs']}"
+            f"ciris_server must expose `{fn}` (lens drop-in contract, absorbed "
+            f"from lens-core). Got attrs: {payload['attrs']}"
         )
+    # The headline drop-in the agent swaps to: `from ciris_server import LensClient`.
+    assert "LensClient" in payload["attrs"], (
+        f"ciris_server must re-export `LensClient` (the lens-core drop-in). "
+        f"Got attrs: {payload['attrs']}"
+    )
 
 
 @pytest.mark.requires_lens
-def test_ciris_lens_core_exposes_install_relay(python_subprocess):
+def test_ciris_server_exposes_install_relay(python_subprocess):
     """
-    The v0.2.0 cohabitation bootstrap entry point. Every cohabitation
-    agent in production after v1.0 calls `ciris_lens_core.install_relay
-    (edge)` to register the lens handler on the shared `Arc<Edge>`.
-    This test asserts the symbol is importable — the cohabitation
-    cross-wheel test (test_030_cohabitation_init) asserts it actually
-    binds and registers a handler.
+    The cohabitation bootstrap entry point, absorbed into ciris-server. A
+    cohabiting agent registers the lens handler on the shared `Arc<Edge>` via
+    `ciris_server.install_relay(edge)`. This asserts the symbol is importable;
+    test_030 asserts it actually binds + registers a handler.
     """
     result = python_subprocess(
         """
-        import ciris_lens_core
+        import ciris_server
         import json
         print(json.dumps({
-            "found": "install_relay" in dir(ciris_lens_core),
+            "found": "install_relay" in dir(ciris_server),
         }))
         """,
         expect_ok=True,
     )
     assert result.parsed_stdout() == {"found": True}, (
-        "ciris_lens_core.install_relay is the v0.2.0+ cohabitation "
-        "bootstrap entry; missing it breaks every Python cohabitation "
-        "agent."
+        "ciris_server.install_relay is the cohabitation bootstrap entry "
+        "(absorbed from lens-core); missing it breaks Python cohabitation agents."
     )
 
 
 @pytest.mark.requires_lens
-def test_ciris_lens_core_exposes_projection_version(python_subprocess):
+def test_ciris_server_exposes_projection_version(python_subprocess):
     """
-    `PROJECTION_VERSION` is the module-level smoke-test attribute —
-    proves the cdylib loaded, the rlib's compiled, the PyO3 surface
-    is reachable. Currently `"crc-v1"`; bumps to `"crc-v2"` post-
-    RATCHET calibration (CIRISLensCore#3).
+    `PROJECTION_VERSION` is the lens module-level smoke-test attribute, now
+    surfaced through ciris-server — proves the cdylib loaded and the absorbed
+    lens PyO3 surface is reachable. `crc-vN` shape.
     """
     result = python_subprocess(
         """
-        import ciris_lens_core
+        import ciris_server
         import json
         print(json.dumps({
-            "version": ciris_lens_core.PROJECTION_VERSION,
+            "version": ciris_server.PROJECTION_VERSION,
         }))
         """,
         expect_ok=True,
