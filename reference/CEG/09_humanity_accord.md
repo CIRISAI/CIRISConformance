@@ -18,13 +18,33 @@ Three named human key holders. Initial state at federation genesis:
 
 Hardware-attested (per [§9.4](#94-hardware-class-taxonomy) hardware_class taxonomy). Permanent: no automatic decay; replacement requires out-of-band CIRIS L3C process per FEDERATION_ANNOUNCEMENT.md §4.5.3.
 
+**Correlated-failure geometry (named honestly — 1.0-RC1, [#71](https://github.com/CIRISAI/CIRISRegistry/issues/71) C5):** two of the three holders share a household, so the 2-of-3 quorum is physically achievable from one street address — a correlated compromise/coercion surface that entrenchment makes harder to correct later. The authority at stake is the **full constitutional kill** (`EmergencyShutdown CONSTITUTIONAL` — not a recoverable pause), so the exposure is real and is not softened here; what scope isolation ([§9.2](#92-authority-scope)) does guarantee is that compromise cannot escalate *beyond* the kill — accord keys cannot sign grants, licenses, or amendments. **The mitigant is diversifying the holder set: finding new holders** (via the out-of-band replacement process, FEDERATION_ANNOUNCEMENT.md §4.5.3) so that no household — and ultimately no single jurisdiction — can assemble the quorum. This is an active obligation on CIRIS L3C, not a deferred nice-to-have.
+
+**The HUMANITY_ACCORD triple is the canonical entrenched-`family` instance (CEG 0.7 retcon).** Per [§5.6.8.9](05_namespace.md), the accord-holder triple structurally IS a `family` subject_kind with:
+
+```
+family {
+    family_key_id:                   "humanity-accord",
+    family_name:                     "Humanity Accord",
+    members: [
+        {key_id: <eric-moore-key>,      role: founder},
+        {key_id: <eric-kudzin-key>,     role: founder},
+        {key_id: <haley-bradley-key>,   role: founder}
+    ],
+    consensus_protocol:              "quorum:2/3",
+    consensus_protocol_entrenched:   true   // replacement requires §9.2 / FEDERATION_ANNOUNCEMENT.md §4.5.3 ceremony
+}
+```
+
+The 2-of-3 multi-sig verifier at [§9.2.1](#921-invocation-canonical-bytes-anti-replay-01-scaffold) is the `quorum:2/3` consensus_protocol enforcement; the entrenchment property is what prevents any federation-internal authority from amending the protocol. §9 remains load-bearing for the **role-recognition policy** (which dimensions accord-holders may emit — only `accord:*` per [§7.1](07_reserved.md)) and the **scope-isolation** discipline (only `EmergencyShutdown CONSTITUTIONAL` per [§9.2](#92-authority-scope)). CEG 0.7 makes the structural shape explicit — the constitutional asymmetry is "an entrenched family that is wire-scope-isolated to halt authority," not a one-off primitive. Other entrenched-family instances (a national-emergency triple, an international body, a court-ordered preservation triple) MAY appear in operator deployments; HUMANITY_ACCORD is the one CIRIS L3C deployments ship at genesis.
+
 ## §9.2 Authority scope
 
 `HUMANITY_ACCORD` signatures are valid only on `EmergencyShutdown CONSTITUTIONAL` (`IncidentSeverity::INCIDENT_CONSTITUTIONAL = 5`), `accord:invoke:notify:{notify_id}`, `accord:invoke:drill:{drill_id}`, `accord:lifecycle:active`, and the corresponding `FederationAnnouncement` priority `AccordCarrier`. Announcements of any other priority signed by accord-holder keys are rejected at admission (out of role). Federation-side authority cannot sign `AccordCarrier`; humanity-accord authority cannot sign anything else. **Wire-isolated AND scope-isolated.**
 
 ### §9.2.1 Invocation canonical bytes (anti-replay; 0.1 scaffold)
 
-> **0.1 SCAFFOLD NOTE**: The discriminator + nonce binding below addresses the cross-invocation-replay hole identified by CEG 0.1 cryptographic + red-team review. 0.2 may refine the encoding when [§5.2.1](05_namespace.md) canonical-bytes redesigns to TupleHash128.
+> **RESOLVED at 1.0-RC1**: the discriminator + nonce binding below addresses the cross-invocation-replay hole identified by CEG 0.1 cryptographic + red-team review. The anticipated [§5.2.1](05_namespace.md) refinement landed as the **JCS redesign** (TupleHash128 retired — see §5.2.1); this invocation encoding is **intentionally NOT migrated**: its preimage is closed-vocabulary (discriminator + nonce + enum fields, no attacker-controlled free text), so the injection surface the §5.2.1 redesign closes is not reachable here, and genesis-critical bytes stay stable.
 
 Every `accord:invoke:*` Contribution signs the following canonical bytes (BOTH the discriminator AND a per-invocation nonce are in the signed payload — preventing CONSTITUTIONAL ↔ notify ↔ drill cross-replay):
 
