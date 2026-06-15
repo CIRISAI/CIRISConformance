@@ -1,7 +1,9 @@
 """
-RNS destination-hash recompute conformance (CEG 1.0-RC6 §5.6.8.8.1.1).
+RNS destination-hash recompute conformance (CEG 1.0-RC7 §5.6.8.8.1.1).
 
-RC6 pins the RNS destination-hash construction in-spec so a conformant
+The §5.6.8.8.1.1 RNS destination-hash construction (pinned in 1.0-RC6,
+unchanged through the 1.0-RC7 re-vendor — RC7 is no-wire-change) is in-spec
+so a conformant
 verifier can recompute `destination_hash` from the spec alone — closing the
 gap that made CIRISVerify ship `DestinationHashCheck::Unsupported` (the AV-42
 destination-authenticity recompute was the one unverifiable step). Resolves
@@ -23,7 +25,7 @@ exposed on the Python surface (CIRISVerify#28 lift / CIRISEdge PyO3 ask) —
 realtime-transport surfaces (federation_session KEX, realtime_av) are Rust-only
 today, so the dest-hash recompute follows the same exposure path.
 
-Spec: reference/CEG/05_namespace.md §5.6.8.8.1.1 (vendored, 1.0-RC6).
+Spec: reference/CEG/05_namespace.md §5.6.8.8.1.1 (vendored, 1.0-RC7).
 """
 
 from __future__ import annotations
@@ -93,7 +95,8 @@ def test_dest_hash_golden_vector():
 def test_dest_hash_is_two_stage_not_flat():
     """The flat single-concat SHA-256 (the ≤RC5 under-spec) yields a DIFFERENT value.
 
-    This is the anti-regression the RC6 pin exists for: a verifier that
+    This is the anti-regression the §5.6.8.8.1.1 pin exists for (pinned in
+    RC6, carried unchanged into the vendored 1.0-RC7 spec): a verifier that
     naively hashed `x25519 ‖ ed25519 ‖ app_name ‖ aspects` flat would compute
     the wrong destination_hash and silently fail the AV-42 check.
     """
@@ -101,7 +104,7 @@ def test_dest_hash_is_two_stage_not_flat():
     flat = hashlib.sha256(
         _X25519_PUB + _ED25519_PUB + _APP_NAME.encode() + b"".join(a.encode() for a in _ASPECTS)
     ).digest()[:DEST_HASH_LEN]
-    assert two_stage != flat, "two-stage and flat must differ — the RC6 latent-under-spec catch"
+    assert two_stage != flat, "two-stage and flat must differ — the ≤RC5 latent-under-spec catch"
 
 
 @pytest.mark.ceg
@@ -122,7 +125,8 @@ def test_dest_hash_aspect_rejects_dot():
 
 
 # ─── Cross-check against the wheel's recompute (pending Python exposure) ──
-# CIRISVerify shipped DestinationHashCheck::Unsupported; RC6 unblocks lifting
+# CIRISVerify shipped DestinationHashCheck::Unsupported; the §5.6.8.8.1.1 pin
+# (RC6, vendored here at 1.0-RC7) unblocks lifting
 # that stub to a real recompute. When the recompute (or the transport-identity
 # pubkeys + dest-hash) is exposed on the Python wheel surface, this flips to a
 # green gate asserting the wheel matches the pinned algorithm above. Today the
