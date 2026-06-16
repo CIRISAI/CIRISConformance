@@ -1,7 +1,8 @@
 # CEG conformance profiles in this harness
 
-[CEG 0.1](https://github.com/CIRISAI/CIRISRegistry/tree/main/FSD/CEG) — the
-CIRIS Epistemic Grammar — defines three normative conformance profiles in
+[CEG 1.0-RC11](https://github.com/CIRISAI/CIRISRegistry/tree/main/FSD/CEG) —
+the CIRIS Epistemic Grammar (vendored in `reference/CEG/` at tag
+`v-ceg-1.0-rc11`) — defines three normative conformance profiles in
 §0.2. CIRISConformance adopts these as the **organizing principle** for
 cross-artifact conformance tests, alongside the existing cohabitation
 scenarios.
@@ -27,7 +28,7 @@ substrates **accept** self-attestation, and treats a substrate that adds a
 Cartesian admission gate on self-attestation as **non-conformant**. (Test
 pending the `witness_relation` surface — see CIRISVerify#40 below.)
 
-## Why this harness can't yet cover all of CEG 0.1
+## Why this harness can't yet cover all of CEG 1.0-RC11
 
 This harness drives the **real published wheels** (persist / verify /
 edge). A test is only meaningful if it exercises actual binary behavior —
@@ -48,7 +49,7 @@ seam · 🏛 governance/process tier (not a substrate behavior).
 | §10.1.1 blob full-SHA integrity (reject mismatch) | CCS | ✅ | `test_110_ccs_blob_integrity.py` (`blob_hash_mismatch`) |
 | §10.1.1 blob positive round-trip + holder attestation | CCS | ✅ | `test_110` via persist v3.3.0 `put_blob_signing` (CIRISPersist#124 shipped) |
 | Canonical-bytes determinism + sign/verify round-trip | CCP | ✅ | `test_120_ccp_canonical_bytes.py` |
-| §5.6.8.8.1.1 RNS destination-hash recompute (1.0-RC6) | CCS | ✅ | `test_150_rns_dest_hash.py` — executable golden vector of the pinned two-stage construction + the anti-flat-form regression (CIRISRegistry#80 / CIRISVerify#28). The wheel-recompute cross-check is `xfail` until the recompute is exposed on the Python surface |
+| §5.6.8.8.1.1 RNS destination-hash recompute (pinned 1.0-RC6, unchanged through 1.0-RC11) | CCS | ✅ | `test_150_rns_dest_hash.py` — executable golden vector of the pinned two-stage construction + the anti-flat-form regression (CIRISRegistry#80 / CIRISVerify#28). The wheel-recompute cross-check is `xfail` until the recompute is exposed on the Python surface |
 | §6.1 concurrent-write precedence + dedup-on-triple | CCS | ⏳ | needs generic `put_attestation` schema (arbitrary dimension) → **CIRISPersist#124** |
 | §7.0 reserved-prefix admission rejection | CCS | ⏳ | needs generic `put_attestation` schema → **CIRISPersist#124** |
 | §0.5/§0.6/§0.7 canonicalization rejection | CCC | ⏳ (xfail) | wheel accepts `+00:00`/uppercase hex/future ts → **CIRISPersist#126** |
@@ -59,6 +60,11 @@ seam · 🏛 governance/process tier (not a substrate behavior).
 | F-AV-RECONSIDER-DOS rate-limit / cumulative budget | CCC | ⏳ | verify v4.5.0 (CIRISVerify#46) — **Conformance#7** Scenario 1 |
 | Hybrid KEX (X25519 + ML-KEM-768) | CCC | ⏳ | verify v4.6.0 (CIRISVerify#47, `ml-kem` feature) — **Conformance#7** Scenario 2; not on the Python wheel surface. **Substrate now shipped** (edge v3.5.0 `transport::federation_session`) + **measured** by CIRISServer `pqc_av_streaming` (criterion; `benchmarks/reference.json` `av_kex_*`). Cross-wheel Python bench pending edge PyO3 exposure → **CIRISEdge#123** |
 | Realtime A/V mesh two-layer hybrid-PQC seal (CEG §10.5.8) | CCS | ⏳ | edge v3.5.0 `transport::realtime_av` (CIRISEdge#62) shipped + **measured** by CIRISServer `pqc_av_streaming` (`reference.json` `av_frame_*` / `av_mesh_fanout_*`; ~2.3 GiB/s steady-state, PQC cost amortized at KEX). Rust-only today → cross-wheel Python bench pending **CIRISEdge#123** PyO3 exposure |
+| §10.5.8.2 `codec_id` + `ChunkLayer` namespace (1.0-RC9; 4-byte clear discriminator at chunk offset 48..52) | CCS | ⏳ | **described, not yet tested.** 1-byte `codec_id` + 3-byte `ChunkLayer{spatial,temporal,quality}` clear (non-AEAD) block a relay drops by without decrypting; v3.7.0 chunk round-trips as `codec_id=0xFF`+`{0,0,0}`. Ratifies CIRISRegistry#84. Frozen in edge v4.0.0; cross-wheel test pends the **CIRISRegistry#57** vector set + PyO3 exposure (CIRISEdge#123) |
+| §10.5.8.3 `SealedAvChunk` byte layout (1.0-RC10; 52-byte header = 48 stable + 4 codec/layer) | CCS | ⏳ | **described, not yet tested.** Normative `to_bytes` transcription from the edge v4.0.0 reference; length-disambiguated backward-compat (48-byte-only wire ⇒ opaque v3.7.0 shape). Absorbs CIRISEdge v4.0.0 per CIRISRegistry#85 §N; `to_bytes` golden vectors are the **CIRISRegistry#57** freeze gate (pinned-but-unproven pending that set) |
+| §10.5.8.4 `ChunkLayer` SVC model + `ReceiverLayerPolicy` (1.0-RC10) | CCS | ⏳ | **described, not yet tested.** Per-axis monotonic SVC layers; base `{0,0,0}` "blinking dot"; `admits(layer)` per-receiver drop policy advertised over `federation_session`/`key_grant` (no new wire); `codec_id=0xFF` admitted unconditionally. Composes with the inner-once/outer-N fan-out (CIRISEdge#122). Test pends **CIRISRegistry#57** |
+| §10.5.8.5 double-seal + deterministic nonce derivation (1.0-RC10) | CCS | ⏳ | **described, not yet tested.** `inner_nonce=SHA-256("CIRIS-AV-INNER-V1"‖stream_id‖epoch_be8‖chunk_seq_be8)[0..12]`, `outer_nonce=SHA-256("CIRIS-AV-OUTER-V1"‖link_id‖link_seq_be8)[0..12]`; domain seps pinned by §10.5.8.5. Conformance is the **CIRISRegistry#57** nonce vector set (input → expected 12-byte nonce + `to_bytes`), generated from the v4.0.0 reference; pinned-but-unproven until #57 freezes |
+| §19 Holonomic substrate — WholenessWitness / recursive bootstrap / fountain storage / ALM topology (1.0-RC11) | CCS | ⏳ | **described, not yet tested.** New §19 absorbs the edge v4.0.0 holonomic shapes as additive normative MUSTs with guardrails (no §3/§4 1+4 change): `wholeness_witness:` namespaced divergence-detector that *triggers* the §10.1.6 quorum-merge (never replaces `monotonic_quorum`/`revision` anti-rollback), anonymous/`self` exclusion, hybrid-PQC at ingest+persist; `FountainHoldingClaim` specializes `holds_bytes:*` + inherits §10.1.4 self/family suppression + respects revocation; deterministic `compute_alm_topology` contract. Signing preimages are **binary length-prefixed, big-endian, domain-separated — NOT JCS**. Byte-exact preimages pin against the fixed edge v4.0.x; the §19.6 / **CIRISConformance#9** / **CIRISConformance#57** vector set is the freeze gate (pinned-but-unproven; no new vector tests until it lands) |
 | R1/Q1 partition+heal merge contracts (Fed TM v1.1) | CCS | ⏳ | CIRISVerify#48/#49 — **Conformance#7** Scenario 3 |
 | §10.1.2 holds_bytes 24h TTL | CCS | ⏳ | needs injectable clock → folded into CIRISPersist#125 |
 | Identity-aware storage / per-actor eviction (scaling §9) | CCS | ⏳ | `list_holders` + evict-actor → **CIRISPersist#125** |

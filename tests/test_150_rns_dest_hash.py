@@ -1,8 +1,9 @@
 """
-RNS destination-hash recompute conformance (CEG 1.0-RC6 §5.6.8.8.1.1).
+RNS destination-hash recompute conformance (CEG 1.0-RC11 §5.6.8.8.1.1).
 
-RC6 pins the RNS destination-hash construction in-spec so a conformant
-verifier can recompute `destination_hash` from the spec alone — closing the
+The RNS destination-hash construction was first pinned in-spec at 1.0-RC6 and
+is **unchanged through 1.0-RC11** (now the vendored version) — so a conformant
+verifier can recompute `destination_hash` from the spec alone, closing the
 gap that made CIRISVerify ship `DestinationHashCheck::Unsupported` (the AV-42
 destination-authenticity recompute was the one unverifiable step). Resolves
 CIRISRegistry#80 / CIRISVerify#28.
@@ -23,7 +24,8 @@ exposed on the Python surface (CIRISVerify#28 lift / CIRISEdge PyO3 ask) —
 realtime-transport surfaces (federation_session KEX, realtime_av) are Rust-only
 today, so the dest-hash recompute follows the same exposure path.
 
-Spec: reference/CEG/05_namespace.md §5.6.8.8.1.1 (vendored, 1.0-RC6).
+Spec: reference/CEG/05_namespace.md §5.6.8.8.1.1 (vendored, 1.0-RC11;
+construction pinned since 1.0-RC6, unchanged through RC11).
 """
 
 from __future__ import annotations
