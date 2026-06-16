@@ -11,7 +11,7 @@ CEG specifies five public + one admin HTTP endpoint shape for the discovery + co
 All CEG endpoints return:
 
 - **Content-Type**: `application/json` (`Accept: application/json` honored; other types respond `406 Not Acceptable`)
-- **CEG-API-Version header**: `CEG-Version: <current spec major.minor>` on every response (track the [README](README.md) `Version:` field; currently `1.0-rc6`); clients SHOULD echo `CEG-Accept-Version: <pinned-version>` on request, naming the version they were built against. Per [§0.3](00_conformance.md) SemVer policy, MAJOR mismatch is a wire-incompat reject; MINOR mismatch is compatible (clients MAY warn).
+- **CEG-API-Version header**: `CEG-Version: <current spec major.minor>` on every response (track the [README](README.md) `Version:` field; currently `1.0-rc11`); clients SHOULD echo `CEG-Accept-Version: <pinned-version>` on request, naming the version they were built against. Per [§0.3](00_conformance.md) SemVer policy, MAJOR mismatch is a wire-incompat reject; MINOR mismatch is compatible (clients MAY warn).
 - **Time-Source header**: `X-CEG-Server-Time: <rfc3339_canonical>` per [§0.5](00_conformance.md) for client clock-skew bounds
 - **Pagination** (where applicable): `?cursor=` + `?limit=` query params; response includes `next_cursor` (null if exhausted) and `total_estimate` (server's best estimate, may be approximate)
 
@@ -146,6 +146,14 @@ Pins the **shared attestation surface** the four CEG-RC1 implementations (CIRISA
 | `federation` | hybrid Ed25519 + ML-DSA-65 **present** | Yes | per [§4](04_envelope.md) `cohort_scope` + the §10.1.4 invisibility rule | direct signed write OR `local → federation` promotion |
 
 **Invariant (substrate MUST enforce):** `tier = federation ⟹ hybrid signature present`. Nothing crosses to federation-visible unsigned. A `local` row is **labelled** local and MUST NOT be served as federation-authoritative ([fail-honest](../../MISSION.md)). The read-gate is **orthogonal** to `cohort_scope`: it is an additional filter (`local ⟹ caller is the producing occurrence`), composing with the §10.1.4 target-membership predicate. Threat entries: AV-59 (local row leaked to a non-self caller), AV-60 (unsigned local served as authoritative), AV-61 (the two gates de-synced).
+
+##### §10.1.5.1.1 The PQC half is MANDATORY at admission — no classical-only, no hybrid-pending accommodation (normative, CEG 1.0)
+
+**Resolves [CIRISRegistry#82](https://github.com/CIRISAI/CIRISRegistry/issues/82) (Verify audit F1); satisfies the [#57](https://github.com/CIRISAI/CIRISRegistry/issues/57) "PQC-everywhere REQUIRED" freeze gate.** The §10.1.5.1 invariant `tier = federation ⟹ hybrid signature present` is **enforced at the admission gate as of CEG 1.0**, and "present" means **verified**: every federation-tier admission gate MUST check **both** halves — Ed25519 over `JCS(envelope)` **and** ML-DSA-65 over `JCS(envelope) ‖ ed25519_sig` (the [§5.2.1](05_namespace.md) bound-payload form) — and MUST **reject** a federation-tier Contribution that carries only the classical half. This binds **all operational-authority admission gates**, explicitly including `operational_admit` (key_grant / partner / org-membership / license writes), the [§5.6.8.8.1](05_namespace.md) `transport_destination` binding, and the [§5.6.8.10](05_namespace.md) `partner_record` / founder-quorum gates.
+
+**This is an immediate 1.0 requirement — not a phased cutover.** Pre-1.0 the PQC half was honored *opportunistically* (a deliberate rollout accommodation so hybrid-pending members could federate while ML-DSA-65 wiring landed); **CEG 1.0 closes that window with no fleet-floor and no calendar trigger.** The rationale is exactly the threat hybrid exists to defend: an adversary holding a future Ed25519 break could forge a grant / binding / partner-record and have it admitted if the classical half alone sufficed. There is **no `require_hybrid: false` posture at 1.0** — a verifier's hybrid-required check is always-on, never an operator toggle; the only conformant state for a federation-tier key is "carries a valid ML-DSA-65 half." A key that has not completed PQC wiring is **not 1.0-conformant for federation-tier emission** and is confined to local-tier (self-read, [§10.1.5.2](#10152-local-tier-eligibility--the-discriminator-is-revocation-authority-not-subject-set-emptiness)) until it does. The mandate is at the **federation admission boundary only** — the single place authority crosses; local-tier rows MAY still defer the signature per [§10.1.3](#1013-consent-revocations-are-not-local-tier-eligible-ceg-06-addition).
+
+**The mandate binds the durable store + replication path, not only the authority gates (normative clarification, 1.0-RC8 — resolves [CIRISPersist#225](https://github.com/CIRISAI/CIRISPersist/issues/225)).** "Federation-tier" means **every** federation-tier attestation, including the bulk **per-trace / store-and-replicate** path — not merely the operational-authority gates enumerated above. A federation-tier trace written to the durable, content-addressed, replicated corpus MUST carry (and a verifier MUST check on ingest) the ML-DSA-65 half exactly as a `key_grant` does; there is **no "operational authority vs testimony leaf" exemption** (federation root and the trace leaf are bound by the same rule). **Content-addressing is NOT a defense against forge-later:** a CRQC-era adversary who breaks Ed25519 mints a backdated trace under a historical key and hashes **their own** forgery — the content hash matches by construction, so the address proves nothing about authenticity. Because the trace store is *kept for posterity* (it outlives the classical primitive), the per-trace signature is the single most forge-exposed surface in the federation — the "store at massive scale" CEWP crux — and the PQC half is mandatory there for the same forge-now / harvest-now-exploit-later reason as the at-rest DEK cascade ([§10.5.3](#1053-membership-change--epoch-rekey) / [§8.1.12.4](08_composition.md)). A substrate persisting/replicating a federation-tier row whose envelope signature lacks a valid ML-DSA-65 half MUST reject it at the ingest gate — store-then-quarantine is non-conformant.
 
 #### §10.1.5.2 Local-tier eligibility — the discriminator is *revocation authority*, not subject-set emptiness
 
@@ -472,6 +480,62 @@ The realtime profile is **not media-only.** Any high-frequency mutable shared st
 **Scope boundary (the explicit call):**
 - **IN scope (transport):** ordered, sealed, authenticated, PQC-encrypted realtime delivery of arbitrary data-stream payloads — covered by §10.5.8, no addition.
 - **OUT of scope (merge semantic):** the conflict-free / convergent-merge logic for shared mutable state (CRDT, Operational Transform, last-writer-wins, etc.) is **application-layer**, not a CEG primitive — consistent with the [§1.1](01_foundation.md) discipline ("the substrate stores; the wire transports; CEG describes the shape of the claim; consumer policy composes verdicts"). CEG carries the ops; the application converges them. A future codified merge primitive would route through the [§11.2](11_governance.md) amendment process if real demand pulls it (the downstream-demand-pulls-additions discipline), but it is explicitly NOT required for 1.0 — realtime collaborative apps are buildable on the transport today.
+
+#### §10.5.8.2 `codec_id` namespace — realtime A/V chunk codec discriminator (normative, 1.0-RC9 — ratifies [CIRISRegistry#84](https://github.com/CIRISAI/CIRISRegistry/issues/84))
+
+[§10.5.8.1](#10581-realtime-non-av-data-streams-normative-scope-boundary) makes the realtime chunk payload codec **application-defined and opaque to the substrate**. For realtime **A/V at scale**, a hop fanning out chunks ([CIRISEdge#128](https://github.com/CIRISAI/CIRISEdge/issues/128) per-receiver layer policy, [#66](https://github.com/CIRISAI/CIRISEdge/issues/66) SFU relay) must drop chunks for per-receiver bandwidth degradation **without** decrypting them — so the codec's layer-numbering semantics must be a **clear (non-AEAD) discriminator**. CEG ratifies a 1-byte `codec_id` namespace so every implementation reads the same meaning. **This is a namespace ratification on the transport-layer chunk header, not a change to the [§4](04_envelope.md) attestation envelope** — the frozen 1+4 surface and its canonicalization are untouched.
+
+**Wire position (normative).** `codec_id` (1 byte) + `ChunkLayer { spatial: u8, temporal: u8, quality: u8 }` (3 bytes) = a **4-byte additive block** at `SealedAvChunk` header offset **48..52**, after the existing v3.7.0 header. **Clear metadata, NOT inside the AEAD** — a relay drops chunks by `codec_id`/`ChunkLayer` without touching the inner epoch-DEK seal ([§10.5.2](#1052-chunk-seal--stream-nonce-normative--v2-lock)); tampering causes mis-decode or drop, never a crypto break. **Additive + backward-compatible**: a v3.7.0 chunk round-trips identically as `codec_id = 0xFF` + `ChunkLayer { 0, 0, 0 }`. No length-prefix is needed — the block is fixed 4 bytes at a fixed offset.
+
+| Hex | Codec | Semantics |
+|---|---|---|
+| `0x01` | **AV1 SVC** | Scalable Video Coding — 3 spatial × 4 temporal × N SNR layers; base layer required to decode anything. Production default (WebRTC-native, royalty-free). The deployable codec today. |
+| `0x02` | JPEG XS (layered) | Low-latency intra-only; broadcast use case. **Reserved.** |
+| `0x03` | **Symmetric MDC** | Multiple Description Coding — any subset of chunks decodes at proportional fidelity, no base-layer floor. **The substrate design target** (below). **Reserved** — encoder lineage academic-grade today; substrate is MDC-ready. |
+| `0xFF` | Opaque | No scalable-coding semantics; v3.7.0 wire-compat. `ChunkLayer` MUST be `{ 0, 0, 0 }`. Default for legacy / non-layered streams. |
+| `0x04`–`0x7F` | — | **Reserved** for future standardized codecs (CEG-assigned). |
+| `0x80`–`0xFE` | — | **Experimental / per-deployment** — no cross-federation meaning guaranteed. |
+
+`codec_id` lets a receiver know whether `ChunkLayer { spatial: 2, temporal: 2, quality: 0 }` means "SVC base + 2 spatial enhancements" or "MDC quadrant" — without it, layer numbers are ambiguous across codecs. The substrate (Edge) never picks the codec — choice is upstream (agent/server tier); Edge needs only the namespace stable. The variable-depth `SubStreamPath` (MDC tree-path encoding) is the [§85](https://github.com/CIRISAI/CIRISRegistry/issues/85) follow-on (tracked `§N.3`).
+
+**MDC-primacy design intent (informative).** The user-facing contract CEWP realtime A/V targets is *"any node can request a lower-bandwidth stream from peers — as simple as taking every other chunk, down to a blinking dot."* MDC (`0x03`) matches that **symmetrically**: drop any subset → decode the rest at proportionally lower quality, no coordination, no base-layer floor. SVC (`0x01`) is production-deployable today but has a floor (base-layer bytes must arrive) and needs coordination for an "every other chunk" drop. The substrate is **MDC-shaped** (the `ChunkLayer` / `SubStreamPath` model is symmetric-drop-ready) even while production streams ship SVC; the ~20–40% MDC compression overhead vs SVC at equal quality is the accepted cost of symmetric drop semantics.
+
+#### §10.5.8.3 `SealedAvChunk` wire layout (normative, 1.0-RC10 — absorbs CIRISEdge v4.0.0 per [CIRISRegistry#85](https://github.com/CIRISAI/CIRISRegistry/issues/85) §N)
+
+The realtime A/V chunk that lands on each RNS Link payload (and the broadcast pull path). **Byte layout (normative — transcribed from the edge v4.0.0 reference `SealedAvChunk::to_bytes`):**
+
+```
+offset  field                       encoding
+0..32   stream_id                   32 bytes (caller-derived: sha256(stream_meta))
+32..40  epoch                       u64 big-endian
+40..48  chunk_seq                   u64 big-endian
+48..49  codec_id                    u8  (§10.5.8.2 namespace)
+49..50  layer.spatial               u8
+50..51  layer.temporal              u8
+51..52  layer.quality               u8
+52..    double_sealed_ciphertext    remaining bytes
+```
+
+- `CHUNK_HEADER_LEN = 48` (the `stream_id`+`epoch`+`chunk_seq` fixed header, stable since v3.7.0); `CHUNK_CODEC_LAYER_LEN = 4` (the `codec_id`+`ChunkLayer` block).
+- **Backward compatibility (normative, length-disambiguated):** a wire carrying **only** the 48-byte header (no trailing 4-byte block) MUST be read as `codec_id = 0xFF` (opaque) + `layer = {0,0,0}`, bytes `48..` as ciphertext — the v3.7.0 shape. A wire with ≥ `48+4` bytes after parsing the header is read as v3.8.0+ (codec+layer present). New writes always include the 4-byte block.
+- `codec_id` + `layer` are **clear metadata, NOT inputs to the AEAD** ([§10.5.8.2](#10582-codec_id-namespace--realtime-av-chunk-codec-discriminator-normative-10-rc9--ratifies-cirisregistry84)) — a relay drops by `(codec_id, layer)` without compromising the inner DEK; tampering causes mis-decode or drop, never a crypto break.
+
+#### §10.5.8.4 `ChunkLayer` + `ReceiverLayerPolicy` — SVC layer model (normative, 1.0-RC10 — §85 §N.2)
+
+`ChunkLayer` is the 3-byte SVC layer descriptor in the chunk header (`spatial`, `temporal`, `quality`, each `u8`). Each axis is **monotonic**: layer `0` is the base (lowest fidelity, always required); each increment is an additive enhancement. A receiver reconstructs from the prefix `0..=max_spatial × 0..=max_temporal × 0..=max_quality` of cells. The base cell `{0,0,0}` is the **"blinking dot"** — the minimum a participant can subscribe to. For `codec_id = 0xFF` (opaque) the layer MUST be `{0,0,0}`.
+
+`ReceiverLayerPolicy { max_spatial, max_temporal, max_quality }` (each `u8`) is the per-receiver drop policy. It is **advertised over the existing `federation_session` / `key_grant` entitlement surface — NOT a new wire** — and the sender drops chunks above the cap without re-encoding. `admits(layer)` is the per-axis test `spatial ≤ max_spatial ∧ temporal ≤ max_temporal ∧ quality ≤ max_quality`; a chunk tagged `codec_id = 0xFF` MUST be admitted **unconditionally** regardless of policy (the fan-out filter short-circuits before consulting `admits`). Canonical policies: `BLINKING_DOT = {0,0,0}`, `UNCAPPED = {255,255,255}`. This composes with the inner-once / outer-N fan-out optimization ([CIRISEdge#122](https://github.com/CIRISAI/CIRISEdge/issues/122)): the inner seal runs once per chunk; the outer seal runs only for the `(receiver, chunk)` pairs the policy admits.
+
+#### §10.5.8.5 Double-seal + deterministic nonce derivation (normative, 1.0-RC10 — §85 §N)
+
+`double_sealed_ciphertext` is **outer-AEAD( inner-AEAD( chunk_plaintext ) )** — two independent AES-256-GCM layers (12-byte nonce + 16-byte tag, standard ring layout each). The **inner** seal is end-to-end (the epoch-DEK content seal); the **outer** seal is the per-RNS-Link transit wrap (a relay sees the outer layer only, never plaintext — the [§10.5.5 E1](#1055-streaming-deliverymodel-analysis--the-pull-defaults-the-relay-extensions) two-layer posture). Both nonces are **deterministic** (no nonce is transmitted — every holder recomputes; collision-safety rides the [§10.5.8](#1058-realtime-group-communication--composition-ceg-013-addition) single-sender-per-`(stream_id, epoch)` invariant):
+
+```
+inner_nonce = SHA-256( b"CIRIS-AV-INNER-V1" ‖ stream_id[32] ‖ epoch_be8 ‖ chunk_seq_be8 )[0..12]
+outer_nonce = SHA-256( b"CIRIS-AV-OUTER-V1" ‖ link_id ‖ link_seq_be8 )[0..12]
+```
+
+The label bytes (`b"CIRIS-AV-INNER-V1"` / `b"CIRIS-AV-OUTER-V1"`, ASCII, no terminator) are **domain separators pinned by this section** — they bind the nonce to its layer and prevent cross-layer reuse. `epoch`, `chunk_seq`, and `link_seq` are `u64` **big-endian**. `link_seq` is monotonic per RNS Link (transit replay guard). **Conformance is proven by the §85 vector set** (input → expected 12-byte nonce + expected `to_bytes`), generated from the v4.0.0 reference impl — see the [§57](https://github.com/CIRISAI/CIRISRegistry/issues/57) freeze gate.
 
 ### §10.5.7 What CEG 0.10 documents
 
