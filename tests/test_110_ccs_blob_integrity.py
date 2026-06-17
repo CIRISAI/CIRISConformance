@@ -73,7 +73,7 @@ except ValueError as exc:
 
 # Positive round-trip via persist's one-call put_blob_signing (v3.3.0).
 # The attesting key must be in the federation directory first.
-key_id = engine.register_federation_key("agent", "ceg-ccs-ref", None, None, None)
+key_id = engine.register_self_federation_key("agent", "ceg-ccs-ref", None, None, None)
 try:
     engine.put_blob_signing(
         good_sha, b64, None, None, key_id,

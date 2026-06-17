@@ -89,7 +89,7 @@ def run(quick: bool) -> dict:
     open(seed, "wb").write(secrets.token_bytes(32))
     kid_label = "bench-" + secrets.token_hex(6)
     engine = cp.Engine("sqlite::memory:", kid_label, local_key_id=kid_label, local_key_path=seed)
-    key_id = engine.register_federation_key("agent", "bench-ref", None, None, None)
+    key_id = engine.register_self_federation_key("agent", "bench-ref", None, None, None)
     pk = engine.local_public_key_b64()
 
     results: dict[str, dict] = {}

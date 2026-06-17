@@ -51,7 +51,7 @@ report = {"stage": "start"}
 
 # The attesting key must be in the federation directory for
 # put_blob_signing to emit its holder attestation.
-kid = engine.register_federation_key("agent", "fabric-evict-ref", None, None, None)
+kid = engine.register_self_federation_key("agent", "fabric-evict-ref", None, None, None)
 report["kid"] = kid
 
 # Unique blob content + attestation_id per subprocess so tests stay

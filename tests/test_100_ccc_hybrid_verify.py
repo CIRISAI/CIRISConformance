@@ -56,7 +56,7 @@ results["soft_fresh_expired"] = call(
     engine.verify_hybrid, MSG, sig, None, pk, None, "soft_freshness", 3600, 7200)
 
 # Directory path: register the local key, then verify by key_id.
-key_id = engine.register_federation_key("agent", "ceg-ccc-ref", None, None, None)
+key_id = engine.register_self_federation_key("agent", "ceg-ccc-ref", None, None, None)
 results["directory_ok"] = call(
     engine.verify_hybrid_via_directory, MSG, key_id, sig, None, "ed25519_fallback", None, None)
 results["directory_unknown_key"] = call(
