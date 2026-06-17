@@ -89,7 +89,7 @@ Detailed coverage tables: [`docs/CEG_CONFORMANCE.md`](docs/CEG_CONFORMANCE.md) (
 <details>
 <summary><b>What "conforming" means for each component (producer / consumer / storage)</b></summary>
 
-The components talk to each other using a shared, signed message format — the **CEG** ("CIRIS Epistemic Grammar"; full spec under [`reference/CEG/`](reference/CEG/)). Every claim ("this content is genuine," "I trust this peer") is a signed message. A component can play three roles, and the spec says what *correct* means for each:
+The components talk to each other using a shared, signed message format — the **CEG** ("CIRIS Epistemic Grammar"), now the wire-grammar layer of the **CIRIS Constitution** (full spec under [`reference/CIRIS_Constitution/`](reference/CIRIS_Constitution/); the Constitution supersedes the old standalone CEG reference). Every claim ("this content is genuine," "I trust this peer") is a signed message. A component can play three roles, and the spec says what *correct* means for each:
 
 - **Producer** — writes well-formed messages and signs them properly.
 - **Consumer** — checks those signatures and applies the agreed rules before acting on a message.
@@ -123,7 +123,7 @@ These tests confirm that's actually true, that the libraries cope with the phone
 <details>
 <summary><b>The specs this suite checks against (the reference copies)</b></summary>
 
-[`reference/`](reference/) holds copies of the specifications this suite verifies: the platform overview ([CEWP](reference/CEWP.md)), the [scaling model](reference/FEDERATION_SCALING_MODEL.md) and the small program that computes it, the [message-format spec](reference/CEG/), and the research paper behind the scaling claims. These are snapshots for convenience — [`reference/README.md`](reference/README.md) records exactly where each one came from.
+[`reference/`](reference/) holds copies of the specifications this suite verifies: the platform overview ([CEWP](reference/CEWP.md)), the [scaling model](reference/FEDERATION_SCALING_MODEL.md) and the small program that computes it, the message-format / governance spec (the [CIRIS Constitution](reference/CIRIS_Constitution/), which supersedes the old CEG reference), and the research paper behind the scaling claims. These are snapshots for convenience — [`reference/README.md`](reference/README.md) records exactly where each one came from.
 </details>
 
 ## How sibling repos invoke this harness

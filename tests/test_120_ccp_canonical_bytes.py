@@ -21,7 +21,9 @@ MUST reject `+00:00` / uppercase-hex / future `signed_at`, but the wheel
 does not yet enforce it at this surface (tracked upstream as
 CIRISPersist#126). It is `xfail` until that lands.
 
-See CEG §0.2 / §4 / §0.5-§0.7 — CIRISRegistry/FSD/CEG/.
+See CEG §0.2 / §4 / §0.5-§0.7 — now the CIRIS Constitution Part II — The Grammar:
+CIRISRegistry/FSD/CIRIS_Constitution/part_2_the_grammar.md (supersedes CEG;
+map § → CC via codebook.json).
 """
 
 from __future__ import annotations

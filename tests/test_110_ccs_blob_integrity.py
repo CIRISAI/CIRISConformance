@@ -20,7 +20,9 @@ composed signer), and atomic commit. The attesting key must first be
 registered in the federation directory, otherwise attestation emission
 fails (`blob_attestation_emission_failed`).
 
-See CEG §10.1 / §10.1.1 — CIRISRegistry/FSD/CEG/10_endpoints.md.
+See CEG §10.1 / §10.1.1 — now the CIRIS Constitution Part V (Transport &
+Substrate): CIRISRegistry/FSD/CIRIS_Constitution/part_5_transport_substrate.md
+(the Constitution supersedes CEG; map §10.x → CC via codebook.json).
 """
 
 from __future__ import annotations

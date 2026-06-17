@@ -20,7 +20,9 @@ the binary emits. ML-DSA-65 hybrid-complete verification is covered by
 the `ed25519_fallback`/`soft_freshness` matrix here; the strict path
 exercises the hybrid-pending rejection that is the CCC's §8 default.
 
-See CEG §0.2 (profiles) + §8 (composition) — CIRISRegistry/FSD/CEG/.
+See CEG §0.2 (profiles) + §8 (composition) — now the CIRIS Constitution
+(Part II — The Grammar + Part IV — Composition & Governance):
+CIRISRegistry/FSD/CIRIS_Constitution/ (supersedes CEG; map § → CC via codebook.json).
 """
 
 from __future__ import annotations

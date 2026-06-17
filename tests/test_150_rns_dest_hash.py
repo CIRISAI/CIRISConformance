@@ -23,7 +23,10 @@ exposed on the Python surface (CIRISVerify#28 lift / CIRISEdge PyO3 ask) —
 realtime-transport surfaces (federation_session KEX, realtime_av) are Rust-only
 today, so the dest-hash recompute follows the same exposure path.
 
-Spec: reference/CEG/05_namespace.md §5.6.8.8.1.1 (vendored, 1.0-RC6).
+Spec: reference/CIRIS_Constitution/part_3_the_namespace.md (CEG §5.6.8.8.1.1,
+now under Part III — The Namespace; see reference/CIRIS_Constitution/codebook.json
+for the §5.6.8.8.1.1 → CC legacy_ref map. CEG reference superseded by the
+Constitution).
 """
 
 from __future__ import annotations
