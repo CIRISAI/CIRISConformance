@@ -39,6 +39,10 @@ See [`docs/FABRIC_CONFORMANCE.md`](docs/FABRIC_CONFORMANCE.md) for the tier cove
 
 Beyond cohabitation, this harness verifies the three [CEG 0.1](https://github.com/CIRISAI/CIRISRegistry/tree/main/FSD/CEG) conformance profiles (§0.2) — **CCP** (producer), **CCC** (consumer), **CCS** (substrate). See [`docs/CEG_CONFORMANCE.md`](docs/CEG_CONFORMANCE.md) for the profile definitions, the §0.5 fractal-self reading discipline, and a coverage matrix tracking which CEG paths are tested today vs. pending an upstream surface. Profile tests carry the `ceg` marker plus `ccp`/`ccc`/`ccs`; run one with `pytest -m ccc`.
 
+## SCOPE_PRIVACY §9 cross-artifact acceptance
+
+The [CEWP `FSD/SCOPE_PRIVACY.md` §9](reference/SCOPE_PRIVACY.md) acceptance criteria for the **CC 1.13.3.4 anonymity-by-default** construction are ratified here. Four bullets — forensic cold-state opacity, cross-impl `record_id` reproducibility, per-scope Poisson KS-test, and the §7.5 cluster-detection KS-test — land as `tests/test_4xx_scope_privacy_*.py`. See [`docs/SCOPE_PRIVACY_CONFORMANCE.md`](docs/SCOPE_PRIVACY_CONFORMANCE.md) for the coverage table, the substrate-side gaps tracked upstream, and the simulator-vs-wheel-driven methodology split.
+
 ## How to run
 
 ```bash
@@ -171,6 +175,10 @@ Each test file is self-contained — no shared imports between test files — so
 | `test_130_multimedia.py` | substrate + fabric | CEG 0.3 multimedia: media blob storage, perceptual-hash gate, takedown scheduling, key-grant retire, budget eviction | ✅ (takedown local-holder `xfail` [persist#130](https://github.com/CIRISAI/CIRISPersist/issues/130)) |
 | `test_200_fabric_eviction.py` | fabric | Per-actor eviction + `withdraws`, sweeper, trust threshold | ✅ (holders/gate `xfail` [persist#130](https://github.com/CIRISAI/CIRISPersist/issues/130)/[#129](https://github.com/CIRISAI/CIRISPersist/issues/129)) |
 | `test_210_fabric_scaling_factors.py` | fabric | Scaling-factor contract (multiplier curve, `k_eff`, retention) | ✅ |
+| `test_400_scope_privacy_record_id.py` | substrate (CCS) | [SCOPE_PRIVACY §9 bullet 2](docs/SCOPE_PRIVACY_CONFORMANCE.md) — cross-impl `record_id` reproducibility on the RFC 8949 dCE CBOR profile (verify v6.3.0 KAT vectors) | ✅ |
+| `test_410_scope_privacy_forensic.py` | substrate (CCS) | [SCOPE_PRIVACY §9 bullet 1](docs/SCOPE_PRIVACY_CONFORMANCE.md) — forensic cold-state disk inspection of `federation_scope_blobs` recovers no publisher / community / plaintext / member | ✅ |
+| `test_420_scope_privacy_poisson.py` | substrate (CCS) | [SCOPE_PRIVACY §9 bullet 3](docs/SCOPE_PRIVACY_CONFORMANCE.md) — per-scope Poisson KS-test + lifetime-average λ inequality (simulator pending edge-side PyO3 scheduler export) | ✅ |
+| `test_430_scope_privacy_cluster_ks.py` | substrate (CCS) | [SCOPE_PRIVACY §9 bullet 4](docs/SCOPE_PRIVACY_CONFORMANCE.md) — 20-holder cross-fragment cluster-detection KS-test against the §7.5 attack | ✅ |
 
 ## Adding a new crate
 

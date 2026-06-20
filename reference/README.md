@@ -19,6 +19,7 @@ numbers in these documents.
 | [`FEDERATION_SCALING_MODEL.md`](FEDERATION_SCALING_MODEL.md) — what carrying the internet costs at v1 | `CIRISNodeCore/FSD/FEDERATION_SCALING_MODEL.md` | NodeCore @ `dfd158e` |
 | [`scale_model.rs`](scale_model.rs) — the scaling "toy" **v0.6** (`cargo run --example scale_model`; adds the `fav_findings()` adversarial-cost module vs Verify Fed TM v1.1) | `CIRISNodeCore/examples/scale_model.rs` | NodeCore @ `dfd158e` |
 | [`CEG/`](CEG/) — the CEG 0.x wire-format spec (19 sections) | `CIRISRegistry/FSD/CEG/` | Registry @ `fd37a30` |
+| [`SCOPE_PRIVACY.md`](SCOPE_PRIVACY.md) — the CC 1.13.3.4 anonymity-by-default construction | `CEWP/FSD/SCOPE_PRIVACY.md` | CEWP @ snapshot 2026-06-19 |
 | [`synthesis/Corridor_Dynamics.tex`](synthesis/) — the flagship synthesis paper, *Corridor Dynamics in Coordinated Systems* (v2; reasoning-shape / ρ / k_eff corridor / trace commons) | `coherence-ratchet/papers/Corridor Dynamics.tex` | coherence-ratchet @ `ffcd62a` |
 | [`synthesis/research_status_entry.md`](synthesis/research_status_entry.md) — the ciris.ai/research-status catalog entry (DOI + summary) | `coherence-ratchet/copy/web/` | coherence-ratchet @ `ffcd62a` |
 
