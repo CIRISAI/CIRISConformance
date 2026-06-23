@@ -238,7 +238,7 @@ key_id = "node-" + secrets.token_hex(8)           # unique federation identity p
 _seed = os.path.join(tempfile.mkdtemp(), "seed"); open(_seed, "wb").write(secrets.token_bytes(32))
 cp.reset_engine()
 engine = cp.Engine(DB_URL, key_id, local_key_id=key_id, local_key_path=_seed)
-kid = engine.register_federation_key("agent", IDENTITY_REF, None, None, None)
+kid = engine.register_self_federation_key("agent", IDENTITY_REF, None, None, None)
 report = {"key_id": key_id}
 '''
     post = '\nprint(json.dumps(report)); sys.stdout.flush(); os._exit(0)\n'

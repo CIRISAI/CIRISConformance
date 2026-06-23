@@ -67,7 +67,7 @@ def _https_config_script(database_url: str) -> str:
         "cp.reset_engine()\n"
         "k = 'https-' + secrets.token_hex(6)\n"
         f"engine = cp.Engine({db_url_repr}, k, local_key_id=k, local_key_path=seed)\n"
-        "engine.register_federation_key('agent', 'https-ref', None, None, None)\n"
+        "engine.register_self_federation_key('agent', 'https-ref', None, None, None)\n"
         "report = {}\n"
         "try:\n"
         # Full production HTTPS shape: mTLS required + bearer-token (CDN edge).
