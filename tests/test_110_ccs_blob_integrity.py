@@ -31,7 +31,7 @@ from conftest import ceg_local_signer_preamble, get_database_url, run_python_scr
 
 
 def _ccs_blob_script(database_url: str) -> str:
-    return ceg_local_signer_preamble(database_url) + r'''
+    return ceg_local_signer_preamble(database_url, pqc=True) + r'''
 # Unique content per subprocess so tests stay isolated on a shared
 # (postgres) backend — see the conftest preamble note.
 body = b"ceg-10.1.1-blob-under-test-" + key_id.encode()
@@ -73,7 +73,7 @@ except ValueError as exc:
 
 # Positive round-trip via persist's one-call put_blob_signing (v3.3.0).
 # The attesting key must be in the federation directory first.
-key_id = engine.register_federation_key("agent", "ceg-ccs-ref", None, None, None)
+key_id = engine.register_self_federation_key("agent", "ceg-ccs-ref", None, None, None)
 try:
     engine.put_blob_signing(
         good_sha, b64, None, None, key_id,

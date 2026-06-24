@@ -48,9 +48,9 @@ from conftest import ceg_local_signer_preamble, get_database_url, run_python_scr
 
 
 def _media_substrate_script(database_url: str) -> str:
-    return ceg_local_signer_preamble(database_url) + r'''
+    return ceg_local_signer_preamble(database_url, pqc=True) + r'''
 report = {"stage": "start"}
-kid = engine.register_federation_key("agent", "media-ref", None, None, None)
+kid = engine.register_self_federation_key("agent", "media-ref", None, None, None)
 
 def _notice(sha, basis):
     return json.dumps({
@@ -226,9 +226,9 @@ def test_takedown_evicts_local_holder(media_substrate):
 
 
 def _budget_eviction_script(database_url: str) -> str:
-    return ceg_local_signer_preamble(database_url) + r'''
+    return ceg_local_signer_preamble(database_url, pqc=True) + r'''
 report = {"stage": "start"}
-kid = engine.register_federation_key("agent", "budget-ref", None, None, None)
+kid = engine.register_self_federation_key("agent", "budget-ref", None, None, None)
 
 # A tight storage budget puts the held set above the watermark; the
 # popularity×freshness sweeper must then evict under pressure.

@@ -235,10 +235,18 @@ try:
 except ImportError as exc:
     print(json.dumps({"_node_error": "import", "error": str(exc)})); sys.exit(2)
 key_id = "node-" + secrets.token_hex(8)           # unique federation identity per node
-_seed = os.path.join(tempfile.mkdtemp(), "seed"); open(_seed, "wb").write(secrets.token_bytes(32))
+_dir = tempfile.mkdtemp()
+_seed = os.path.join(_dir, "seed"); open(_seed, "wb").write(secrets.token_bytes(32))
+# Federation-tier hybrid emission (holds_bytes + withdraws) is verified
+# Ed25519 + ML-DSA-65 Strict as of persist 10.1.1 (CIRISPersist#275): an
+# Ed25519-only engine leaves register_self's ML-DSA pubkey absent, so every
+# withdraws emit is rejected (verify_hybrid_pqc_fields_mismatch). A real
+# federation node carries both keys — construct one.
+_pqc_seed = os.path.join(_dir, "pqc"); open(_pqc_seed, "wb").write(secrets.token_bytes(32))
 cp.reset_engine()
-engine = cp.Engine(DB_URL, key_id, local_key_id=key_id, local_key_path=_seed)
-kid = engine.register_federation_key("agent", IDENTITY_REF, None, None, None)
+engine = cp.Engine(DB_URL, key_id, local_key_id=key_id, local_key_path=_seed,
+                   local_pqc_key_id=key_id + "-pqc", local_pqc_key_path=_pqc_seed)
+kid = engine.register_self_federation_key("agent", IDENTITY_REF, None, None, None)
 report = {"key_id": key_id}
 '''
     post = '\nprint(json.dumps(report)); sys.stdout.flush(); os._exit(0)\n'
@@ -296,7 +304,7 @@ def federation(tmp_path):
 # postgres full parity.
 
 
-def ceg_local_signer_preamble(database_url: str) -> str:
+def ceg_local_signer_preamble(database_url: str, *, pqc: bool = False) -> str:
     """Return a subprocess-script prefix that binds `engine`, `pk`, `key_id`.
 
     Shared by the CEG CCP/CCC/CCS conformance scripts. Append scenario
@@ -304,8 +312,19 @@ def ceg_local_signer_preamble(database_url: str) -> str:
     `key_id` is the engine's unique local key id for this subprocess —
     use it instead of a hard-coded label so tests stay isolated on a
     shared (postgres) backend.
+
+    `pqc` selects the engine identity shape:
+
+    - ``pqc=False`` (default) → **Ed25519-only**. Use for the CCC
+      `ed25519_fallback` / hybrid-pending verify path, which is only valid
+      for a key whose ML-DSA-65 pubkey is absent.
+    - ``pqc=True`` → **hybrid (Ed25519 + ML-DSA-65)**. Required for any
+      federation-tier EMISSION (`put_blob_signing` holds_bytes, eviction
+      `withdraws`): as of persist 10.1.1 (CIRISPersist#275) `register_self`
+      leaves the PQC pubkey absent on an Ed25519-only engine, so the
+      Strict hybrid emit is rejected (`verify_hybrid_pqc_fields_mismatch`).
     """
-    header = f"DB_URL = {database_url!r}\n"
+    header = f"DB_URL = {database_url!r}\nWANT_PQC = {bool(pqc)!r}\n"
     body = r'''
 import json, sys, base64, hashlib, os, tempfile, secrets, uuid
 try:
@@ -316,14 +335,18 @@ except ImportError as exc:
 # Unique per-subprocess identity so concurrent tests don't collide in a
 # shared postgres database (sqlite::memory: is already per-process).
 key_id = "ceg-conformance-" + secrets.token_hex(8)
-_seed_path = os.path.join(tempfile.mkdtemp(), "local.seed")
+_dir = tempfile.mkdtemp()
+_seed_path = os.path.join(_dir, "local.seed")
 with open(_seed_path, "wb") as _fh:
     _fh.write(secrets.token_bytes(32))  # a fresh 32-byte Ed25519 seed
+_engine_kwargs = dict(local_key_id=key_id, local_key_path=_seed_path)
+if WANT_PQC:
+    _pqc_path = os.path.join(_dir, "local.pqc.seed")
+    with open(_pqc_path, "wb") as _fh:
+        _fh.write(secrets.token_bytes(32))
+    _engine_kwargs.update(local_pqc_key_id=key_id + "-pqc", local_pqc_key_path=_pqc_path)
 cp.reset_engine()
-engine = cp.Engine(
-    DB_URL, key_id,
-    local_key_id=key_id, local_key_path=_seed_path,
-)
+engine = cp.Engine(DB_URL, key_id, **_engine_kwargs)
 pk = engine.local_public_key_b64()
 '''
     return header + body

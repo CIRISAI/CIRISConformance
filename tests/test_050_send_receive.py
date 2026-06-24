@@ -32,7 +32,7 @@ from __future__ import annotations
 import sys
 import pytest
 
-from conftest import get_backend_label, get_database_url, run_python_script
+from conftest import get_database_url, run_python_script
 
 
 def _send_receive_script(database_url: str) -> str:
@@ -108,7 +108,13 @@ def send_receive():
 @pytest.mark.requires_edge
 def test_edge_runtime_surface_present(send_receive):
     """The composed Edge exposes the send/receive + observability surface."""
-    assert send_receive["signer_key_id"] == "send-recv-key", send_receive
+    # As of edge 7.0.6 (CIRISEdge#203) the signer id is the DERIVED federation
+    # key_id `<label>-<fp>`, not the bare `local_key_id` — so durable outbound's
+    # sender FK resolves against persist's registered (derived) row. Assert the
+    # derived shape rather than the per-run fingerprint.
+    signer = send_receive["signer_key_id"]
+    assert signer.startswith("send-recv-key-"), send_receive
+    assert signer != "send-recv-key", send_receive
     assert send_receive["handler_registered"] is True
     # The per-transport parity counters Conformance#4 builds on.
     for counter in ("envelopes_sent_total", "envelopes_received_total"):
@@ -153,11 +159,15 @@ import ciris_persist as cp
 from ciris_edge.ciris_edge import init_edge_runtime
 _d = tempfile.mkdtemp()
 _seed = os.path.join(_d, "s"); open(_seed, "wb").write(secrets.token_bytes(32))
+_pqc = os.path.join(_d, "pqc"); open(_pqc, "wb").write(secrets.token_bytes(32))
 _idp = os.path.join(_d, "t.id"); open(_idp, "wb").write(b"\x00" * 64)
 cp.reset_engine()
 _k = "durable-" + secrets.token_hex(8)
-engine = cp.Engine(DB_URL, _k, local_key_id=_k, local_key_path=_seed)
-kid = engine.register_federation_key("agent", "durable-ref", None, None, None)
+# Hybrid engine (Ed25519 + ML-DSA-65) — federation-tier emits are verified
+# Strict as of persist 10.1.1 (CIRISPersist#275).
+engine = cp.Engine(DB_URL, _k, local_key_id=_k, local_key_path=_seed,
+                   local_pqc_key_id=_k + "-pqc", local_pqc_key_path=_pqc)
+kid = engine.register_self_federation_key("agent", "durable-ref", None, None, None)
 edge = init_edge_runtime(engine, _idp, listen_addr="127.0.0.1:0")
 handle = edge.send_durable_inline_text(kid, "durable-hello")
 outbound = engine.list_outbound(10)  # list_outbound(limit, status=None, ...)
@@ -172,24 +182,20 @@ os._exit(0)
 @pytest.mark.cohabitation
 @pytest.mark.requires_persist
 @pytest.mark.requires_edge
-@pytest.mark.xfail(
-    get_backend_label() == "postgres",
-    reason="durable send hangs under postgres at persist 3.6.5 — 'no reactor running' "
-    "on the async outbound-enqueue (regression vs 3.6.3, alongside the #137 native-ingest "
-    "rework) → CIRISPersist#139. The sqlite path works.",
-    strict=False,
-)
 def test_durable_send_enqueues_to_outbound_queue():
     """A durable send returns a handle and lands in persist's edge_outbound_queue.
 
-    Hard regression gate for CIRISEdge#50: the cross-wheel durable path used
-    to SIGSEGV (edge's bundled, never-`sqlite3_initialize()`d libsqlite3).
-    Closed in edge 1.0.1 via `auditwheel --exclude libsqlite3.so.0`; any
-    return of that crash fails this directly. (Postgres durable hang tracked
-    separately — CIRISPersist#139.)
+    Hard regression gate for two closed cross-wheel bugs:
+    - CIRISEdge#50: the durable path used to SIGSEGV (edge's bundled,
+      never-`sqlite3_initialize()`d libsqlite3); closed in edge 1.0.1 via
+      `auditwheel --exclude libsqlite3.so.0`.
+    - CIRISEdge#203: edge stamped the BARE `local_key_id` as the outbound
+      `sender_key_id` while persist's #247/#275 derived-key_id floor registers
+      only the DERIVED `<label>-<fp>` id, so `enqueue_outbound` FK-failed;
+      closed in edge 7.0.6 (edge now stamps the derived federation key_id).
+    Either regression fails this directly.
     """
     result = run_python_script(_durable_send_script(get_database_url()), timeout=15)
     payload = result.parsed_stdout()
     assert payload["durable_returned"] == "DurableHandle", payload
-    assert payload["enqueued"] is True, payload
     assert payload["enqueued"] is True, payload
