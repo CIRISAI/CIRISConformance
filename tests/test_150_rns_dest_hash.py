@@ -121,28 +121,28 @@ def test_dest_hash_aspect_rejects_dot():
         ceg_destination_hash(_APP_NAME, ["bad.aspect"], _X25519_PUB, _ED25519_PUB)
 
 
-# ─── Cross-check against the wheel's recompute (pending Python exposure) ──
-# CIRISVerify shipped DestinationHashCheck::Unsupported; RC6 unblocks lifting
-# that stub to a real recompute. When the recompute (or the transport-identity
-# pubkeys + dest-hash) is exposed on the Python wheel surface, this flips to a
-# green gate asserting the wheel matches the pinned algorithm above. Today the
-# transport/dest-hash surfaces are Rust-only (federation_session + realtime_av
-# are not on the PyO3 wheel; PyEdge.reticulum_dest_hash_hex() returns the local
-# node's hash but takes no inputs to recompute an arbitrary peer's).
+# ─── Cross-check against the wheel's recompute (LIVE as of verify v7.3.0) ──
+# CIRISVerify shipped DestinationHashCheck::Unsupported, lifted it to a real
+# recompute (v5.6.0), and exposed it on the Python wheel as
+# `ciris_verify.rns_destination_hash` in **v7.3.0** (CIRISVerify#28 — the
+# verify-side remainder of the transport-binding waterfall). This is now a REAL
+# gate, not an xfail: where the symbol is present (matrix pin >= verify 7.3.0)
+# the wheel recompute MUST match the pinned algorithm byte-for-byte; on an older
+# pin (symbol absent) it skips cleanly until the matrix bumps. The remaining #28
+# leg — the fleet Advisory→RequireTransportBinding enforcement flip — is consumer
+# work (CIRISEdge#205), not the dest-hash recompute this asserts.
 @pytest.mark.ceg
 @pytest.mark.ccc
 @pytest.mark.requires_verify
-@pytest.mark.xfail(
-    strict=False,
-    reason="CIRISVerify#28 — dest-hash recompute not yet on the Python wheel surface "
-    "(transport KEX/realtime_av are Rust-only); flips to a real gate when exposed.",
-)
 def test_wheel_recomputes_dest_hash_per_spec():
-    """When verify exposes the recompute, it MUST match §5.6.8.8.1.1 byte-for-byte."""
+    """verify's wheel recompute MUST match §5.6.8.8.1.1 byte-for-byte (CIRISVerify#28, v7.3.0)."""
     import ciris_verify  # noqa: F401
 
     recompute = getattr(ciris_verify, "rns_destination_hash", None)
     if recompute is None:
-        pytest.xfail("ciris_verify.rns_destination_hash not exposed yet (CIRISVerify#28)")
+        pytest.skip(
+            "ciris_verify.rns_destination_hash requires ciris-verify >= 7.3.0 "
+            "(the CIRISVerify#28 wheel lift); current matrix pin predates it"
+        )
     got = recompute(_APP_NAME, _ASPECTS, _X25519_PUB, _ED25519_PUB)
     assert bytes(got) == bytes.fromhex(_EXPECTED_DEST_HASH)
