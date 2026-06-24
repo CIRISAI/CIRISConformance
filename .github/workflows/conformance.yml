@@ -88,6 +88,17 @@ jobs:
           done
           docker exec conformance-pg psql -U postgres -d conformance -c "SELECT version();"
 
+      - name: install runtime system libs for the verify wheel
+        # CIRISVerify's native lib lazy-loads the TPM2 stack (libtss2-*) on first
+        # use of e.g. rns_destination_hash; bare ubuntu runners lack it, which
+        # would turn test_150's wheel-recompute gate into an env skip. Install it
+        # so the gate runs FOR REAL on every cell. (Reported upstream: a pure RNS
+        # hash recompute shouldn't pull the TPM2 stack — CIRISVerify#125.)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libtss2-tctildr0t64 || \
+            sudo apt-get install -y -qq libtss2-tctildr0
+
       - name: install harness + dev tooling
         run: |
           python -m pip install --upgrade pip
@@ -106,7 +117,11 @@ jobs:
           echo "backend:  ${{ matrix.backend }}"
           echo "url:      ${CIRIS_CONFORMANCE_DATABASE_URL}"
           echo "::endgroup::"
-          pytest -v --tb=short
+          # `version_skew` is excluded here: those cases build throwaway venvs
+          # and pip-install OTHER wheel combos from PyPI — backend-agnostic and
+          # network-heavy, so they run ONCE in the dedicated `version-skew` job
+          # rather than on every (python × backend) cell.
+          pytest -v --tb=short -m "not version_skew"
 
       - name: surface known-failure summary
         if: always()
@@ -168,3 +183,29 @@ jobs:
             tests/test_080_mobile_target.py \
             tests/test_030_cohabitation_init.py \
             tests/test_070_hsm_transport_identity.py
+
+  version-skew:
+    # The version-skew envelope (tests/test_060). Each case builds a throwaway
+    # venv and pip-installs a NON-current (persist, edge) combo to prove the
+    # declared compat range cohabits AND that below-floor combos are refused.
+    # Backend-agnostic + network-heavy, so it runs ONCE here rather than on
+    # every (python × backend) conformance cell.
+    name: version-skew envelope (clean-venv)
+    runs-on: ubuntu-latest
+    env:
+      CIRIS_CONFORMANCE_DATABASE_URL: "sqlite::memory:"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: install harness + dev tooling
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: run version-skew suite
+        run: pytest -v --tb=short -m version_skew tests/test_060_version_skew.py
