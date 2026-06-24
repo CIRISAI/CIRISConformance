@@ -88,6 +88,17 @@ jobs:
           done
           docker exec conformance-pg psql -U postgres -d conformance -c "SELECT version();"
 
+      - name: install runtime system libs for the verify wheel
+        # CIRISVerify's native lib lazy-loads the TPM2 stack (libtss2-*) on first
+        # use of e.g. rns_destination_hash; bare ubuntu runners lack it, which
+        # would turn test_150's wheel-recompute gate into an env skip. Install it
+        # so the gate runs FOR REAL on every cell. (Reported upstream: a pure RNS
+        # hash recompute shouldn't pull the TPM2 stack — CIRISVerify#125.)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libtss2-tctildr0t64 || \
+            sudo apt-get install -y -qq libtss2-tctildr0
+
       - name: install harness + dev tooling
         run: |
           python -m pip install --upgrade pip

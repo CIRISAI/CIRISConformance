@@ -144,5 +144,20 @@ def test_wheel_recomputes_dest_hash_per_spec():
             "ciris_verify.rns_destination_hash requires ciris-verify >= 7.3.0 "
             "(the CIRISVerify#28 wheel lift); current matrix pin predates it"
         )
-    got = recompute(_APP_NAME, _ASPECTS, _X25519_PUB, _ED25519_PUB)
+    try:
+        got = recompute(_APP_NAME, _ASPECTS, _X25519_PUB, _ED25519_PUB)
+    except RuntimeError as exc:
+        # The recompute is exposed as a Python symbol even when its native
+        # CIRISVerify shared library can't load — the verify FFI lazy-loads on
+        # first call and needs the TPM2 stack (libtss2-*) present at runtime.
+        # That's a host-provisioning gap (bare ubuntu runners lack libtss2), not
+        # a spec mismatch, so skip rather than red. CI provisions libtss2 so this
+        # runs for real there; the undeclared runtime dep is CIRISVerify#125. The
+        # golden-vector tests above still gate the algorithm with zero native deps.
+        if "could not load" in str(exc) or "libtss2" in str(exc):
+            pytest.skip(
+                "ciris_verify.rns_destination_hash present but its native lib "
+                f"can't load on this host (needs libtss2 / TPM2 stack): {exc}"
+            )
+        raise
     assert bytes(got) == bytes.fromhex(_EXPECTED_DEST_HASH)
