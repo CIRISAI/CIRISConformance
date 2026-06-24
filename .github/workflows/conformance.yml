@@ -94,16 +94,10 @@ jobs:
           pip install -e ".[dev]"
 
       - name: install pinned ciris-* wheels from matrices/current.yaml
-        run: |
-          python -c "
-          import yaml, subprocess, sys
-          matrix = yaml.safe_load(open('matrices/current.yaml'))
-          pins = matrix['stack']
-          install_args = [f'{pkg}=={ver}' for pkg, ver in pins.items()]
-          print(f'Installing: {install_args}')
-          result = subprocess.run([sys.executable, '-m', 'pip', 'install', *install_args])
-          sys.exit(result.returncode)
-          "
+        # Retries only on a PyPI/CDN propagation race (a just-published pin not
+        # yet on this runner's edge); fails fast on a real ResolutionImpossible.
+        # See tools/install_pins.py.
+        run: python tools/install_pins.py
 
       - name: run conformance suite (py${{ matrix.python }} × ${{ matrix.backend }})
         run: |
@@ -161,20 +155,11 @@ jobs:
           pip install -e ".[dev]"
 
       - name: bundle pinned ciris-* wheels (Chaquopy-style — bypass requires-python)
-        run: |
-          python -c "
-          import yaml, subprocess, sys
-          pins = yaml.safe_load(open('matrices/current.yaml'))['stack']
-          args = [f'{pkg}=={ver}' for pkg, ver in pins.items()]
-          print(f'Bundling (--ignore-requires-python): {args}')
-          # Exactly what Chaquopy does: take the cp310-abi3 wheel and
-          # ignore the metadata floor entirely (defensive — every wheel
-          # is at >=3.10 now, but the flag costs nothing and guards
-          # against a future regression).
-          r = subprocess.run([sys.executable, '-m', 'pip', 'install',
-                              '--ignore-requires-python', *args])
-          sys.exit(r.returncode)
-          "
+        # Exactly what Chaquopy does: take the cp310-abi3 wheel and ignore the
+        # metadata floor entirely (defensive — every wheel is at >=3.10 now, but
+        # the flag costs nothing and guards a future regression). Same
+        # propagation-race retry as the core cells (tools/install_pins.py).
+        run: python tools/install_pins.py --ignore-requires-python
 
       - name: run mobile-target + cohab-init gates on py3.10
         run: |
