@@ -46,7 +46,7 @@ pytestmark = pytest.mark.fabric
 
 
 def _fabric_eviction_script(database_url: str) -> str:
-    return ceg_local_signer_preamble(database_url) + r'''
+    return ceg_local_signer_preamble(database_url, pqc=True) + r'''
 report = {"stage": "start"}
 
 # The attesting key must be in the federation directory for

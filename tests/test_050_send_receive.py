@@ -153,10 +153,14 @@ import ciris_persist as cp
 from ciris_edge.ciris_edge import init_edge_runtime
 _d = tempfile.mkdtemp()
 _seed = os.path.join(_d, "s"); open(_seed, "wb").write(secrets.token_bytes(32))
+_pqc = os.path.join(_d, "pqc"); open(_pqc, "wb").write(secrets.token_bytes(32))
 _idp = os.path.join(_d, "t.id"); open(_idp, "wb").write(b"\x00" * 64)
 cp.reset_engine()
 _k = "durable-" + secrets.token_hex(8)
-engine = cp.Engine(DB_URL, _k, local_key_id=_k, local_key_path=_seed)
+# Hybrid engine (Ed25519 + ML-DSA-65) — federation-tier emits are verified
+# Strict as of persist 10.1.1 (CIRISPersist#275).
+engine = cp.Engine(DB_URL, _k, local_key_id=_k, local_key_path=_seed,
+                   local_pqc_key_id=_k + "-pqc", local_pqc_key_path=_pqc)
 kid = engine.register_self_federation_key("agent", "durable-ref", None, None, None)
 edge = init_edge_runtime(engine, _idp, listen_addr="127.0.0.1:0")
 handle = edge.send_durable_inline_text(kid, "durable-hello")
@@ -173,11 +177,13 @@ os._exit(0)
 @pytest.mark.requires_persist
 @pytest.mark.requires_edge
 @pytest.mark.xfail(
-    get_backend_label() == "postgres",
-    reason="durable send hangs under postgres at persist 3.6.5 — 'no reactor running' "
-    "on the async outbound-enqueue (regression vs 3.6.3, alongside the #137 native-ingest "
-    "rework) → CIRISPersist#139. The sqlite path works.",
-    strict=False,
+    strict=True,
+    reason="CIRISEdge#203 — edge enqueues outbound with sender_key_id = the BARE "
+    "local_key_id (edge.signer_key_id), but persist's #247/#275 derived-key_id "
+    "floor (persist 10.1.1) registers only the DERIVED <label>-<fp> id, so the "
+    "sender FK has no federation_keys row → enqueue_outbound FOREIGN KEY "
+    "constraint failed. Cross-wheel id divergence; direct enqueue_outbound with "
+    "the derived kid works. Flips green when edge stamps the derived id.",
 )
 def test_durable_send_enqueues_to_outbound_queue():
     """A durable send returns a handle and lands in persist's edge_outbound_queue.
