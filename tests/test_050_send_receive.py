@@ -32,7 +32,7 @@ from __future__ import annotations
 import sys
 import pytest
 
-from conftest import get_backend_label, get_database_url, run_python_script
+from conftest import get_database_url, run_python_script
 
 
 def _send_receive_script(database_url: str) -> str:
@@ -108,7 +108,13 @@ def send_receive():
 @pytest.mark.requires_edge
 def test_edge_runtime_surface_present(send_receive):
     """The composed Edge exposes the send/receive + observability surface."""
-    assert send_receive["signer_key_id"] == "send-recv-key", send_receive
+    # As of edge 7.0.6 (CIRISEdge#203) the signer id is the DERIVED federation
+    # key_id `<label>-<fp>`, not the bare `local_key_id` — so durable outbound's
+    # sender FK resolves against persist's registered (derived) row. Assert the
+    # derived shape rather than the per-run fingerprint.
+    signer = send_receive["signer_key_id"]
+    assert signer.startswith("send-recv-key-"), send_receive
+    assert signer != "send-recv-key", send_receive
     assert send_receive["handler_registered"] is True
     # The per-transport parity counters Conformance#4 builds on.
     for counter in ("envelopes_sent_total", "envelopes_received_total"):
@@ -176,26 +182,20 @@ os._exit(0)
 @pytest.mark.cohabitation
 @pytest.mark.requires_persist
 @pytest.mark.requires_edge
-@pytest.mark.xfail(
-    strict=True,
-    reason="CIRISEdge#203 — edge enqueues outbound with sender_key_id = the BARE "
-    "local_key_id (edge.signer_key_id), but persist's #247/#275 derived-key_id "
-    "floor (persist 10.1.1) registers only the DERIVED <label>-<fp> id, so the "
-    "sender FK has no federation_keys row → enqueue_outbound FOREIGN KEY "
-    "constraint failed. Cross-wheel id divergence; direct enqueue_outbound with "
-    "the derived kid works. Flips green when edge stamps the derived id.",
-)
 def test_durable_send_enqueues_to_outbound_queue():
     """A durable send returns a handle and lands in persist's edge_outbound_queue.
 
-    Hard regression gate for CIRISEdge#50: the cross-wheel durable path used
-    to SIGSEGV (edge's bundled, never-`sqlite3_initialize()`d libsqlite3).
-    Closed in edge 1.0.1 via `auditwheel --exclude libsqlite3.so.0`; any
-    return of that crash fails this directly. (Postgres durable hang tracked
-    separately — CIRISPersist#139.)
+    Hard regression gate for two closed cross-wheel bugs:
+    - CIRISEdge#50: the durable path used to SIGSEGV (edge's bundled,
+      never-`sqlite3_initialize()`d libsqlite3); closed in edge 1.0.1 via
+      `auditwheel --exclude libsqlite3.so.0`.
+    - CIRISEdge#203: edge stamped the BARE `local_key_id` as the outbound
+      `sender_key_id` while persist's #247/#275 derived-key_id floor registers
+      only the DERIVED `<label>-<fp>` id, so `enqueue_outbound` FK-failed;
+      closed in edge 7.0.6 (edge now stamps the derived federation key_id).
+    Either regression fails this directly.
     """
     result = run_python_script(_durable_send_script(get_database_url()), timeout=15)
     payload = result.parsed_stdout()
     assert payload["durable_returned"] == "DurableHandle", payload
-    assert payload["enqueued"] is True, payload
     assert payload["enqueued"] is True, payload
