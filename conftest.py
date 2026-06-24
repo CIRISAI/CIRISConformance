@@ -199,6 +199,94 @@ def run_python_script(
     return result
 
 
+# ─── Version-skew clean-venv fixture ──────────────────────────────────
+# Some conformance properties are about NON-current version combos: does
+# edge tolerate an older-but-in-range persist? does pip actually REFUSE a
+# below-floor persist (proving the declared cap is real)? The current
+# matrix can't answer these — they need other versions installed in
+# isolation. This fixture builds an ephemeral venv per combo, installs the
+# requested wheels, runs a probe script inside it, and returns a structured
+# result. A resolution/install failure is RETURNED (not raised) so the
+# "known-incompatible must refuse" case can assert on it.
+
+
+@dataclass
+class SkewResult:
+    """Outcome of a version-skew install + probe."""
+
+    installed: bool          # did `pip install <combo>` succeed?
+    install_returncode: int
+    install_output: str      # combined stdout+stderr of the pip install
+    probe: dict | list | None  # parsed JSON the probe printed (None if not run)
+    probe_returncode: int | None
+
+    @property
+    def resolution_refused(self) -> bool:
+        """True when pip refused the combo as unsatisfiable (a real cap)."""
+        out = self.install_output.lower()
+        return (not self.installed) and (
+            "resolutionimpossible" in out
+            or "cannot install" in out
+            or "no matching distribution" in out
+            or "conflicting dependencies" in out
+        )
+
+
+def _run_skew(combo: dict[str, str], probe_src: str | None,
+              *, timeout: float = 300.0) -> SkewResult:
+    """Install `combo` (pkg->ver) into a throwaway venv, optionally probe it.
+
+    `combo` is installed with `--ignore-requires-python` so the py-floor
+    metadata never masks a genuine *cohabitation* outcome — we want pip's
+    DEPENDENCY resolution to be the only gate. The venv is created with
+    `--system-site-packages=False` so nothing leaks from the host.
+    """
+    import tempfile
+    import venv as _venv
+
+    workdir = tempfile.mkdtemp(prefix="ciris-skew-")
+    venv_dir = os.path.join(workdir, "venv")
+    _venv.create(venv_dir, with_pip=True, clear=True, symlinks=True)
+    py = os.path.join(venv_dir, "bin", "python")
+
+    pins = [f"{pkg}=={ver}" for pkg, ver in combo.items()]
+    install = subprocess.run(
+        [py, "-m", "pip", "install", "--disable-pip-version-check",
+         "--no-input", "--ignore-requires-python", *pins],
+        capture_output=True, text=True, timeout=timeout,
+    )
+    installed = install.returncode == 0
+    result = SkewResult(
+        installed=installed,
+        install_returncode=install.returncode,
+        install_output=install.stdout + install.stderr,
+        probe=None,
+        probe_returncode=None,
+    )
+    if installed and probe_src is not None:
+        proc = subprocess.run([py, "-c", textwrap.dedent(probe_src)],
+                              capture_output=True, text=True, timeout=timeout)
+        result.probe_returncode = proc.returncode
+        try:
+            result.probe = json.loads((proc.stdout or "").strip().splitlines()[-1])
+        except (ValueError, IndexError):
+            result.probe = {"_unparsed_stdout": proc.stdout, "_stderr": proc.stderr}
+    return result
+
+
+@pytest.fixture
+def skew_venv():
+    """Return `run(combo, probe=...) -> SkewResult`.
+
+    `combo` is a {package: version} mapping (e.g.
+    `{"ciris-persist": "10.0.0", "ciris-edge": "7.0.6"}`); `probe` is
+    optional Python source run inside the venv that should `print(json.dumps(...))`
+    its findings on the last stdout line. Heavyweight (real pip + venv), so
+    these tests live behind the `version_skew` marker / their own CI lane.
+    """
+    return _run_skew
+
+
 @pytest.fixture
 def python_subprocess():
     """Function fixture: returns the `run_python_script` helper."""
