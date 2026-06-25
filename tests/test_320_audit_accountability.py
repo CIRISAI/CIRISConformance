@@ -15,12 +15,11 @@ three-step canonical+sign+record flow through the host persist Engine. So the
 end-to-end accountability control is: **server writes audit entries → persist's
 chain verifies → a tampered chain is detected.**
 
-Status: `xfail` on **CIRISServer#93** — on the persist 10.2.0 / server 0.5.48, re-verified
-floor, every `LensAudit.log_*` fails because the server emits
-`sequence_number = 0` while persist's `audit_record_entry` requires `>= 1`
-(re-verified). The audit-log write path is broken at the wheel boundary, so the
-D02/D23 control has no working implementation to gate yet. This test asserts the
-behavior we WANT; it flips to a real gate when #93 ships a fixed server wheel.
+Real gate as of **server 0.5.49** (CIRISServer#93 closed). Earlier server wheels
+(through 0.5.48) had every `LensAudit.log_*` fail because the client emitted
+`sequence_number = 0` while persist's `audit_record_entry` requires `>= 1`; 0.5.49
+seeds the sequence correctly, so the three entries land in persist's hash-chained
+hybrid-signed audit log and `audit_verify_chain` walks them with outcome `ok`.
 """
 
 from __future__ import annotations
@@ -53,23 +52,37 @@ if not hasattr(cs, "LensAudit"):
 report = {}
 audit = cs.LensAudit(k, engine=engine)
 
-# Write a few accountability entries via the server audit surface.
+# Core D02/D23 gate: handler-action entries are accepted on BOTH backends.
+# (log_action → action_type "handler_action_speak", in the audit_log CHECK
+# vocabulary on sqlite AND postgres.) Three entries → a non-trivial chain.
 try:
-    audit.log_action("speak", "thought-1", "speak_handler", True, 42, "rationale")
-    audit.log_consent_event("grant", "stream-1", "datum", 30)
-    audit.log_wbd("ethical_boundary", "human_oversight", 3600)
+    for i in range(3):
+        audit.log_action("speak", f"thought-{i}", "speak_handler", True, 42, "rationale")
     report["entries_written"] = True
 except Exception as exc:
     report["entries_written"] = False
     report["write_error"] = str(exc)[:160]
 
 # The chain persist recorded must verify clean (no integrity break).
+# audit_verify_chain returns a dict (not a JSON string); sequences are
+# 1-based, so the walk starts at from_sequence=1.
 if report.get("entries_written"):
     try:
-        v = json.loads(engine.audit_verify_chain(k, 0, 1000))
+        v = engine.audit_verify_chain(k, 1, 1000)
+        v = v if isinstance(v, dict) else json.loads(v)
         report["chain_verify"] = v
     except Exception as exc:
         report["chain_verify"] = {"_error": str(exc)[:160]}
+
+# Backend-parity probe (CIRISPersist#283): consent_event + wisdom_based_deferral
+# action types are accepted on sqlite but rejected by the postgres audit_log
+# CHECK constraint. Record each outcome so the parity test can assert it.
+for label, fn in (("consent_event", lambda: audit.log_consent_event("grant", "stream-1", "datum", 30)),
+                  ("wbd", lambda: audit.log_wbd("ethical_boundary", "human_oversight", 3600))):
+    try:
+        fn(); report.setdefault("extra_types", {})[label] = "accepted"
+    except Exception as exc:
+        report.setdefault("extra_types", {})[label] = str(exc)[:120]
 
 report["stage"] = "done"
 print(json.dumps(report)); sys.stdout.flush()
@@ -94,17 +107,41 @@ def audit_chain():
 
 @pytest.mark.requires_persist
 @pytest.mark.requires_lens
-@pytest.mark.xfail(
-    strict=True,
-    reason="CIRISServer#93 — every LensAudit.log_* fails: the server emits "
-    "sequence_number=0 but persist's audit_record_entry requires >=1, so the "
-    "D02/D23 audit-chain write path is broken at the wheel boundary (persist "
-    "10.1.2 / server 0.5.43). Flips to a real gate when a fixed server wheel ships.",
-)
 def test_server_audit_writes_verify_clean_chain(audit_chain):
-    """D02/D23: server-written audit entries form a clean, verifiable persist chain."""
+    """D02/D23: server-written audit entries form a clean, verifiable persist chain.
+
+    Real gate as of **server 0.5.49** (CIRISServer#93 closed) — `LensAudit.log_*`
+    now seeds the audit sequence correctly (was emitting `sequence_number=0`
+    against persist's `>= 1` requirement). Three `log_action` entries land in
+    persist's hash-chained, hybrid-signed audit log, and `audit_verify_chain`
+    walks them with outcome `ok`. Uses `log_action` (a `handler_action_*` type in
+    the audit_log CHECK vocabulary on BOTH backends) so the core gate is
+    backend-agnostic — the consent/wbd action-type parity gap is asserted
+    separately below.
+    """
     assert audit_chain.get("entries_written") is True, (
         f"LensAudit could not write audit entries: {audit_chain.get('write_error')}"
     )
     v = audit_chain["chain_verify"]
-    assert v.get("valid") is True or v.get("ok") is True, v
+    # audit_verify_chain → {tenant_id, from_sequence, to_sequence,
+    #                       entries_walked, outcome: {outcome: "ok"}}
+    assert v.get("entries_walked") == 3, v
+    assert (v.get("outcome") or {}).get("outcome") == "ok", v
+
+
+@pytest.mark.requires_persist
+@pytest.mark.requires_lens
+@pytest.mark.xfail(
+    strict=False,
+    reason="CIRISPersist#283 — sqlite/postgres parity gap: LensAudit's "
+    "consent_event + wisdom_based_deferral action types are accepted on sqlite "
+    "but rejected by the postgres audit_log.action_type CHECK constraint (which "
+    "omits them). Passes on sqlite, fails on postgres — strict=False so it "
+    "xpasses on sqlite without flapping. Flips to a uniform gate when #283 aligns "
+    "the CHECK vocabulary across backends.",
+)
+def test_consent_and_wbd_action_types_accepted(audit_chain):
+    """All LensAudit action types should be accepted on every backend (CIRISPersist#283)."""
+    extra = audit_chain.get("extra_types") or {}
+    assert extra.get("consent_event") == "accepted", extra
+    assert extra.get("wbd") == "accepted", extra
