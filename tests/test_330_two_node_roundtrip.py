@@ -21,15 +21,22 @@ Status: `xfail` on **CIRISEdge#220**. The story so far:
   bootstrapping node with an uncatchable "no reactor running" Tokio panic. As of
   **edge 7.0.12** that is gone — the fixture runs clean, `prime_peer` succeeds
   (`knows_peer=True`), and the A↔B TCP interface establishes (ESTAB both ways).
-- #220 is the remaining gap: real A→B `send_inline_text` still times out at the
-  transport layer (`transport timeout after 30s`, B never receives) even with
-  both nodes primed and the interface up — the rooted-resolver mapping doesn't
-  yield a live Reticulum Link over a real (non in-process-loopback) interface
-  (`peer_reachability` stays empty, the dest's `last_seen_at` stays None).
+- #220 is the remaining gap, and edge **7.1.0** changed its *shape* without
+  closing it. The 30s transport timeout is gone — `send_inline_text` now returns
+  immediately and A reports `delivered=true` (`send_outcome="sent"`) — but the
+  message resolves to a **self-scope** publish (`PublishOutcome` `scope:
+  {kind: self}`, `holder_count: 0`, the documented §3.2 default) and is never
+  transported to the primed peer: B's handler never fires (`b_received=false`),
+  `peer_reachability` stays empty, and the dest's `last_seen_at` stays None. So
+  the wire-level cross-process delivery still doesn't happen — and the new mode
+  is more dangerous, since the send now *falsely reports success*.
 
-The fixture (two processes, identity exchange, `prime_peer` on both, delivery
-polling) runs for real today and flips to a green gate the moment cross-process
-delivery completes — no test change needed.
+This test asserts BOTH `delivered` AND `b_received`, so the silent non-delivery
+is still caught. It is `xfail(strict=True)`: it stays XFAIL while `b_received`
+is false, and the moment a wheel actually lands cross-process delivery it will
+XPASS-strict — failing CI loudly to force the flip to a real green gate (the
+signal the edge team asked for on #220). The fixture (two processes, identity
+exchange, `prime_peer` on both, delivery polling) runs for real today.
 """
 
 from __future__ import annotations
@@ -43,14 +50,15 @@ pytestmark = pytest.mark.fabric
 @pytest.mark.requires_persist
 @pytest.mark.requires_edge
 @pytest.mark.xfail(
-    reason="CIRISEdge#220 — on edge 7.0.12 the #217 abort is fixed (the fixture "
-    "runs clean, prime_peer succeeds with knows_peer=True, the A↔B TCP interface "
-    "establishes ESTAB both ways), but real A→B send_inline_text still times out at "
-    "the transport layer ('transport timeout after 30s', B never receives): the "
-    "rooted-resolver mapping doesn't yield a live Reticulum Link over a real "
-    "(non-loopback) interface (peer_reachability stays empty, dest last_seen_at "
-    "None). Flips green when #220 lands cross-process delivery.",
-    strict=False,
+    reason="CIRISEdge#220 — on edge 7.1.0 the abort (#217) and the 30s transport "
+    "timeout are both gone, but real cross-process delivery still doesn't happen: "
+    "send_inline_text returns 'sent' (A reports delivered=true) yet resolves to a "
+    "self-scope publish (PublishOutcome scope:self, holder_count:0) and never "
+    "transports to the primed peer — B's handler never fires (b_received=false), "
+    "peer_reachability stays {} and the dest last_seen_at stays None. strict=True: "
+    "stays XFAIL while b_received is false, XPASS-strict (fails CI) the moment a "
+    "wheel lands cross-process delivery — the tripwire the edge team asked for.",
+    strict=True,
 )
 def test_two_node_inline_text_round_trip(two_node_transport):
     """A→B inline-text crosses a live transport and reaches B's handler."""
