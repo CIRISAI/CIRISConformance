@@ -12,15 +12,24 @@ The `two_node_transport` fixture brings up two real edge **processes** (B
 listening on a fixed TCP port with `enable_transport=True`, A bootstrapping to
 it), exchanges their transport identities, and drives `send_inline_text(A→B)`.
 
-Status: `xfail` on **CIRISEdge#214** — cold 2-node delivery requires each side to
-*root* the other's peer mapping (key_id → reticulum dest-hash + transport
-ed25519 pubkey). Per edge's own loopback test (`tests/reticulum_loopback.rs`),
-v7.0.0 explicit-hash discovery is **out-of-band**, and edge primes the pair with
-the Rust-only `inject_rooted_peer_for_test`; the published wheel has no Python
-equivalent yet. The fixture already calls `edge.prime_peer(...)` when present, so
-this flips to a real green gate the moment CIRISEdge#214 ships that surface — no
-test change needed. The fixture infra (two processes, identity exchange, delivery
-polling) runs for real today.
+Status: `xfail` on **CIRISEdge#220**. The story so far:
+
+- #214 shipped `prime_peer` (the Python surface to root a peer's key_id →
+  reticulum dest-hash + transport ed25519 pubkey, mirroring edge's Rust-only
+  `inject_rooted_peer_for_test`).
+- #217 fixed the abort: on edge ≤7.0.11 the `prime_peer`/send path crashed the
+  bootstrapping node with an uncatchable "no reactor running" Tokio panic. As of
+  **edge 7.0.12** that is gone — the fixture runs clean, `prime_peer` succeeds
+  (`knows_peer=True`), and the A↔B TCP interface establishes (ESTAB both ways).
+- #220 is the remaining gap: real A→B `send_inline_text` still times out at the
+  transport layer (`transport timeout after 30s`, B never receives) even with
+  both nodes primed and the interface up — the rooted-resolver mapping doesn't
+  yield a live Reticulum Link over a real (non in-process-loopback) interface
+  (`peer_reachability` stays empty, the dest's `last_seen_at` stays None).
+
+The fixture (two processes, identity exchange, `prime_peer` on both, delivery
+polling) runs for real today and flips to a green gate the moment cross-process
+delivery completes — no test change needed.
 """
 
 from __future__ import annotations
@@ -34,12 +43,13 @@ pytestmark = pytest.mark.fabric
 @pytest.mark.requires_persist
 @pytest.mark.requires_edge
 @pytest.mark.xfail(
-    reason="CIRISEdge#217 — edge 7.0.11 shipped prime_peer (#214 closed), but on "
-    "a bootstrapping node the prime_peer/send link-establishment path aborts the "
-    "process with an uncatchable 'no reactor running' Tokio panic, so real A→B "
-    "delivery can't complete. The fixture exchanges identities + calls prime_peer; "
-    "this flips green when #217 fixes the runtime-context bug. (The abort is "
-    "contained in the node SUBPROCESS — it can't crash the pytest run.)",
+    reason="CIRISEdge#220 — on edge 7.0.12 the #217 abort is fixed (the fixture "
+    "runs clean, prime_peer succeeds with knows_peer=True, the A↔B TCP interface "
+    "establishes ESTAB both ways), but real A→B send_inline_text still times out at "
+    "the transport layer ('transport timeout after 30s', B never receives): the "
+    "rooted-resolver mapping doesn't yield a live Reticulum Link over a real "
+    "(non-loopback) interface (peer_reachability stays empty, dest last_seen_at "
+    "None). Flips green when #220 lands cross-process delivery.",
     strict=False,
 )
 def test_two_node_inline_text_round_trip(two_node_transport):

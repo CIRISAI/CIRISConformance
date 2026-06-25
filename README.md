@@ -177,7 +177,7 @@ Each test file is self-contained — no shared imports between test files — so
 
 ## Results
 
-Against the current pinned matrix (persist 10.2.0 / verify 7.4.0 / edge 7.0.10 / server 0.5.48), the suite runs **green on both backends** — sqlite *and* postgres, in full parity — across py3.10 + py3.12 on x86_64 and aarch64:
+Against the current pinned matrix (persist 10.2.2 / verify 7.5.0 / edge 7.0.12 / server 0.5.51), the suite runs **green on both backends** — sqlite *and* postgres, in full parity — across py3.10 + py3.12 on x86_64 and aarch64:
 
 **102 passed · 1 skipped · 2 expected-failures · 0 unexpected failures**
 
@@ -223,7 +223,7 @@ The version-skew lane (`-m version_skew`, real installs into throwaway venvs) ru
 | `test_260_cohort_member_lifecycle.py` | fabric | Family cohort member add / remove (CEG #249 G1): idempotent add, immediate vs future-dated revoke, swap, member-side read | ✅ |
 | `test_270_moderation_authority.py` | substrate | §11.10 moderation duty (CC 4.5.4): non-moderator refused at `file_moderation`; appointment edge emit; positive resolution ⏳ [persist#290](https://github.com/CIRISAI/CIRISPersist/issues/290) | ✅ |
 | `test_280_blackhole_denylist.py` | substrate | Transport abuse-source blackhole (CC 4.5): 16-byte Reticulum identity-hash width gate + list round-trip | ✅ |
-| `test_330_two_node_roundtrip.py` | fabric | Real two-node transport A→B inline-text round-trip ⏳ [edge#217](https://github.com/CIRISAI/CIRISEdge/issues/217) | ⏳ |
+| `test_330_two_node_roundtrip.py` | fabric | Real two-node transport A→B inline-text round-trip (edge#217 abort fixed; delivery still times out) ⏳ [edge#220](https://github.com/CIRISAI/CIRISEdge/issues/220) | ⏳ |
 | `test_900_bench_smoke.py` | — | Cross-wheel benchmark suite runs and reports (the benchmark tier's bit-rot gate) | ✅ |
 | `test_912_install_pins_tool.py` | — | Unit pins for the propagation-race retry helper (`tools/install_pins.py`) | ✅ |
 
