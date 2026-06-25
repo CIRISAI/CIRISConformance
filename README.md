@@ -218,10 +218,10 @@ The version-skew lane (`-m version_skew`, real installs into throwaway venvs) ru
 | `test_300_multinode_federation.py` | fabric | Multi-node over shared substrate: cross-node visibility, multi-holder discovery, per-operator eviction | ✅ |
 | `test_310_peer_admission.py` | fabric | Fail-secure peer-key enrollment: tampered envelope / corrupted signature rejected before storage | ✅ |
 | `test_320_audit_accountability.py` | fabric | Tamper-evident audit chain (compliance D02/D23): server writes → persist verifies | ✅ |
-| `test_240_reserved_prefix_admission.py` | fabric | Namespace admission: non-member cannot write a family cohort scope; CC 3.4 reserved prefixes refused (persist 10.4.0); subject_key_ids lowercase-hex residual ⏳ [persist#288](https://github.com/CIRISAI/CIRISPersist/issues/288) | ✅ |
+| `test_240_reserved_prefix_admission.py` | fabric | Namespace admission: non-member family-scope write refused; CC 3.4 reserved prefixes refused (persist 10.4.0); subject_key_ids lowercase-hex residual ⏳ [persist#293](https://github.com/CIRISAI/CIRISPersist/issues/293) | ✅ |
 | `test_250_key_grant_pqc.py` | substrate | DEK-grant PQC wrap (CC 5.1): v2 is X25519+ML-KEM-768 hybrid, v1 classical-only, no cross-version downgrade | ✅ |
 | `test_260_cohort_member_lifecycle.py` | fabric | Family cohort member add / remove (CEG #249 G1): idempotent add, immediate vs future-dated revoke, swap, member-side read | ✅ |
-| `test_270_moderation_authority.py` | substrate | §11.10 moderation duty (CC 4.5.4): non-moderator refused at `file_moderation`; appointment edge emit; positive resolution ⏳ [persist#290](https://github.com/CIRISAI/CIRISPersist/issues/290) | ✅ |
+| `test_270_moderation_authority.py` | fabric | §11.10 moderation duty (CC 4.5.4): non-moderator refused at `file_moderation`; community authority files; appoint → `is_named_moderator` → remove revokes (persist 10.4.0) | ✅ |
 | `test_280_blackhole_denylist.py` | substrate | Transport abuse-source blackhole (CC 4.5): 16-byte Reticulum identity-hash width gate + list round-trip | ✅ |
 | `test_330_two_node_roundtrip.py` | fabric | Real two-node transport A→B inline-text round-trip (edge#217 abort + 30s timeout fixed; send returns 'sent' but B never receives) ⏳ [edge#220](https://github.com/CIRISAI/CIRISEdge/issues/220) | ⏳ |
 | `test_900_bench_smoke.py` | — | Cross-wheel benchmark suite runs and reports (the benchmark tier's bit-rot gate) | ✅ |
