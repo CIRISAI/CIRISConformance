@@ -177,10 +177,14 @@ def test_list_holders_reports_local_holdings(fabric_eviction):
 
 @pytest.mark.requires_persist
 @pytest.mark.xfail(
-    reason="persist's put_blob_signing does not refuse on trust — by design. "
-    "CIRISPersist#129 (closed) exposed trust_scoring_capsule for *consumers*; the "
-    "trust×capacity intake gate is enforced edge-side at dispatch_inbound "
-    "(CIRISEdge#48) and needs a multi-node fabric fixture (Conformance#4).",
+    reason="The dispatch_inbound trust short-circuit (CIRISEdge#48/#208) IS on the "
+    "PyEdge surface as of edge 7.0.8 — set_trust_threshold / install_trust_resolver "
+    "/ dispatch_inbound_bytes — and the gate logic is correct (a hand-built hybrid "
+    "envelope passes persist's verify_hybrid_via_directory directly). BUT the "
+    "harness can't mint a valid inbound envelope: a hand-rolled envelope that "
+    "passes DIRECT verify still fails the pipeline (a subtle to_value/RawValue "
+    "re-serialization mismatch), and the gate runs AFTER verify. Needs an "
+    "edge-side build_signed_inbound_envelope helper → CIRISEdge#211.",
     strict=False,
 )
 def test_intake_gate_refuses_below_threshold(fabric_eviction):
