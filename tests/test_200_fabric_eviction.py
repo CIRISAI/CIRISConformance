@@ -177,10 +177,13 @@ def test_list_holders_reports_local_holdings(fabric_eviction):
 
 @pytest.mark.requires_persist
 @pytest.mark.xfail(
-    reason="persist's put_blob_signing does not refuse on trust — by design. "
-    "CIRISPersist#129 (closed) exposed trust_scoring_capsule for *consumers*; the "
-    "trust×capacity intake gate is enforced edge-side at dispatch_inbound "
-    "(CIRISEdge#48) and needs a multi-node fabric fixture (Conformance#4).",
+    reason="persist's put_blob_signing does not refuse on trust — by design. The "
+    "trust×capacity short-circuit is enforced edge-side at dispatch_inbound "
+    "(CIRISEdge#48, shipped in Rust) but is NOT exposed on the Python PyEdge "
+    "surface — re-verified absent on edge 7.0.7 (receive side is only "
+    "register_inline_text_handler + subscribe_*; persist has set_trust_threshold "
+    "but no installable AdmissionGate). Flips to a real gate when CIRISEdge#209 "
+    "exposes dispatch_inbound / would_admit_inbound on the wheel.",
     strict=False,
 )
 def test_intake_gate_refuses_below_threshold(fabric_eviction):
