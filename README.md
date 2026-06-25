@@ -2,19 +2,31 @@
 
 Cross-artifact conformance harness for the CIRIS federation stack — the substrate and fabric of **CEWP**, the **CIRIS Epistemic Web Platform** (pronounced "soup"): [github.com/CIRISAI/CEWP](https://github.com/CIRISAI/CEWP) · [FSD](reference/CEWP.md). It doubles as the **CEWP reference**: the specs it conforms against are vendored under [`reference/`](reference/).
 
-## What this tests
+## Why this exists
 
-This repo verifies that **independently-distributed CIRIS wheels coexist correctly in a single Python process**. The CIRIS stack ships as five separate PyO3 extension modules:
+The CIRIS stack ships as **separately-published PyO3 extension wheels** — storage, crypto, transport, node-serving — each built and released on its own cadence, but designed to run **together inside one Python process** (the CIRIS 3.0 cohabitation EPIC, [CIRISPersist#85](https://github.com/CIRISAI/CIRISPersist/issues/85)). That's how they run in production: one process, one persist `Engine`, one edge runtime, all sharing substrate handles.
 
-- `ciris-persist` — substrate (federation_keys directory, outbound queue, etc.)
-- `ciris-verify` (`ciris-keyring` + `ciris-crypto`) — hybrid Ed25519 + ML-DSA-65 signing
-- `ciris-edge` — federation wire transport
-- `ciris-node-core` (planned) — node-mode serving + WA UX
-- `ciris-lens-core` — capacity-score + Coherence-Ratchet detectors + cohort manifold conformity + signed detection events (the science layer; matrix entry from v0.2.0)
+Cohabitation has failure modes that **exist nowhere else** and that no single repo can test:
 
-These wheels are built independently but designed to **cohabit** in one Python interpreter — the CIRIS 3.0 cohabitation EPIC (CIRISPersist#85). Cohabitation is its own engineering surface: shared substrate handles, cross-module type identity, version-skew compatibility, import order. Per-crate unit tests and per-crate integration tests cannot cover this surface — they all run in single-binary test environments where cross-module problems vanish by construction.
+- **Cross-module type identity** — two wheels can each define what looks like "the same" type, but the interpreter treats them as distinct and rejects the hand-off.
+- **Shared-substrate handles** — opaque capsules passed between wheels (an edge runtime built on a persist Engine) must agree on shape and lifetime.
+- **Version skew** — wheel A pinned at one version must cohabit with wheel B at a different in-range version.
+- **Wire-format agreement** — the canonical bytes one wheel signs must be byte-identical to what another wheel verifies.
 
-This harness exists to close that test gap.
+Each wheel's own test suite compiles everything into a **single combined build**, where these cross-wheel problems vanish by construction. This harness installs the **real, separately-published wheels together** and drives them — the only place those bugs actually surface.
+
+It does **not** test spec text or mocks. Every assertion calls a real published wheel and checks its behavior; where a wheel is missing a feature or has a bug, the harness files it upstream and marks the test an *expected failure* tied to that issue (never a skip, never a workaround — see ["expected failure" below](#why-tests-are-marked-expected-failure-instead-of-skipped)).
+
+## What it tests — the wheels under test
+
+| Wheel | Role |
+|---|---|
+| `ciris-persist` | substrate — federation-key directory, blob storage, audit chain, outbound queue, admission gates |
+| `ciris-verify` (`ciris-keyring` + `ciris-crypto`) | crypto — hybrid Ed25519 + ML-DSA-65 sign/verify, Merkle transparency log, RNS dest-hash |
+| `ciris-edge` | transport — federation wire dispatch, durable send, inbound trust gate |
+| `ciris-server` | node-serving — absorbs lens-core (capacity scorer, detection, egress filter), reconsideration-DoS guard, audit-log client |
+
+The exact versions under test are pinned in [`matrices/current.yaml`](matrices/current.yaml). `ciris-node-core` and `ciris-registry` join the matrix when they ship federation-relevant Python surfaces.
 
 ## Terminology
 
@@ -39,21 +51,29 @@ See [`docs/FABRIC_CONFORMANCE.md`](docs/FABRIC_CONFORMANCE.md) for the tier cove
 
 Beyond cohabitation, this harness verifies the three [CEG 0.1](https://github.com/CIRISAI/CIRISRegistry/tree/main/FSD/CEG) conformance profiles (§0.2) — **CCP** (producer), **CCC** (consumer), **CCS** (substrate). See [`docs/CEG_CONFORMANCE.md`](docs/CEG_CONFORMANCE.md) for the profile definitions, the §0.5 fractal-self reading discipline, and a coverage matrix tracking which CEG paths are tested today vs. pending an upstream surface. Profile tests carry the `ceg` marker plus `ccp`/`ccc`/`ccs`; run one with `pytest -m ccc`.
 
+## Compliance controls
+
+Several [CIRIS compliance controls](https://ciris.ai/compliance) reduce to a **substrate-enforced** mechanism — a behaviour a published wheel actually gates, not agent-side policy or governance. Those get a real conformance test driving the wheel: reconsideration anti-abuse (`test_220`, the F-AV-RECONSIDER-DOS guard), fail-secure peer-key enrollment (`test_310`), the §0.5–§0.7 canonical-bytes rejection rules (`test_120`), and the tamper-evident audit chain (`test_320`, D02/D23 — currently ⏳ on [server#93](https://github.com/CIRISAI/CIRISServer/issues/93)). Controls that live in the agent (conscience faculties, the WiseBus, the decision pipeline) are out of scope here — they're tested in CIRISAgent's own suite, not against the substrate wheels.
+
 ## How to run
 
 ```bash
-# From a checkout of this repo:
-pip install -e ".[dev]"
-pytest
+pip install -e ".[dev]"                 # the harness + dev tooling
+python tools/install_pins.py            # install the matrices/current.yaml wheels (with propagation-race retry)
+pytest                                  # run everything (defaults to sqlite::memory:)
 
-# Against a specific wheel matrix (CI default):
-pytest --matrix matrices/current.yaml
+# Drive the postgres backend instead of sqlite (both must pass — full parity):
+CIRIS_CONFORMANCE_DATABASE_URL="postgres://user:pw@localhost:5432/conformance" pytest
 
-# Single scenario:
+# A tier, a profile, or one scenario:
+pytest -m substrate        # cohabitation + CEG profiles
+pytest -m fabric           # replication discipline + scaling factors
+pytest -m ccc              # one CEG profile (producer/consumer/substrate)
+pytest -m version_skew     # the clean-venv version-skew lane (builds throwaway venvs; slow)
 pytest tests/test_030_cohabitation_init.py -v
 ```
 
-Each scenario runs in a fresh Python subprocess because PyO3 type registration is process-global — once a module is imported, you cannot rewind it (the mechanics are in the first drop-down below).
+Each scenario runs in a **fresh Python subprocess**: PyO3 type registration is process-global, so once a wheel is imported you cannot rewind it — a test that imported a wheel would contaminate the next (mechanics in the first drop-down below). The same suite runs against **both** sqlite and postgres in CI; backend-agnostic invariants must hold identically on each.
 
 ## How this works
 
@@ -107,9 +127,11 @@ Signatures use both a standard algorithm and a post-quantum one, so they stay va
 <details>
 <summary><b>Why tests are marked "expected failure" instead of skipped</b></summary>
 
-A *skipped* test silently hides untested code, which is easy to mistake for "it works." This suite never skips. A test either **passes** against the real library, or it's marked an **expected failure** linked to a specific bug report we've filed upstream.
+A *skipped* test silently hides untested code, which is easy to mistake for "it works." So this suite never skips to paper over a **missing feature or a bug** — a test either **passes** against the real wheel, or it's marked an **expected failure** linked to a specific upstream issue we've filed. The moment the upstream fix ships, that test automatically becomes a real, enforced check.
 
-The rule: when a library is missing a feature or has a bug, we **report it upstream and mark the test expected-to-fail** — we don't paper over it with a workaround that tests something easier. The moment the upstream fix ships, that test automatically becomes a real, enforced check.
+The only legitimate skip is a **hardware/environment precondition the wheel can't supply** — e.g. the HSM-contrast cell that needs a real TPM. That's not a hidden gap; it's "this host can't exercise this path," and it runs for real on a host that can.
+
+The rule: when a wheel is missing a feature or has a bug, we **report it upstream and mark the test expected-to-fail** — never a workaround that tests something easier.
 </details>
 
 <details>
@@ -153,31 +175,60 @@ The reusable workflow installs the under-test wheel + pinned siblings into a cle
 
 Each test file is self-contained — no shared imports between test files — so any failure reproduces in isolation and can be referenced verbatim in a bug report.
 
+## Results
+
+Against the current pinned matrix (persist 10.1.2 / verify 7.4.0 / edge 7.0.8 / server 0.5.43), the suite runs **green on both backends** — sqlite *and* postgres, in full parity — across py3.10 + py3.12 on x86_64 and aarch64:
+
+**99 passed · 1 skipped · 3 expected-failures · 0 unexpected failures**
+
+- The **1 skip** is the HSM hardware-contrast cell, which only runs on a host with a real TPM (not a wheel gate — environment-conditional, correct).
+- The **3 expected-failures** are each blocked on a *filed* upstream issue and flip to a real enforced gate the moment that upstream ships:
+  | xfail | Blocked on |
+  |---|---|
+  | `test_050` true loopback delivery | needs a 2-node transport fixture — [Conformance#4](https://github.com/CIRISAI/CIRISConformance/issues/4) |
+  | `test_200` intake-gate refusal | edge needs a build-signed-inbound-envelope helper — [CIRISEdge#211](https://github.com/CIRISAI/CIRISEdge/issues/211) |
+  | `test_320` audit-chain accountability | `LensAudit.log_*` emits `sequence_number=0`, persist needs `≥1` — [CIRISServer#93](https://github.com/CIRISAI/CIRISServer/issues/93) |
+
+The version-skew lane (`-m version_skew`, real installs into throwaway venvs) runs as its own CI job and is green.
+
 ## Test-case index
+
+`✅` = real enforced gate · `⏳` = expected-failure tracked to a filed upstream issue.
 
 | File | Tier | Verifies | Status |
 |---|---|---|---|
-| `test_010_solo_imports.py` | substrate | Each ciris-* wheel imports cleanly alone | ✅ |
-| `test_020_pairwise_imports.py` | substrate | Any two ciris-* wheels coexist in one process | ✅ |
+| `test_010_solo_imports.py` | substrate | Each wheel (persist/verify/edge/server) imports cleanly alone | ✅ |
+| `test_020_pairwise_imports.py` | substrate | Any two wheels coexist in one process (all pairs incl. `*-server`) | ✅ |
 | `test_030_cohabitation_init.py` | substrate | `edge.init_edge_runtime(persist.Engine)` capsule handshake | ✅ |
 | `test_040_pyclass_identity.py` | substrate | Cross-module PyClass identity invariants | ✅ |
-| `test_050_send_receive.py` | substrate | Send/receive surface; ephemeral refuses cleanly; loopback + durable `xfail` ([edge#50](https://github.com/CIRISAI/CIRISEdge/issues/50)) | ✅ |
-| `test_060_version_skew.py` | substrate | Compatible / incompatible version-pair matrix | `xfail` (needs clean-venv fixture) |
+| `test_050_send_receive.py` | substrate | Send/receive surface; durable send (sender FK after [edge#203](https://github.com/CIRISAI/CIRISEdge/issues/203)); loopback ⏳ [Conformance#4](https://github.com/CIRISAI/CIRISConformance/issues/4) | ✅ |
+| `test_060_version_skew.py` | substrate | In-range cohabitation tolerance + below-floor pip refusal (clean-venv per case) | ✅ |
 | `test_070_hsm_transport_identity.py` | substrate | `hardware_hsm_only` cohab init → 32-byte transport identity | ✅ |
 | `test_080_mobile_target.py` | substrate | Android/Chaquopy bundling (abi3), keystore taxonomy, bring-up gate | ✅ |
-| `test_100_ccc_hybrid_verify.py` | substrate (CCC) | Hybrid-signature verify policy matrix | ✅ |
+| `test_100_ccc_hybrid_verify.py` | substrate (CCC) | Hybrid-signature verify policy matrix (strict / ed25519-fallback / soft-freshness) | ✅ |
 | `test_110_ccs_blob_integrity.py` | substrate (CCS) | Blob full-SHA integrity + signed round-trip | ✅ |
-| `test_120_ccp_canonical_bytes.py` | substrate (CCP) | Canonical-bytes determinism + sign/verify round-trip | ✅ (§0.5 reject `xfail` [persist#126](https://github.com/CIRISAI/CIRISPersist/issues/126)) |
-| `test_130_multimedia.py` | substrate + fabric | CEG 0.3 multimedia: media blob storage, perceptual-hash gate, takedown scheduling, key-grant retire, budget eviction | ✅ (takedown local-holder `xfail` [persist#130](https://github.com/CIRISAI/CIRISPersist/issues/130)) |
-| `test_200_fabric_eviction.py` | fabric | Per-actor eviction + `withdraws`, sweeper, trust threshold | ✅ (holders/gate `xfail` [persist#130](https://github.com/CIRISAI/CIRISPersist/issues/130)/[#129](https://github.com/CIRISAI/CIRISPersist/issues/129)) |
-| `test_210_fabric_scaling_factors.py` | fabric | Scaling-factor contract (multiplier curve, `k_eff`, retention) | ✅ |
+| `test_120_ccp_canonical_bytes.py` | substrate (CCP) | Canonical-bytes determinism + §0.5/§0.6/§0.7 rejection (timestamp / hex / future) | ✅ |
+| `test_130_multimedia.py` | substrate + fabric | CEG multimedia: media blob storage, perceptual-hash gate, takedown scheduling, key-grant retire, budget eviction | ✅ |
+| `test_140_https_transport.py` | substrate | HTTPS transport stands up (mTLS + bearer config; clean refusal to unresolvable peer) | ✅ |
+| `test_150_rns_dest_hash.py` | substrate | RNS destination-hash golden vectors + wheel-recompute cross-check ([verify#28](https://github.com/CIRISAI/CIRISVerify/issues/28)) | ✅ |
+| `test_200_fabric_eviction.py` | fabric | Per-actor eviction + `withdraws`, sweeper, trust threshold; intake-gate refusal ⏳ [edge#211](https://github.com/CIRISAI/CIRISEdge/issues/211) | ✅ |
+| `test_210_fabric_scaling_factors.py` | fabric | Scaling-factor contract (multiplier curve, `k_eff` corridor, retention) | ✅ |
+| `test_211_fav_cost_asymmetry.py` | fabric | F-AV cost-asymmetry contract (Sybil cost floors, dormant-vTPM, the 7-finding catalog) | ✅ |
+| `test_220_reconsider_dos.py` | fabric | Reconsideration anti-abuse (F-AV-RECONSIDER-DOS): actor-budget + harassment-cluster gates | ✅ |
+| `test_300_multinode_federation.py` | fabric | Multi-node over shared substrate: cross-node visibility, multi-holder discovery, per-operator eviction | ✅ |
+| `test_310_peer_admission.py` | fabric | Fail-secure peer-key enrollment: tampered envelope / corrupted signature rejected before storage | ✅ |
+| `test_320_audit_accountability.py` | fabric | Tamper-evident audit chain (compliance D02/D23): server writes → persist verifies ⏳ [server#93](https://github.com/CIRISAI/CIRISServer/issues/93) | ⏳ |
+| `test_900_bench_smoke.py` | — | Cross-wheel benchmark suite runs and reports (the benchmark tier's bit-rot gate) | ✅ |
+| `test_912_install_pins_tool.py` | — | Unit pins for the propagation-race retry helper (`tools/install_pins.py`) | ✅ |
+
+Two diagnostic tools live in [`tools/`](tools/): `hang_diagnose.py` (root-causes native-code hangs in cohabiting wheels — backtraces below the interpreter) and `install_pins.py` (retries the matrix install through PyPI propagation races, fails fast on real conflicts). See [`tools/README.md`](tools/README.md).
 
 ## Adding a new crate
 
-When CIRISNodeCore / CIRISLensCore / CIRISRegistry start shipping wheels, add them to:
+When CIRISNodeCore / CIRISRegistry start shipping federation-relevant wheels (lens-core is already folded into `ciris-server`), add them to:
 
-1. `matrices/current.yaml` — pin the version
-2. `conftest.py::ALL_WHEELS` — register in the pairwise import test
+1. `matrices/current.yaml` — pin the version under `stack`
+2. `conftest.py` — register in the wheel list driving the pairwise import test + the `requires_*` marker map
 3. New test files for the crate-specific cohabitation invariants
 
 The harness shape doesn't change.
