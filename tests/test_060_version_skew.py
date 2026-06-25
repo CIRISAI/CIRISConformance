@@ -33,7 +33,7 @@ import pytest
 
 # Pinned points of the edge-7.0.x ↔ persist-10.x skew envelope. When the
 # matrix floor moves to edge 8 / persist 11, refresh these three constants.
-_EDGE = "7.0.7"
+_EDGE = "7.0.8"
 _PERSIST_RANGE_FLOOR = "10.0.0"     # the >= bound edge 7.0.7 declares
 _PERSIST_RANGE_CEILING = "10.1.2"   # current top of the 10.x line
 _PERSIST_BELOW_FLOOR = "9.11.0"     # one minor under the >=10 cap → must refuse
