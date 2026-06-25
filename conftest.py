@@ -352,9 +352,19 @@ def federation(tmp_path):
     the `report` dict the body fills. Steps run sequentially and observe each
     other's federation state.
     """
-    db_file = tmp_path / "federation.db"
+    # sqlite:// + /abs/path → 4 leading slashes (see _make_federation).
+    return _make_federation(tmp_path / "federation.db")
+
+
+def _make_federation(db_file):
+    """Build a `node(...)` callable bound to one shared sqlite substrate file.
+
+    Shared by the function-scoped `federation` fixture (above) and the
+    module-scoped `federation_module` fixture (below) — same multi-node-over-one-
+    substrate semantics, differing only in lifetime.
+    """
     db_file.touch()
-    db_url = f"sqlite:///{db_file}"  # sqlite:// + /abs/path → 4 leading slashes
+    db_url = f"sqlite:///{db_file}"
 
     def node(body: str, *, identity_ref: str = "node", **context):
         script = _federation_node_script(db_url, identity_ref, context, body)
@@ -371,6 +381,19 @@ def federation(tmp_path):
 
     node.db_url = db_url
     return node
+
+
+@pytest.fixture(scope="module")
+def federation_module(tmp_path_factory):
+    """Module-scoped `federation` — one shared substrate for a whole module.
+
+    Identical contract to `federation` (`node(body, *, identity_ref, **context)`)
+    but a single shared sqlite file lives for the module, so a multi-step
+    multi-node scenario (register N member nodes, then drive a founder node over
+    them) is built once and asserted by many tests without re-running the nodes.
+    """
+    db_file = tmp_path_factory.mktemp("federation_module") / "federation.db"
+    return _make_federation(db_file)
 
 
 # ─── Two-node real-transport round-trip fixture ───────────────────────

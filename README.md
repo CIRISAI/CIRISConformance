@@ -53,7 +53,7 @@ Beyond cohabitation, this harness verifies the three [CEG 0.1](https://github.co
 
 ## Compliance controls
 
-Several [CIRIS compliance controls](https://ciris.ai/compliance) reduce to a **substrate-enforced** mechanism — a behaviour a published wheel actually gates, not agent-side policy or governance. Those get a real conformance test driving the wheel: reconsideration anti-abuse (`test_220`, the F-AV-RECONSIDER-DOS guard), fail-secure peer-key enrollment (`test_310`), the §0.5–§0.7 canonical-bytes rejection rules (`test_120`), and the tamper-evident audit chain (`test_320`, D02/D23 — currently ⏳ on [server#93](https://github.com/CIRISAI/CIRISServer/issues/93)). Controls that live in the agent (conscience faculties, the WiseBus, the decision pipeline) are out of scope here — they're tested in CIRISAgent's own suite, not against the substrate wheels.
+Several [CIRIS compliance controls](https://ciris.ai/compliance) reduce to a **substrate-enforced** mechanism — a behaviour a published wheel actually gates, not agent-side policy or governance. Those get a real conformance test driving the wheel: reconsideration anti-abuse (`test_220`, the F-AV-RECONSIDER-DOS guard), fail-secure peer-key enrollment (`test_310`), the §0.5–§0.7 canonical-bytes rejection rules (`test_120`), and the tamper-evident audit chain (`test_320`, D02/D23), and family cohort member add/remove (`test_260`, CEG #249 G1). Controls that live in the agent (conscience faculties, the WiseBus, the decision pipeline) are out of scope here — they're tested in CIRISAgent's own suite, not against the substrate wheels.
 
 ## How to run
 
@@ -217,7 +217,13 @@ The version-skew lane (`-m version_skew`, real installs into throwaway venvs) ru
 | `test_220_reconsider_dos.py` | fabric | Reconsideration anti-abuse (F-AV-RECONSIDER-DOS): actor-budget + harassment-cluster gates | ✅ |
 | `test_300_multinode_federation.py` | fabric | Multi-node over shared substrate: cross-node visibility, multi-holder discovery, per-operator eviction | ✅ |
 | `test_310_peer_admission.py` | fabric | Fail-secure peer-key enrollment: tampered envelope / corrupted signature rejected before storage | ✅ |
-| `test_320_audit_accountability.py` | fabric | Tamper-evident audit chain (compliance D02/D23): server writes → persist verifies ⏳ [server#93](https://github.com/CIRISAI/CIRISServer/issues/93) | ⏳ |
+| `test_320_audit_accountability.py` | fabric | Tamper-evident audit chain (compliance D02/D23): server writes → persist verifies | ✅ |
+| `test_240_reserved_prefix_admission.py` | fabric | Namespace admission: non-member cannot write a family cohort scope; CC 3.4 reserved prefixes ⏳ [persist#288](https://github.com/CIRISAI/CIRISPersist/issues/288) | ✅ |
+| `test_250_key_grant_pqc.py` | substrate | DEK-grant PQC wrap (CC 5.1): v2 is X25519+ML-KEM-768 hybrid, v1 classical-only, no cross-version downgrade | ✅ |
+| `test_260_cohort_member_lifecycle.py` | fabric | Family cohort member add / remove (CEG #249 G1): idempotent add, immediate vs future-dated revoke, swap, member-side read | ✅ |
+| `test_270_moderation_authority.py` | substrate | §11.10 moderation duty (CC 4.5.4): non-moderator refused at `file_moderation`; appointment edge emit; positive resolution ⏳ [persist#290](https://github.com/CIRISAI/CIRISPersist/issues/290) | ✅ |
+| `test_280_blackhole_denylist.py` | substrate | Transport abuse-source blackhole (CC 4.5): 16-byte Reticulum identity-hash width gate + list round-trip | ✅ |
+| `test_330_two_node_roundtrip.py` | fabric | Real two-node transport A→B inline-text round-trip ⏳ [edge#217](https://github.com/CIRISAI/CIRISEdge/issues/217) | ⏳ |
 | `test_900_bench_smoke.py` | — | Cross-wheel benchmark suite runs and reports (the benchmark tier's bit-rot gate) | ✅ |
 | `test_912_install_pins_tool.py` | — | Unit pins for the propagation-race retry helper (`tools/install_pins.py`) | ✅ |
 
