@@ -132,17 +132,12 @@ def test_ephemeral_send_to_unresolvable_peer_refuses_cleanly(send_receive):
     assert eph.get("unreachable") is True, eph
 
 
-@pytest.mark.cohabitation
-@pytest.mark.requires_persist
-@pytest.mark.requires_edge
-@pytest.mark.xfail(
-    reason="In-process Reticulum has no self-route (no peer announce / directory "
-    "resolution) — true loopback delivery needs a multi-node fixture (Conformance#4)",
-    strict=False,
-)
-def test_inline_text_loopback_round_trip(send_receive):
-    """A message sent to one's own key is observed by the registered handler."""
-    assert send_receive["loopback_delivered"] is True, send_receive
+# NOTE: a single-process "send to self" can never deliver — Reticulum has no
+# self-route. The property that actually matters (delivery between two nodes over
+# a live transport) is exercised for real in test_330_two_node_roundtrip.py via
+# the `two_node_transport` fixture, so the misleading single-process loopback
+# xfail was retired in favour of that real two-node gate (xfail on CIRISEdge#214
+# until the Python peer-rooting surface ships).
 
 
 def _durable_send_script(database_url: str) -> str:
