@@ -34,11 +34,12 @@ pytestmark = pytest.mark.fabric
 @pytest.mark.requires_persist
 @pytest.mark.requires_edge
 @pytest.mark.xfail(
-    reason="CIRISEdge#214 — cold 2-node delivery needs a Python peer-rooting "
-    "surface (prime_peer). v7.0.0 explicit-hash discovery is out-of-band; edge's "
-    "own loopback test roots the pair via the Rust-only inject_rooted_peer_for_test, "
-    "which isn't on the published wheel. The fixture calls edge.prime_peer(...) when "
-    "present — this flips green when #214 ships it.",
+    reason="CIRISEdge#217 — edge 7.0.11 shipped prime_peer (#214 closed), but on "
+    "a bootstrapping node the prime_peer/send link-establishment path aborts the "
+    "process with an uncatchable 'no reactor running' Tokio panic, so real A→B "
+    "delivery can't complete. The fixture exchanges identities + calls prime_peer; "
+    "this flips green when #217 fixes the runtime-context bug. (The abort is "
+    "contained in the node SUBPROCESS — it can't crash the pytest run.)",
     strict=False,
 )
 def test_two_node_inline_text_round_trip(two_node_transport):

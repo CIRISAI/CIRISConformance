@@ -131,17 +131,14 @@ def test_server_audit_writes_verify_clean_chain(audit_chain):
 
 @pytest.mark.requires_persist
 @pytest.mark.requires_lens
-@pytest.mark.xfail(
-    strict=False,
-    reason="CIRISPersist#283 — sqlite/postgres parity gap: LensAudit's "
-    "consent_event + wisdom_based_deferral action types are accepted on sqlite "
-    "but rejected by the postgres audit_log.action_type CHECK constraint (which "
-    "omits them). Passes on sqlite, fails on postgres — strict=False so it "
-    "xpasses on sqlite without flapping. Flips to a uniform gate when #283 aligns "
-    "the CHECK vocabulary across backends.",
-)
 def test_consent_and_wbd_action_types_accepted(audit_chain):
-    """All LensAudit action types should be accepted on every backend (CIRISPersist#283)."""
+    """All LensAudit action types are accepted on every backend.
+
+    Real gate as of **persist 10.2.1** (CIRISPersist#283 closed) — the postgres
+    `audit_log.action_type` CHECK vocabulary now includes `consent_event` and
+    `wisdom_based_deferral`, so `LensAudit.log_consent_event` / `log_wbd` land on
+    BOTH sqlite and postgres (was sqlite-only; the CHECK omitted them on postgres).
+    """
     extra = audit_chain.get("extra_types") or {}
     assert extra.get("consent_event") == "accepted", extra
     assert extra.get("wbd") == "accepted", extra
