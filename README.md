@@ -177,16 +177,15 @@ Each test file is self-contained — no shared imports between test files — so
 
 ## Results
 
-Against the current pinned matrix (persist 10.1.2 / verify 7.4.0 / edge 7.0.8 / server 0.5.43), the suite runs **green on both backends** — sqlite *and* postgres, in full parity — across py3.10 + py3.12 on x86_64 and aarch64:
+Against the current pinned matrix (persist 10.2.0 / verify 7.4.0 / edge 7.0.10 / server 0.5.48), the suite runs **green on both backends** — sqlite *and* postgres, in full parity — across py3.10 + py3.12 on x86_64 and aarch64:
 
-**99 passed · 1 skipped · 3 expected-failures · 0 unexpected failures**
+**102 passed · 1 skipped · 2 expected-failures · 0 unexpected failures**
 
 - The **1 skip** is the HSM hardware-contrast cell, which only runs on a host with a real TPM (not a wheel gate — environment-conditional, correct).
-- The **3 expected-failures** are each blocked on a *filed* upstream issue and flip to a real enforced gate the moment that upstream ships:
+- The **2 expected-failures** are each blocked on a *filed* upstream issue and flip to a real enforced gate the moment that upstream ships:
   | xfail | Blocked on |
   |---|---|
   | `test_050` true loopback delivery | needs a 2-node transport fixture — [Conformance#4](https://github.com/CIRISAI/CIRISConformance/issues/4) |
-  | `test_200` intake-gate refusal | edge needs a build-signed-inbound-envelope helper — [CIRISEdge#211](https://github.com/CIRISAI/CIRISEdge/issues/211) |
   | `test_320` audit-chain accountability | `LensAudit.log_*` emits `sequence_number=0`, persist needs `≥1` — [CIRISServer#93](https://github.com/CIRISAI/CIRISServer/issues/93) |
 
 The version-skew lane (`-m version_skew`, real installs into throwaway venvs) runs as its own CI job and is green.
@@ -211,7 +210,8 @@ The version-skew lane (`-m version_skew`, real installs into throwaway venvs) ru
 | `test_130_multimedia.py` | substrate + fabric | CEG multimedia: media blob storage, perceptual-hash gate, takedown scheduling, key-grant retire, budget eviction | ✅ |
 | `test_140_https_transport.py` | substrate | HTTPS transport stands up (mTLS + bearer config; clean refusal to unresolvable peer) | ✅ |
 | `test_150_rns_dest_hash.py` | substrate | RNS destination-hash golden vectors + wheel-recompute cross-check ([verify#28](https://github.com/CIRISAI/CIRISVerify/issues/28)) | ✅ |
-| `test_200_fabric_eviction.py` | fabric | Per-actor eviction + `withdraws`, sweeper, trust threshold; intake-gate refusal ⏳ [edge#211](https://github.com/CIRISAI/CIRISEdge/issues/211) | ✅ |
+| `test_200_fabric_eviction.py` | fabric | Per-actor eviction + `withdraws`, eviction sweeper, trust-threshold setter | ✅ |
+| `test_230_intake_gate.py` | fabric | Trust × capacity intake gate: low-trust sender refused at edge `dispatch_inbound` (`trust_short_circuited`) | ✅ |
 | `test_210_fabric_scaling_factors.py` | fabric | Scaling-factor contract (multiplier curve, `k_eff` corridor, retention) | ✅ |
 | `test_211_fav_cost_asymmetry.py` | fabric | F-AV cost-asymmetry contract (Sybil cost floors, dormant-vTPM, the 7-finding catalog) | ✅ |
 | `test_220_reconsider_dos.py` | fabric | Reconsideration anti-abuse (F-AV-RECONSIDER-DOS): actor-budget + harassment-cluster gates | ✅ |
