@@ -20,7 +20,7 @@ The current skew envelope (edge 7.0.x caps `ciris-persist >=10.0.0,<11`):
 | Case | Combo | Expectation |
 |---|---|---|
 | range-floor | edge 7.0.7 + persist **10.0.0** (range floor) | cohabits |
-| range-ceiling | edge 7.0.7 + persist **10.1.2** (current top) | cohabits |
+| range-ceiling | edge 7.0.7 + persist **10.2.0** (current top) | cohabits |
 | below-floor | edge 7.0.7 + persist **9.11.0** (< the >=10 cap) | pip REFUSES |
 
 Heavyweight (real pip + venv per case), so they carry `@pytest.mark.version_skew`
@@ -33,9 +33,9 @@ import pytest
 
 # Pinned points of the edge-7.0.x ↔ persist-10.x skew envelope. When the
 # matrix floor moves to edge 8 / persist 11, refresh these three constants.
-_EDGE = "7.0.8"
+_EDGE = "7.0.10"
 _PERSIST_RANGE_FLOOR = "10.0.0"     # the >= bound edge 7.0.7 declares
-_PERSIST_RANGE_CEILING = "10.1.2"   # current top of the 10.x line
+_PERSIST_RANGE_CEILING = "10.2.0"   # current top of the 10.x line
 _PERSIST_BELOW_FLOOR = "9.11.0"     # one minor under the >=10 cap → must refuse
 
 # A probe that proves real cohabitation, not just successful install: both
@@ -68,7 +68,7 @@ def test_edge_cohabits_with_range_floor_persist(skew_venv):
 
 
 def test_edge_cohabits_with_range_ceiling_persist(skew_venv):
-    """edge 7.0.7 cohabits with persist 10.1.2 — the current top of the 10.x line."""
+    """edge 7.0.7 cohabits with persist 10.2.0 — the current top of the 10.x line."""
     r = skew_venv({"ciris-persist": _PERSIST_RANGE_CEILING, "ciris-edge": _EDGE},
                   _COHAB_PROBE)
     assert r.installed, f"range-ceiling combo failed to install:\n{r.install_output[-1500:]}"

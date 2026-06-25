@@ -15,7 +15,7 @@ three-step canonical+sign+record flow through the host persist Engine. So the
 end-to-end accountability control is: **server writes audit entries → persist's
 chain verifies → a tampered chain is detected.**
 
-Status: `xfail` on **CIRISServer#93** — on the persist 10.1.2 / server 0.5.43
+Status: `xfail` on **CIRISServer#93** — on the persist 10.2.0 / server 0.5.48, re-verified
 floor, every `LensAudit.log_*` fails because the server emits
 `sequence_number = 0` while persist's `audit_record_entry` requires `>= 1`
 (re-verified). The audit-log write path is broken at the wheel boundary, so the

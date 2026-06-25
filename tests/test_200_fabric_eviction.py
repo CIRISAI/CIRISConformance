@@ -175,20 +175,9 @@ def test_list_holders_reports_local_holdings(fabric_eviction):
     )
 
 
-@pytest.mark.requires_persist
-@pytest.mark.xfail(
-    reason="The dispatch_inbound trust short-circuit (CIRISEdge#48/#208) IS on the "
-    "PyEdge surface as of edge 7.0.8 — set_trust_threshold / install_trust_resolver "
-    "/ dispatch_inbound_bytes — and the gate logic is correct (a hand-built hybrid "
-    "envelope passes persist's verify_hybrid_via_directory directly). BUT the "
-    "harness can't mint a valid inbound envelope: a hand-rolled envelope that "
-    "passes DIRECT verify still fails the pipeline (a subtle to_value/RawValue "
-    "re-serialization mismatch), and the gate runs AFTER verify. Needs an "
-    "edge-side build_signed_inbound_envelope helper → CIRISEdge#211.",
-    strict=False,
-)
-def test_intake_gate_refuses_below_threshold(fabric_eviction):
-    """§1.1: a low-trust source is refused at the intake gate (edge dispatch_inbound)."""
-    assert fabric_eviction["admitted_under_max_threshold"] is False, (
-        "write was admitted under trust threshold 1.0 — the intake gate is not enforcing"
-    )
+# The trust × capacity intake gate (a low-trust source refused at edge's
+# dispatch_inbound) is exercised as a real gate in test_230_intake_gate.py —
+# it needs edge's build_signed_inbound_envelope (CIRISEdge#211, edge 7.0.10),
+# not persist's blob path, so it lives in its own file. persist's
+# put_blob_signing intentionally does NOT refuse on trust (the gate is
+# edge-side); this file no longer asserts a non-existent persist refusal.
