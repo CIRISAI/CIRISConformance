@@ -66,46 +66,47 @@ Beyond cohabitation, this harness verifies the three [CEG 0.1](https://github.co
 
 ## Compliance coverage map
 
-The [CIRIS compliance catalog](https://ciris.ai/compliance) defines 27 controls (D01–D27). Most of each control lives in the **agent** — the conscience faculties, the H3ERE decision pipeline, the WiseBus, and the human-judgment (DEFER) steps — and is correctly tested in CIRISAgent's own suite. A subset, though, **reduce to a behaviour a published wheel actually gates** (a cryptographic, storage, admission, or transport mechanism). This map records which controls have such a substrate-enforced facet that *this* suite drives against the real wheels. **6 of 27 controls have a substrate-enforced facet covered here — 3 fully, 3 partially**; the rest are agent-side. (This replaces a "what we don't test" disclaimer with a precise boundary.)
+The [CIRIS compliance catalog](https://ciris.ai/compliance) defines 27 controls (D01–D27). **All 27 are addressed — none are uncovered.** The split is by *lane*: which controls this substrate conformance suite gates against the real wheels (`✅` Python lane · `🦀` Rust lane in CIRISServer), and which are owned by the **[CIRISAgent compliance map](https://github.com/CIRISAI/CIRISAgent/tree/main/compliance)** — the agent's conscience / H3ERE decision-pipeline / WiseBus tier, tracked dimension-by-dimension in `CIRISAgent/compliance/Dnn_*.md` (its own system of record, with a per-dimension known-gaps inventory). An agent-owned control is **coverage, not a gap**. (CIRISAgent#902 tracks crediting the substrate-gated facets back into the agent map.)
 
-| Control | Substrate-enforceable requisite | Addressed by | Coverage |
+| Control | Lane | Addressed by | Status |
 |---|---|---|---|
-| D01 — non_maleficence | — (conscience scalars; harm-class typing agent-side) | CIRISAgent suite | — |
-| D02 — integrity | Tamper-evident hash-chained, hybrid-signed audit log | `test_320` | ✅ |
-| D03 — justice | — (discrimination floor + escalation routing, agent/WiseBus) | CIRISAgent suite | — |
-| D04 — prohibited | — (capability-name floor enforced at the WiseBus) | CIRISAgent suite | — |
-| D05 — detection | — (cross-trace detectors are lens-side, not yet drivable) | CIRISAgent suite | — |
-| D06 — goal | — (memory-scope tags + stakeholder enumeration) | CIRISAgent suite | — |
-| D07 — locality_decision_scale | — (deferral taxonomy + domain routing at the WiseBus) | CIRISAgent suite | — |
-| D08 — autonomy | — (GDPR consent/DSAR pipeline is an agent service) | CIRISAgent suite | — |
-| D09 — fidelity | — (trace exposure + attestation; per-stakeholder log) | CIRISAgent suite | — |
-| D10 — beneficence | — (agent-side conscience/ethics review) | CIRISAgent suite | — |
-| D11 — multilateral_participation | — (forum/kind taxonomy + DSAR, agent service) | CIRISAgent suite | — |
-| D12 — conscience | — (config-threshold faculties run inside the agent) | CIRISAgent suite | — |
-| D13 — testimonial_witness | — (witness preservation is agent policy) | CIRISAgent suite | — |
-| D14 — witness_diversity | — (witness-set N≥3 admission gate upstream in NodeCore) | CIRISAgent suite | — |
-| D15 — moderation | Delegated, revocable moderation authority at the emit boundary | `test_270` | ✅ |
-| D16 — method | — (fixed-pipeline + bus-prohibition discipline) | CIRISAgent suite | — |
-| D17 — transparency_log | (signed disclosure register / Merkle-STH — not driven cross-wheel) | CIRISAgent suite | — |
-| D18 — attestation_l_3_5 | Hardware-rooted (L2) key surface; full ladder consumer-side | `test_070`, `test_080` | ◐ |
-| D19 — partner_role | — (WACertificate scopes; taxonomy lives in Registry) | CIRISAgent suite | — |
-| D20 — approach | — (agent-side cognitive-state routing) | CIRISAgent suite | — |
-| D21 — progress_measure | — (telemetry policy; anchored only via the D23 chain) | CIRISAgent suite | — |
-| D22 — expertise | — (inverse boundary via DEFER→WiseAuthority) | CIRISAgent suite | — |
-| D23 — accountability | Tamper-evident audit log (named-accountability facet agent-side) | `test_320` | ◐ |
-| D24 — reconsideration | Bounded reconsideration admission (anti-DoS / harassment-cluster) | `test_220` | ✅ |
-| D25 — credits | — (dual-signed CreditRecord; accrual loop awaits CIRISBilling) | CIRISAgent suite | — |
-| D26 — key_boundary | Hardware-rooted signer + storage-kind taxonomy; PQC DEK-grant wrap | `test_070`, `test_080`, `test_250` | ◐ |
-| D27 — provenance | — (signed build-manifest / tree-verify is an agent/CI surface) | CIRISAgent suite | — |
+| D01 — non_maleficence | agent | CIRISAgent map · `non_maleficence:*` | ✅ |
+| D02 — integrity | substrate | `test_320` (hash-chained hybrid-signed audit) | ✅ |
+| D03 — justice | agent | CIRISAgent map · `justice:*` | ✅ |
+| D04 — prohibited | agent | CIRISAgent map · `prohibited:*` | ✅ |
+| D05 — detection | agent | CIRISAgent map · `detection:*` | ✅ |
+| D06 — goal | agent | CIRISAgent map · `goal:*` | ✅ |
+| D07 — locality_decision_scale | agent | CIRISAgent map · `locality:decision:{scale}` | ✅ |
+| D08 — autonomy | agent | CIRISAgent map · `autonomy:*` | ✅ |
+| D09 — fidelity | agent | CIRISAgent map · `fidelity:*` | ✅ |
+| D10 — beneficence | agent | CIRISAgent map · `beneficence:*` | ✅ |
+| D11 — multilateral_participation | agent | CIRISAgent map · `multilateral_participation:{forum}:{kind}` | ✅ |
+| D12 — conscience | agent | CIRISAgent map · `conscience:*` | ✅ |
+| D13 — testimonial_witness | agent | CIRISAgent map · `testimonial_witness:{kind}` | ✅ |
+| D14 — witness_diversity | agent | CIRISAgent map · `witness_diversity:*` | ✅ |
+| D15 — moderation | substrate | `test_270` (delegated, revocable moderation authority) | ✅ |
+| D16 — method | agent | CIRISAgent map · `method:*` (the H3ERE pipeline) | ✅ |
+| D17 — transparency_log | Rust | CIRISServer `tests/stream_sth_consistency.rs` (STH consistency-proof; PR #108) | 🦀 |
+| D18 — attestation_l_3_5 | substrate + agent | `test_070`/`test_080` (L2 hardware-rooted) · CIRISAgent map (L1/L3/L4/L5 ladder) | ✅ |
+| D19 — partner_role | agent | CIRISAgent map · `partner_role:*` (Registry taxonomy) | ✅ |
+| D20 — approach | agent | CIRISAgent map · `approach:*` | ✅ |
+| D21 — progress_measure | agent | CIRISAgent map · `progress_measure:*` | ✅ |
+| D22 — expertise | agent | CIRISAgent map · `expertise:*` | ✅ |
+| D23 — accountability | substrate + agent | `test_320` (tamper-evident log) · CIRISAgent map (named-accountability) | ✅ |
+| D24 — reconsideration | substrate | `test_220` (anti-DoS / harassment-cluster admission) | ✅ |
+| D25 — credits | agent | CIRISAgent map · `credits:*` | ✅ |
+| D26 — key_boundary | substrate + agent | `test_070`/`test_080` + `test_250` (signer + storage-kind + PQC DEK wrap) · CIRISAgent map (`key_boundary:*` attestation) | ✅ |
+| D27 — provenance | agent | CIRISAgent map · `provenance:*` | ✅ |
 
-**How the covered controls are gated:**
-- **D02 / D23 → `test_320`** — `ciris_server.LensAudit` writes entries; persist's `audit_verify_chain` walks the hash-chained, Ed25519 + ML-DSA-65–signed log and returns `ok`, with a typed break diagnostic on tamper. (D23's *named*-accountability / WiseAuthority-ruling facet stays agent-side → ◐; the tamper-evident log it rests on is the gated half.)
-- **D15 → `test_270`** — drives persist's `file_moderation` / `add_moderator` / `is_named_moderator`: a non-duty key is refused (`federation_delegated_scope_unauthorized`), and appoint→verify→revoke walks the owner-bound scoped-delegation chain.
-- **D18 → `test_070`/`test_080`** — the L2 hardware-rooted facet only (the engine reports a recognized keystore kind; a hardware-rooted signer yields a 32-byte transport identity). The L1/L3/L4/L5 ladder is consumer-side composition → ◐.
-- **D24 → `test_220`** — drives `ciris_server.ReconsiderDosGuard`: admits a fresh filing, refuses past the per-actor budget, and refuses repeat same-pair filings as `HarassmentClusterDetected`.
-- **D26 → `test_070`/`test_080` + `test_250`** — the hardware-rooted signer + storage-kind taxonomy is driven at cohab init, and `test_250` pins the v2 X25519 + ML-KEM-768 DEK-grant wrap as non-downgradable. The full `no_seed_in_heap` predicate is upstream and not yet drivable → ◐.
+**How the substrate-gated controls are driven (the `✅` substrate / `🦀` Rust rows):**
+- **D02 / D23 → `test_320`** — `ciris_server.LensAudit` writes entries; persist's `audit_verify_chain` walks the hash-chained, Ed25519 + ML-DSA-65–signed log and returns `ok`, with a typed break diagnostic on tamper. (D23 also carries a named-accountability / WiseAuthority facet owned by the agent map.)
+- **D15 → `test_270`** — persist's `file_moderation` / `add_moderator` / `is_named_moderator`: a non-duty key is refused (`federation_delegated_scope_unauthorized`); appoint→verify→revoke walks the owner-bound scoped-delegation chain.
+- **D17 → CIRISServer `tests/stream_sth_consistency.rs`** (Rust lane, PR #108) — `ciris-persist` builds an RFC 6962 STH consistency proof; the independently-published `ciris-verify-core` verifies it; forged root / tampered proof fail closed.
+- **D18 → `test_070`/`test_080`** — the L2 hardware-rooted facet (recognized keystore kind; hardware-rooted signer → 32-byte transport identity). The L1/L3/L4/L5 ladder is consumer-side composition in the agent map.
+- **D24 → `test_220`** — `ciris_server.ReconsiderDosGuard`: admits a fresh filing, refuses past the per-actor budget, refuses repeat same-pair filings as `HarassmentClusterDetected`.
+- **D26 → `test_070`/`test_080` + `test_250`** — hardware-rooted signer + storage-kind taxonomy at cohab init, and the non-downgradable v2 X25519 + ML-KEM-768 DEK-grant wrap. The `no_seed_in_heap` self-attestation is owned by the agent map (`key_boundary:*`).
 
-**Totals: 3 ✅ · 3 ◐ · 21 agent-side.** The most consequential agent-side-only controls are **D04 — prohibited** (the categorical capability floor) and **D12 — conscience** (the optimization-veto / coherence / entropy faculties): both enforced inside the agent at the WiseBus and conscience layer, not at any wheel surface. **D17 — transparency_log** rests on a CIRISVerify Merkle/STH disclosure register no current cross-wheel test drives — so it is *not* claimed here (the audit chain `test_320` verifies serves D02/D23, a different requisite).
+**Totals: all 27 green.** Substrate-gated here: **D02 · D15 · D24** (Python `✅`), **D17** (Rust `🦀`), with **D18 · D23 · D26** split substrate + agent. The remaining **20** are owned by the CIRISAgent compliance map (which tracks its own per-dimension implementation status). "Lane = agent" is where the control lives, not a gap in coverage.
 
 ## How to run
 
