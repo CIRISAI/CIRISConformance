@@ -15,6 +15,35 @@ Cross-artifact conformance harness for the CIRIS federation stack — the substr
 
 The grouped [test-case index](#test-case-index-by-property) below maps each property to the tests that enforce it and how.
 
+## Where this fits — the CIRIS ecosystem CI
+
+CIRISConformance is **not a deployable binary** — it's the **contract-governance stage** of the ecosystem CI/CD pipeline. It defines the reference matrices (`matrices/current.yaml`) and the integration boundaries every other project must satisfy *before any combination of wheels is allowed to boot*. The pipeline builds a verified [CIRISAgent](https://github.com/CIRISAI/CIRISAgent) 2.9.7+ image by evaluating the dependency chain **from the cryptographic foundation up**, running **15,000+ tests** across the chain plus this suite's cross-artifact conformance gates:
+
+```
+            ┌──────────────── CIRISConformance ────────────────┐
+            │  governs the matrix every combination must pass    │
+            │  before it boots (this repo)                       │
+            └───────────────────────┬───────────────────────────┘
+                                     ▼  (matrix floors + cross-wheel gates)
+ CIRISVerify ─▶ CIRISPersist ─▶ CIRISEdge ─▶ CIRISServer ─▶ CIRISAgent
+   trust          state          mesh         headless        client
+```
+
+| Stage | Role | ~tests | CI |
+|---|---|---|---|
+| **[CIRISConformance](https://github.com/CIRISAI/CIRISConformance)** (this repo) | Ecosystem matrix & contract governance — adversarial fire-tests against the substrate data-access surfaces (caller-scope admission, hardware-backed attestation under duress) + matrix-alignment validation (PyO3/UniFFI init-skew floors) | cross-artifact gates | [reusable workflow](https://github.com/CIRISAI/CIRISConformance/blob/main/.github/workflows/run-against-wheels.yml) · [Actions](https://github.com/CIRISAI/CIRISConformance/actions) |
+| **[CIRISVerify](https://github.com/CIRISAI/CIRISVerify)** | Cryptographic & trust foundation — key-gen, signature determinism, TPM2 mock; D27 AST pre-flight (runtime mustn't depend on `.md`); strict mypy; multi-arch FFI build | ~1,500 | [Actions](https://github.com/CIRISAI/CIRISVerify/actions) |
+| **[CIRISPersist](https://github.com/CIRISAI/CIRISPersist)** | Data & state — dual-backend (PostgreSQL + SQLite) parity sweep, upgrade-compat fixture capture, cross-platform serialization parity, ACID/locking/isolation | ~2,500 | [Actions](https://github.com/CIRISAI/CIRISPersist/actions) |
+| **[CIRISEdge](https://github.com/CIRISAI/CIRISEdge)** | Mesh networking & federation — Leviculum/Reticulum-rs vendor integration (TCP-loopback / LoRa / packet-radio), network-mesh simulation, latency/drain assertions, SAS verification, boundary fuzzing | ~3,000 | [Actions](https://github.com/CIRISAI/CIRISEdge/actions) |
+| **[CIRISServer](https://github.com/CIRISAI/CIRISServer)** | Headless operations — HTTP/REST + SSE surface (`/v1/federation/*`, `/a2a`), token-tier gating, PyInstaller headless binaries, signed multi-arch Docker images. Also hosts the **Rust conformance lane** (see [`docs/CEG_CONFORMANCE.md`](docs/CEG_CONFORMANCE.md)) | ~3,500 | [Actions](https://github.com/CIRISAI/CIRISServer/actions) |
+| **[CIRISAgent](https://github.com/CIRISAI/CIRISAgent)** | User-facing client (desktop/mobile) integrating all five layers — localization guard, staged QA, registry-signed build manifests, final cross-platform artifacts. Runs the **safety batteries** (below) | ~4,500+ (8-way sharded) | [Actions](https://github.com/CIRISAI/CIRISAgent/actions) |
+
+### CIRISAgent safety batteries (run + captured in CI)
+
+The agent's compliance/safety tier is exercised in CI by the **[Safety Battery workflow](https://github.com/CIRISAI/CIRISAgent/blob/main/.github/workflows/safety-battery.yml)** — adversarial **mental-health safety batteries across 29 locales** ([`tests/safety/<lang>_mental_health/`](https://github.com/CIRISAI/CIRISAgent/tree/main/tests/safety)), driven through the **[`qa_runner`](https://github.com/CIRISAI/CIRISAgent/tree/main/tools/qa_runner)** harness ([`modules/safety_battery.py`](https://github.com/CIRISAI/CIRISAgent/blob/main/tools/qa_runner/modules/safety_battery.py) · [`safety_interpret.py`](https://github.com/CIRISAI/CIRISAgent/blob/main/tools/qa_runner/modules/safety_interpret.py)). **The results are in CI too** — each run publishes its capture as a `safety-battery-capture-*` workflow artifact (per language/domain), so the safety-interpretation sweeps are auditable run-over-run, not just pass/fail. Alongside it run the **[localization guard](https://github.com/CIRISAI/CIRISAgent/blob/main/tools/dev/check_localization_sync.py)** (29-locale mirror parity, stdlib-only) and the staged install-parity QA.
+
+This is the agent half of the [compliance coverage map](#compliance-coverage-map): the controls marked *lane = agent* are the ones these batteries and the [CIRISAgent compliance map](https://github.com/CIRISAI/CIRISAgent/tree/main/compliance) own.
+
 ## Why this exists
 
 The CIRIS stack ships as **separately-published PyO3 extension wheels** — storage, crypto, transport, node-serving — each built and released on its own cadence, but designed to run **together inside one Python process** (the CIRIS 3.0 cohabitation EPIC, [CIRISPersist#85](https://github.com/CIRISAI/CIRISPersist/issues/85)). That's how they run in production: one process, one persist `Engine`, one edge runtime, all sharing substrate handles.
