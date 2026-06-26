@@ -1,5 +1,5 @@
 """
-Fabric tier — §11.10 moderation-authority gates (CC 4.5.4 moderation duty).
+Fabric tier — CC 4.5.5 moderation-authority gates (CC 4.5.4 moderation duty).
 
 CIRIS moderation is a *delegated duty*: only a key that is a recognized
 `moderate` duty-holder over a target may file a moderation report against it.
@@ -186,11 +186,11 @@ def test_community_authority_can_file_moderation(moderation_authority):
 
 @pytest.mark.requires_persist
 def test_appointed_moderator_is_recognized(moderation_authority):
-    """§11.10: an appointed delegate resolves as a named moderator of the community.
+    """CC 4.5.5: an appointed delegate resolves as a named moderator of the community.
 
     Real gate as of **persist 10.4.0** (CIRISPersist#290 shipped
     `put_community_json`): the founder appoints a separately-registered key as a
-    `moderate` delegate, the §11.10 walk reaches it from the owner-bound authority
+    `moderate` delegate, the CC 4.5.5 walk reaches it from the owner-bound authority
     root, so `is_named_moderator` resolves true and `moderators_of` lists it.
     """
     r = moderation_authority

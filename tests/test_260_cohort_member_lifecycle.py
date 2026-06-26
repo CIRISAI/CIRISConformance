@@ -1,8 +1,8 @@
 """
-Fabric tier — family cohort member add / remove lifecycle (CEG #249 Cut G1).
+Fabric tier — family cohort member add / remove lifecycle (CC 3.3.4 / CC 4.4.3.4 (legacy CEG cut G1)).
 
 A CIRIS family is a roster of identity keys whose membership gates read access to
-family-scoped content (the §4.4 caller-admission walk resolves `family_key_ids`
+family-scoped content (the CC 4.4.3.4.4 caller-admission walk resolves `family_key_ids`
 through the *active* membership reads). Membership is therefore a load-bearing
 authorization surface: a key that has been removed MUST stop appearing as an
 active member the instant the removal takes effect, and a future-dated removal
@@ -166,4 +166,4 @@ def test_member_side_read_reflects_active_membership(cohort_lifecycle):
         "a freshly-added member does not see the family from their side: %r" % (r,))
     assert r["families_for_bob"] == [], (
         "a revoked member still resolves to an active family membership — the "
-        f"§4.4 caller-admission read would over-grant: {r}")
+        f"CC 4.4.3.4.4 caller-admission read would over-grant: {r}")

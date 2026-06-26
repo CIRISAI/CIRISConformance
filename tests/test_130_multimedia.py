@@ -1,7 +1,7 @@
 """
-Multimedia tier conformance (CEG 0.3 — additive multimedia surface).
+Multimedia tier conformance (the CIRIS Constitution CC 0.4 — additive multimedia surface).
 
-CEG 0.3 (purely additive vs 0.2; 1+4 wire-format lockdown preserved) adds
+the CIRIS Constitution CC 0.4 (purely additive vs 0.2; 1+4 wire-format lockdown preserved) adds
 the multimedia tier: media `external_content` sub_kinds, the
 `takedown_notice` + `key_grant` subject_kinds, content-classification
 dimension families, and operator-managed takedown + perceptual-hash
@@ -17,13 +17,13 @@ Verified against ciris-persist 3.6.3:
   blob stores through the same `put_blob_signing` (with a `media_type`)
   and emits the same `holds_bytes:sha256:*` holder attestation — no new
   chunking primitive, no media-specific storage path.
-- ✅ **Perceptual-hash gate** (§5.6): an installed matcher refuses a
+- ✅ **Perceptual-hash gate** (CC 3.1.8): an installed matcher refuses a
   known-bad blob at write with `blob_hash_matched_known_bad`.
-- ✅ **Takedown admission** (§5.5 / §5.6.8.4): immediate legal bases
+- ✅ **Takedown admission** (CC 3.1.4 / CC 3.3.2): immediate legal bases
   (`ncmec_csam`, `tvec_terrorist`) evict now; windowed bases
   (`dmca_512`, `dsa_article_16`) schedule a future eviction; the
   `legal_basis` closed-set enum is validated.
-- ✅ **Key-grant retire = `supersedes`, NOT `withdraws`** (§5.6.8.4
+- ✅ **Key-grant retire = `supersedes`, NOT `withdraws`** (CC 3.3.2
   option-b): the retire path reports `supersedes_emitted`.
 - ✅ **Operator multimedia config** round-trips (§5).
 - ✅ **Budget-driven eviction** (FEDERATION_SCALING_MODEL §1.2): a small
@@ -34,7 +34,7 @@ Tracked gap (xfail, not worked around): takedown admission reports
 `holders_seen: 0` for a *locally*-held blob — the same local-holder blind
 spot as `list_holders_json` → **CIRISPersist#130**.
 
-See MEDIA_SHARING.md + CEG 0.3 §5.6.8 / §8.1.10 (vendored under reference/).
+See MEDIA_SHARING.md + the CIRIS Constitution CC 0.4 CC 3.3 / §8.1.10 (vendored under reference/).
 """
 
 from __future__ import annotations
@@ -166,7 +166,7 @@ def test_media_blob_rides_existing_storage(media_substrate):
 @pytest.mark.ceg
 @pytest.mark.requires_persist
 def test_perceptual_hash_gate_refuses_known_bad(media_substrate):
-    """§5.6: an installed perceptual-hash matcher refuses a known-bad blob at write."""
+    """CC 3.1.8: an installed perceptual-hash matcher refuses a known-bad blob at write."""
     assert media_substrate["perceptual_refused"] is True, media_substrate
     assert media_substrate.get("perceptual_error") == "blob_hash_matched_known_bad", media_substrate
     # A non-matching blob is unaffected.
@@ -176,7 +176,7 @@ def test_perceptual_hash_gate_refuses_known_bad(media_substrate):
 @pytest.mark.ceg
 @pytest.mark.requires_persist
 def test_takedown_immediate_vs_windowed_scheduling(media_substrate):
-    """§5.5: child-safety/terrorist bases evict immediately; DMCA/DSA schedule a window."""
+    """CC 3.1.4: child-safety/terrorist bases evict immediately; DMCA/DSA schedule a window."""
     sched = media_substrate["takedown_scheduling"]
     assert sched["ncmec_csam"] is None, sched
     assert sched["tvec_terrorist"] is None, sched
@@ -187,14 +187,14 @@ def test_takedown_immediate_vs_windowed_scheduling(media_substrate):
 @pytest.mark.ceg
 @pytest.mark.requires_persist
 def test_takedown_rejects_unknown_legal_basis(media_substrate):
-    """§5.6.8.4: the LegalBasis enum is a validated closed set."""
+    """CC 3.3.2: the LegalBasis enum is a validated closed set."""
     assert media_substrate["unknown_basis_rejected"] is True, media_substrate
 
 
 @pytest.mark.ceg
 @pytest.mark.requires_persist
 def test_key_grant_retire_uses_supersedes_not_withdraws(media_substrate):
-    """§5.6.8.4 option-b: retire emits `supersedes` (with rotation_chain), not `withdraws`."""
+    """CC 3.3.2 option-b: retire emits `supersedes` (with rotation_chain), not `withdraws`."""
     rep = media_substrate["retire_report"]
     assert set(rep) == {"grants_seen", "supersedes_emitted", "supersedes_failed"}, rep
     assert "withdraws_emitted" not in rep, rep
@@ -213,7 +213,7 @@ def test_multimedia_config_round_trips(media_substrate):
 @pytest.mark.ceg
 @pytest.mark.requires_persist
 def test_takedown_evicts_local_holder(media_substrate):
-    """§5.4: a takedown for content this node holds sees + evicts the local holder.
+    """CC 4.5.3: a takedown for content this node holds sees + evicts the local holder.
 
     Real gate as of persist 3.6.4 (CIRISPersist#130 fixed).
     """

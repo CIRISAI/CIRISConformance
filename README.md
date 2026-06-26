@@ -35,7 +35,7 @@ CIRISConformance is **not a deployable binary** — it's the **contract-governan
 | **[CIRISVerify](https://github.com/CIRISAI/CIRISVerify)** | Cryptographic & trust foundation — key-gen, signature determinism, TPM2 mock; D27 AST pre-flight (runtime mustn't depend on `.md`); strict mypy; multi-arch FFI build | ~1,200\* | [Actions](https://github.com/CIRISAI/CIRISVerify/actions) |
 | **[CIRISPersist](https://github.com/CIRISAI/CIRISPersist)** | Data & state — dual-backend (PostgreSQL + SQLite) parity sweep, upgrade-compat fixture capture, cross-platform serialization parity, ACID/locking/isolation | ~2,150\* | [Actions](https://github.com/CIRISAI/CIRISPersist/actions) |
 | **[CIRISEdge](https://github.com/CIRISAI/CIRISEdge)** | Mesh networking & federation — Leviculum/Reticulum-rs vendor integration (TCP-loopback / LoRa / packet-radio), network-mesh simulation, latency/drain assertions, SAS verification, boundary fuzzing | ~990\* | [Actions](https://github.com/CIRISAI/CIRISEdge/actions) |
-| **[CIRISServer](https://github.com/CIRISAI/CIRISServer)** | Headless operations — HTTP/REST + SSE surface (`/v1/federation/*`, `/a2a`), token-tier gating, PyInstaller headless binaries, signed multi-arch Docker images. Also hosts the **Rust conformance lane** (see [`docs/CEG_CONFORMANCE.md`](docs/CEG_CONFORMANCE.md)) | ~630\* | [Actions](https://github.com/CIRISAI/CIRISServer/actions) |
+| **[CIRISServer](https://github.com/CIRISAI/CIRISServer)** | Headless operations — HTTP/REST + SSE surface (`/v1/federation/*`, `/a2a`), token-tier gating, PyInstaller headless binaries, signed multi-arch Docker images. Also hosts the **Rust conformance lane** (see [`docs/CC_CONFORMANCE.md`](docs/CC_CONFORMANCE.md)) | ~630\* | [Actions](https://github.com/CIRISAI/CIRISServer/actions) |
 | **[CIRISAgent](https://github.com/CIRISAI/CIRISAgent)** | User-facing client (desktop/mobile) integrating all five layers — localization guard, staged QA, registry-signed build manifests, final cross-platform artifacts. Runs the **safety batteries** (below) | **~11,500**\* unit tests · 90+ QA-runner modules (8-way sharded) | [Actions](https://github.com/CIRISAI/CIRISAgent/actions) |
 
 \* **Counts are measured, not estimated** — test-function definitions on each repo's `main` (`#[test]`/`#[tokio::test]`/`#[rstest]` for Rust, `def test_` for Python), via `grep`. *Executed* cases run higher (parametrized / table-driven / `rstest` cases), which is why a CI "test count" for a heavily-parametrized stage (e.g. Edge/Server integration) can exceed the function count shown. CIRISConformance itself contributes 124 Python cohabitation gates + the CIRISServer Rust conformance lane. Re-run the count anytime: `grep -rEc '^\s*(async )?def test_' tests/` (Python) / `grep -rE '#\[(tokio::)?test\]' src tests | wc -l` (Rust).
@@ -86,14 +86,14 @@ The name comes from the W3C / Khronos conformance-suite tradition: independent i
 
 The suite is partitioned into two tiers (`pytest -m substrate` / `pytest -m fabric`):
 
-- **Substrate** — the independently-built ciris-* wheels cohabit in one process, and each primitive conforms to the CEG contract (cohabitation scenarios + the CEG CCP/CCC/CCS profiles).
+- **Substrate** — the independently-built ciris-* wheels cohabit in one process, and each primitive conforms to the CIRIS Constitution (cohabitation scenarios + the CC 2.2 CCP/CCC/CCS profiles).
 - **Fabric** — the *emergent* federation behaviour: the replication discipline (per-actor eviction, eviction sweeper, trust-threshold intake) and the scaling factors (`effective_trust_set_multiplier`, the `k_eff` corridor, retention) from [FEDERATION_SCALING_MODEL](https://github.com/CIRISAI/CIRISNodeCore/blob/main/FSD/FEDERATION_SCALING_MODEL.md) — how the CEWP "we don't need big tech" claim becomes a checked property.
 
 See [`docs/FABRIC_CONFORMANCE.md`](docs/FABRIC_CONFORMANCE.md) for the tier coverage matrix.
 
-## CEG conformance profiles
+## CIRIS Constitution conformance profiles
 
-Beyond cohabitation, this harness verifies the three [CEG 0.1](https://github.com/CIRISAI/CIRISRegistry/tree/main/FSD/CEG) conformance profiles (§0.2) — **CCP** (producer), **CCC** (consumer), **CCS** (substrate). See [`docs/CEG_CONFORMANCE.md`](docs/CEG_CONFORMANCE.md) for the profile definitions, the §0.5 fractal-self reading discipline, and a coverage matrix tracking which CEG paths are tested today vs. pending an upstream surface. Profile tests carry the `ceg` marker plus `ccp`/`ccc`/`ccs`; run one with `pytest -m ccc`.
+Beyond cohabitation, this harness verifies the three [CIRIS Constitution](reference/CIRIS_Constitution/) `CC 0.4` conformance profiles (**CC 2.2** — these superseded the CEG §0.2 profiles, names retained) — **CCP** (producer), **CCC** (consumer), **CCS** (substrate). See [`docs/CC_CONFORMANCE.md`](docs/CC_CONFORMANCE.md) for the profile definitions, the self-as-subject reading discipline (CC 2.3.4 / part_1 anti-Cartesian), and a coverage matrix tracking which CC paths are tested today vs. pending an upstream surface. Profile tests carry the `ceg` marker plus `ccp`/`ccc`/`ccs`; run one with `pytest -m ccc`.
 
 ## Compliance coverage map
 
@@ -150,9 +150,9 @@ pytest                                  # run everything (defaults to sqlite::me
 CIRIS_CONFORMANCE_DATABASE_URL="postgres://user:pw@localhost:5432/conformance" pytest
 
 # A tier, a profile, or one scenario:
-pytest -m substrate        # cohabitation + CEG profiles
+pytest -m substrate        # cohabitation + Constitution profiles
 pytest -m fabric           # replication discipline + scaling factors
-pytest -m ccc              # one CEG profile (producer/consumer/substrate)
+pytest -m ccc              # one CC profile (producer/consumer/substrate)
 pytest -m version_skew     # the clean-venv version-skew lane (builds throwaway venvs; slow)
 pytest tests/test_030_cohabitation_init.py -v
 
@@ -192,7 +192,7 @@ Two test groups, selectable with `pytest -m substrate` or `pytest -m fabric`:
 - **Substrate** — do the building-block libraries load and work together, and does each one correctly produce, read, and store the shared message format the components use to talk to each other?
 - **Fabric** — does the network behave correctly *as a whole*: the rules for which data a node keeps, whose data it's allowed to delete, when it drops stale data, and the math behind the claim that this scales to internet size on ordinary hardware.
 
-Detailed coverage tables: [`docs/CEG_CONFORMANCE.md`](docs/CEG_CONFORMANCE.md) (building blocks) and [`docs/FABRIC_CONFORMANCE.md`](docs/FABRIC_CONFORMANCE.md) (network).
+Detailed coverage tables: [`docs/CC_CONFORMANCE.md`](docs/CC_CONFORMANCE.md) (building blocks) and [`docs/FABRIC_CONFORMANCE.md`](docs/FABRIC_CONFORMANCE.md) (network).
 </details>
 
 <details>
@@ -271,7 +271,7 @@ Against the current pinned matrix (persist 10.5.0 / verify 7.5.0 / edge 7.1.0 / 
 **124 passed · 1 skipped · 0 expected-failures · 0 unexpected failures**
 
 - The **1 skip** is the HSM hardware-contrast cell, which only runs on a host with a real TPM (not a wheel gate — environment-conditional, correct).
-- **0 expected-failures** — the last one (`test_240` `subject_key_ids` lowercase-hex) flipped to a real gate when persist 10.5.0 closed [CIRISPersist#293](https://github.com/CIRISAI/CIRISPersist/issues/293). Every Python-lane assertion is now a real enforced gate. (Substrate-internal Rust-lane features — STH/D17, hybrid-KEX correctness — are tracked in [`docs/CEG_CONFORMANCE.md`](docs/CEG_CONFORMANCE.md) and gated in CIRISServer's Rust suite.)
+- **0 expected-failures** — the last one (`test_240` `subject_key_ids` lowercase-hex) flipped to a real gate when persist 10.5.0 closed [CIRISPersist#293](https://github.com/CIRISAI/CIRISPersist/issues/293). Every Python-lane assertion is now a real enforced gate. (Substrate-internal Rust-lane features — STH/D17, hybrid-KEX correctness — are tracked in [`docs/CC_CONFORMANCE.md`](docs/CC_CONFORMANCE.md) and gated in CIRISServer's Rust suite.)
 
 The version-skew lane (`-m version_skew`, real installs into throwaway venvs) runs as its own CI job and is green.
 
@@ -301,7 +301,7 @@ Grouped by the property each test enforces, and how it's driven. `✅` = real en
 |---|---|---|---|
 | `test_250_key_grant_pqc.py` | substrate | DEK-grant PQC wrap (CC 5.1): v2 is X25519 + ML-KEM-768 hybrid, v1 classical-only, no cross-version downgrade | ✅ |
 | `test_100_ccc_hybrid_verify.py` | substrate (CCC) | Hybrid-signature verify policy matrix (strict / ed25519-fallback / soft-freshness) | ✅ |
-| `test_120_ccp_canonical_bytes.py` | substrate (CCP) | Canonical-bytes determinism + §0.5/§0.6/§0.7 rejection (timestamp / hex / future) | ✅ |
+| `test_120_ccp_canonical_bytes.py` | substrate (CCP) | Canonical-bytes determinism + CC 2.6.2/2.6.3/2.6.7 rejection (timestamp / hex / future) | ✅ |
 | `test_110_ccs_blob_integrity.py` | substrate (CCS) | Blob full-SHA integrity + signed round-trip | ✅ |
 | `test_320_audit_accountability.py` | fabric | Tamper-evident audit chain (compliance D02/D23): server writes → persist hash-chain verifies | ✅ |
 
@@ -324,10 +324,10 @@ Grouped by the property each test enforces, and how it's driven. `✅` = real en
 
 | File | Tier | Verifies | Status |
 |---|---|---|---|
-| `test_240_reserved_prefix_admission.py` | fabric | Namespace admission: non-member family-scope write refused; CC 3.4 reserved prefixes refused (persist 10.4.0); `subject_key_ids` lowercase-hex refused (persist 10.5.0, CC 2.6.3/§0.6) | ✅ |
-| `test_270_moderation_authority.py` | fabric | §11.10 moderation duty (CC 4.5.4): non-moderator refused at `file_moderation`; community authority files; appoint → `is_named_moderator` → remove revokes (persist 10.4.0) | ✅ |
-| `test_260_cohort_member_lifecycle.py` | fabric | Family cohort member add / remove (CEG #249 G1): idempotent add, immediate vs future-dated revoke, swap, member-side read | ✅ |
-| `test_130_multimedia.py` | substrate + fabric | CEG multimedia: media blob storage, perceptual-hash gate, takedown scheduling (CSAM/terrorist legal-basis), key-grant retire, budget eviction | ✅ |
+| `test_240_reserved_prefix_admission.py` | fabric | Namespace admission: non-member family-scope write refused; CC 3.4 reserved prefixes refused (persist 10.4.0); `subject_key_ids` lowercase-hex refused (persist 10.5.0, CC 2.6.3) | ✅ |
+| `test_270_moderation_authority.py` | fabric | CC 4.5.4/4.5.5 moderation duty: non-moderator refused at `file_moderation`; community authority files; appoint → `is_named_moderator` → remove revokes (persist 10.4.0) | ✅ |
+| `test_260_cohort_member_lifecycle.py` | fabric | Family cohort member add / remove (CC 3.3.4 / CC 4.4.3.4): idempotent add, immediate vs future-dated revoke, swap, member-side read | ✅ |
+| `test_130_multimedia.py` | substrate + fabric | CIRIS Constitution multimedia (CC 3.3): media blob storage, perceptual-hash gate, takedown scheduling (CSAM/terrorist legal-basis), key-grant retire, budget eviction | ✅ |
 | `test_280_blackhole_denylist.py` | substrate | Transport abuse-source blackhole (CC 4.5): 16-byte Reticulum identity-hash width gate + list round-trip | ✅ |
 | `test_220_reconsider_dos.py` | fabric | Reconsideration anti-abuse (F-AV-RECONSIDER-DOS): actor-budget + harassment-cluster gates | ✅ |
 

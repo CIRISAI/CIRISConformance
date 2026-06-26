@@ -1,8 +1,8 @@
 """
 CEG-Conforming Consumer (CCC) — hybrid-signature verification.
 
-CEG §0.2 defines the **CCC** profile: a consumer MUST verify hybrid
-(Ed25519 + ML-DSA-65) signatures and apply the §8 composition policies.
+CC 2.2 defines the **CCC** profile: a consumer MUST verify hybrid
+(Ed25519 + ML-DSA-65) signatures and apply the CC 4.4 composition policies.
 This is the cornerstone of consumer conformance and the one CEG-CCC
 surface fully reachable at the cross-wheel boundary today: persist's
 `Engine.verify_hybrid` / `verify_hybrid_via_directory`.
@@ -18,9 +18,9 @@ These tests sign real canonical bytes with the engine's own Ed25519
 LocalSigner and assert the verify outcomes + the exact rejection tokens
 the binary emits. ML-DSA-65 hybrid-complete verification is covered by
 the `ed25519_fallback`/`soft_freshness` matrix here; the strict path
-exercises the hybrid-pending rejection that is the CCC's §8 default.
+exercises the hybrid-pending rejection that is the CCC's CC 4.4 default.
 
-See CEG §0.2 (profiles) + §8 (composition) — CIRISRegistry/FSD/CEG/.
+See CC 2.2 (profiles) + CC 4.4 (composition) — CIRISRegistry/FSD/CIRIS_Constitution/.
 """
 
 from __future__ import annotations
@@ -85,7 +85,7 @@ def ccc_results():
 @pytest.mark.ccc
 @pytest.mark.requires_persist
 def test_strict_policy_rejects_hybrid_pending(ccc_results):
-    """`strict` rejects an Ed25519-only (hybrid-pending) row — CCC §8 default."""
+    """`strict` rejects an Ed25519-only (hybrid-pending) row — CCC CC 4.4 default."""
     assert ccc_results["strict_pending"].get("error") == "verify_hybrid_pending_rejected", (
         ccc_results["strict_pending"]
     )

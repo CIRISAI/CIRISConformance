@@ -1,7 +1,7 @@
 """
 CEG-Conforming Substrate (CCS) — blob full-SHA integrity.
 
-CEG §0.2 defines the **CCS** profile, which includes (§10.1 / §10.1.1)
+CC 2.2 defines the **CCS** profile, which includes (CC 5.3.2 / CC 5.3.2.5)
 *full-SHA blob verification before consumption*: the substrate MUST NOT
 admit bytes whose SHA-256 does not match the claimed digest, and a
 consumer MUST verify the full hash (not a prefix) before handing bytes
@@ -10,7 +10,7 @@ onward.
 persist enforces this as **hash-on-write**: `put_blob_json` recomputes
 the SHA-256 of the body and rejects a mismatch with `blob_hash_mismatch`
 before any holder-attestation is emitted. That rejection is the
-cross-wheel-observable half of §10.1.1 and is exercised here.
+cross-wheel-observable half of CC 5.3.2.5 and is exercised here.
 
 The *positive* round-trip (store a valid blob + read it back) uses
 persist v3.3.0's one-call `put_blob_signing` (CIRISPersist#121 — the seam
@@ -20,7 +20,7 @@ composed signer), and atomic commit. The attesting key must first be
 registered in the federation directory, otherwise attestation emission
 fails (`blob_attestation_emission_failed`).
 
-See CEG §10.1 / §10.1.1 — CIRISRegistry/FSD/CEG/10_endpoints.md.
+See CC 5.3.2 / CC 5.3.2.5 — CIRISRegistry/FSD/CIRIS_Constitution/part_5_transport_substrate.md.
 """
 
 from __future__ import annotations
@@ -115,9 +115,9 @@ def ccs_blob():
 @pytest.mark.ceg
 @pytest.mark.requires_persist
 def test_mismatched_hash_rejected_at_admission(ccs_blob):
-    """§10.1.1: a body that doesn't match the claimed SHA-256 is rejected."""
+    """CC 5.3.2.5: a body that doesn't match the claimed SHA-256 is rejected."""
     assert ccs_blob["mismatch_rejected"], (
-        f"blob with a mismatched hash was admitted — §10.1.1 hash-on-write "
+        f"blob with a mismatched hash was admitted — CC 5.3.2.5 hash-on-write "
         f"gate is not firing: {ccs_blob}"
     )
     assert ccs_blob["mismatch_error"] == "blob_hash_mismatch", ccs_blob["mismatch_error"]
@@ -133,7 +133,7 @@ def test_absent_blob_returns_none(ccs_blob):
 @pytest.mark.ceg
 @pytest.mark.requires_persist
 def test_blob_positive_round_trip(ccs_blob):
-    """§10.1: a valid blob stores via put_blob_signing and reads back intact."""
+    """CC 5.3.2: a valid blob stores via put_blob_signing and reads back intact."""
     assert "positive_error" not in ccs_blob, ccs_blob.get("positive_error")
     assert ccs_blob["positive_intact"] is True, ccs_blob
     assert ccs_blob["positive_has_blob"] is True, ccs_blob
