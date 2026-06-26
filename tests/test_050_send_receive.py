@@ -134,10 +134,9 @@ def test_ephemeral_send_to_unresolvable_peer_refuses_cleanly(send_receive):
 
 # NOTE: a single-process "send to self" can never deliver — Reticulum has no
 # self-route. The property that actually matters (delivery between two nodes over
-# a live transport) is exercised for real in test_330_two_node_roundtrip.py via
-# the `two_node_transport` fixture, so the misleading single-process loopback
-# xfail was retired in favour of that real two-node gate (xfail on CIRISEdge#214
-# until the Python peer-rooting surface ships).
+# a live transport) is exercised for real in test_340_transport_delivery_modes.py,
+# which drives A→B inline-text delivery across every holder mode (self / family /
+# community / direct) over a 4-node / 3-owner fabric.
 
 
 def _durable_send_script(database_url: str) -> str:

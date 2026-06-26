@@ -19,11 +19,14 @@ self-flattering capacity (`capacity:*`) attestations.
 
 All three are driven through the REAL persist `emit_attestation_self` (the
 build-sign-admit one-call surface) by a registered **agent**-type key — none of
-the reserved authorizations apply, so each MUST be refused. As of persist 10.2.1
-the substrate accepts all three (the admission gate exists but doesn't check the
-prefix↔identity_type rules), so those three carry `xfail(strict=True)` tracked to
-**CIRISPersist#288** and flip to real green gates the moment the substrate
-enforces them.
+the reserved authorizations apply, so each MUST be refused. **Real gate as of
+persist 10.4.0** (the reserved-prefix half of **CIRISPersist#288** closed): the
+substrate now enforces the prefix↔identity_type rules and refuses each with a
+distinct typed reason. (Through persist 10.2.2 all three were wrongly accepted.)
+The residual split out of #288 — `subject_key_ids[]` elements MUST be lowercase
+hex (CC 2.6.3) but an uppercase-hex entry is still admitted — is tracked as
+**CIRISPersist#293** and remains `xfail(strict=True)`, flipping the moment
+persist applies the §0.6 hex rule on the emit path.
 
 The scope gate that IS enforced — a `cohort_scope: family` attestation missing
 its required `family_id` is refused (`federation_write_scope_refused`, CC 2.3.1)
@@ -144,16 +147,19 @@ def test_non_member_cannot_write_family_scope(admission):
 
 
 @pytest.mark.requires_persist
-@pytest.mark.xfail(
-    strict=True,
-    reason="CIRISPersist#288 — emit_attestation_self does not enforce the CC 3.4 "
-    "reserved-prefix admission gates: an agent-type key can mint accord:* (CC 3.4.1), "
-    "capacity:* self-emission (CC 3.4.5), and system:* (CC 3.4.3), all of which the "
-    "substrate MUST reject. Flips to a real gate when persist enforces prefix↔"
-    "identity_type at admission.",
-)
 def test_reserved_prefixes_refused_from_agent_key(admission):
-    """CC 3.4.1/3.4.3/3.4.5: an agent key cannot mint accord:* / system:* / capacity:*-self."""
+    """CC 3.4.1/3.4.3/3.4.5: an agent key cannot mint accord:* / system:* / capacity:*-self.
+
+    Real gate as of **persist 10.4.0** (the reserved-prefix half of
+    CIRISPersist#288 closed): `emit_attestation_self` now enforces the CC 3.4
+    prefix↔identity_type admission rules, so an agent-type key is refused on each
+    reserved prefix with a distinct typed reason —
+    `federation_accord_dimension_requires_accord_holder` (CC 3.4.1),
+    `federation_capacity_self_emission_rejected` (CC 3.4.5), and
+    `federation_reserved_prefix_emitter_mismatch` (CC 3.4.3). (Through persist
+    10.2.2 all three were wrongly accepted; the subject_key_ids lowercase-hex
+    rule remains open — see the test below.)
+    """
     assert admission["accord_prefix"] != "accepted", (
         f"agent key minted accord:* (CC 3.4.1): {admission['accord_prefix']}")
     assert admission["capacity_self"] != "accepted", (
@@ -165,10 +171,12 @@ def test_reserved_prefixes_refused_from_agent_key(admission):
 @pytest.mark.requires_persist
 @pytest.mark.xfail(
     strict=True,
-    reason="CIRISPersist#288 — subject_key_ids[] elements MUST be lowercase hex "
-    "(CC 2.6.3), but emit_attestation_self admits an uppercase-hex entry. The §0.6 "
-    "hex rule is enforced on the canonical hash fields but not on the emit path's "
-    "subject_key_ids. Flips to a real gate when persist applies it there.",
+    reason="CIRISPersist#293 — the residual split out of #288 (whose reserved-prefix "
+    "half persist 10.4.0 closed). subject_key_ids[] elements MUST be lowercase hex "
+    "(CC 2.6.3 / §0.6), but emit_attestation_self still admits an uppercase-hex entry "
+    "on persist 10.4.0. The §0.6 hex rule is enforced on the canonical hash fields "
+    "(and location cell_ids) but not on the emit path's subject_key_ids. Flips to a "
+    "real gate when persist applies it there.",
 )
 def test_subject_key_ids_must_be_lowercase_hex(admission):
     """CC 2.6.3: an uppercase-hex subject_key_ids entry is refused at admission."""
