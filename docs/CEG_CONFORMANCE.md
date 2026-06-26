@@ -38,8 +38,18 @@ the surface lands.
 
 ## Coverage matrix
 
-Status legend: ✅ implemented (real binary test) · ⏳ pending an upstream
-seam · 🏛 governance/process tier (not a substrate behavior).
+Status legend: ✅ implemented (real Python cohabitation test) · 🦀 covered at the
+**Rust layer** (a CIRISServer Rust conformance test against the pinned crate
+triple — the feature runs Rust-to-Rust and is not on the Python wheel surface, so
+the agent's brain never drives it; testing it via Python would mean adding an
+artificial PyO3 surface) · ⏳ pending an upstream seam · 🏛 governance/process tier
+(not a substrate behavior).
+
+> **Two-lane conformance.** Features the agent's Python brain drives through the
+> PyO3 wheels are gated here (✅). Substrate-internal features that execute
+> Rust-to-Rust inside CIRISServer (STH consistency-proof, hybrid KEX, realtime-A/V
+> seal, witness/anti-replay admission) are gated in CIRISServer's Rust suite
+> against the same pinned triple (🦀) — this doc indexes both lanes.
 
 | CEG path | Profile | Status | Where / why |
 |---|---|---|---|
@@ -50,15 +60,15 @@ seam · 🏛 governance/process tier (not a substrate behavior).
 | Canonical-bytes determinism + sign/verify round-trip | CCP | ✅ | `test_120_ccp_canonical_bytes.py` |
 | §5.6.8.8.1.1 RNS destination-hash recompute (1.0-RC6) | CCS | ✅ | `test_150_rns_dest_hash.py` — executable golden vector of the pinned two-stage construction + the anti-flat-form regression (CIRISRegistry#80 / CIRISVerify#28). The wheel-recompute cross-check is now a **real gate** (`ciris_verify.rns_destination_hash`, exposed in **verify v7.3.0**); it skips only on a matrix pin < verify 7.3.0 |
 | §6.1 concurrent-write precedence + dedup-on-triple | CCS | ⏳ | needs generic `put_attestation` schema (arbitrary dimension) → **CIRISPersist#124** |
-| §7.0 reserved-prefix admission rejection | CCS | ⏳ | needs generic `put_attestation` schema → **CIRISPersist#124** |
-| §0.5/§0.6/§0.7 canonicalization rejection | CCC | ⏳ (xfail) | wheel accepts `+00:00`/uppercase hex/future ts → **CIRISPersist#126** |
-| §4/§0.5 `witness_relation`/`oversight_mode` + self-attestation | CCP/CCC | ⏳ | shipped in the verify **Rust crate** (v4.2.0 `witness_relation.rs`, CIRISVerify#40 closed) but **not on the published Python wheel surface** — verified absent at verify 4.6.0 / persist 3.6.9, so not cross-wheel-drivable yet |
-| §9.2.1 HUMANITY_ACCORD invocation anti-replay | CCC | ⏳ | shipped in the verify Rust crate (v4.2.0 `humanity_accord.rs`, CIRISVerify#41 closed) but **not on the published Python wheel surface** (no `invocation_canonical_bytes` on verify/persist) — not cross-wheel-drivable yet |
-| §10.3.1 STH cosignature consistency-proof | CCS | ⏳ | shipped in the verify Rust crate (v4.2.0 `WitnessConsistencyProof::verify`, CIRISVerify#42 closed) but **not on the published Python wheel surface** (no `verify_sth_cosignature_consistency_proof`) — not cross-wheel-drivable yet |
+| §7.0 reserved-prefix admission rejection | CCS | ✅ | `test_240` — `emit_attestation_self` refuses `accord:*`/`capacity:*`-self/`system:*` from an agent key (persist 10.4.0, CIRISPersist#288) |
+| §0.5/§0.6/§0.7 canonicalization rejection | CCC | ✅ | `test_120` (timestamp/hex/future) + `test_240` (uppercase-hex `subject_key_ids`, persist 10.5.0 / CIRISPersist#293) |
+| §4/§0.5 `witness_relation` + self-attestation | CCP/CCC | 🦀 | CIRISServer `tests/peer_replication.rs::peer_b_registered_admits_b_liveness_and_a_emits_directed_consent` asserts `witness_relation=="self"` + self-attestation admission / forged-peer rejection, vs the pinned triple. (`oversight_mode` itself is untested — see the Rust-harness gap below.) |
+| §9.2.1 HUMANITY_ACCORD invocation anti-replay | CCC | 🦀 | CIRISServer `tests/accord.rs::register_holders_list_roster_and_verify_2_of_3_invocation` — cosigns `Invocation::canonical_bytes()`, asserts 2-of-3 verifies, 1-of-3 fails threshold, and a replayed `invocation_id` → 409 `duplicate_invocation` |
+| §10.3.1 STH cosignature consistency-proof | CCS | ⏳🦀 | the proof lives in `ciris-persist::federation::stream_sth::consistency_proof`, but **no CIRISServer Rust test drives it** (gap). This is the substrate basis for compliance **D17 transparency_log**. Closed by the server Rust conformance harness (in progress). |
 | §5.6.8 `key_grant` wrap (`x25519-aes256-gcm-hkdf-sha256`) | CCS | ⏳ | verify v4.4.0 multimedia tier (CIRISVerify#44) — wrap primitive not on the Python wheel surface |
 | F-AV-RECONSIDER-DOS rate-limit / cumulative budget | CCC | ⏳ | verify v4.5.0 (CIRISVerify#46) — **Conformance#7** Scenario 1 |
-| Hybrid KEX (X25519 + ML-KEM-768) | CCC | ⏳ | verify v4.6.0 (CIRISVerify#47, `ml-kem` feature) — **Conformance#7** Scenario 2; not on the Python wheel surface. **Substrate now shipped** (edge v3.5.0 `transport::federation_session`) + **measured** by CIRISServer `pqc_av_streaming` (criterion; `benchmarks/reference.json` `av_kex_*`). Cross-wheel Python bench pending edge PyO3 exposure → **CIRISEdge#123** |
-| Realtime A/V mesh two-layer hybrid-PQC seal (CEG §10.5.8) | CCS | ⏳ | edge v3.5.0 `transport::realtime_av` (CIRISEdge#62) shipped + **measured** by CIRISServer `pqc_av_streaming` (`reference.json` `av_frame_*` / `av_mesh_fanout_*`; ~2.3 GiB/s steady-state, PQC cost amortized at KEX). Rust-only today → cross-wheel Python bench pending **CIRISEdge#123** PyO3 exposure |
+| Hybrid KEX (X25519 + ML-KEM-768) | CCC | ◷🦀 | **bench-only** at the Rust layer — CIRISServer `benches/pqc_av_streaming.rs` runs the `ciris_edge::transport::federation_session` handshake for *timing*, but there is no correctness assertion (shared-secret agreement / fail-closed on tampered ciphertext). Correctness gate added by the server Rust conformance harness (in progress). |
+| Realtime A/V mesh two-layer hybrid-PQC seal (CEG §10.5.8) | CCS | 🦀 | CIRISServer `tests/alm_chain.rs::inner_e2e_survives_relay_chain` (inner E2E plaintext recovered byte-identical through 1–5 relay reseal hops) + `::wrong_outer_key_at_a_hop_fails_closed` (outer AEAD fails closed), vs the pinned edge |
 | R1/Q1 partition+heal merge contracts (Fed TM v1.1) | CCS | ⏳ | CIRISVerify#48/#49 — **Conformance#7** Scenario 3 |
 | §10.1.2 holds_bytes 24h TTL | CCS | ⏳ | needs injectable clock → folded into CIRISPersist#125 |
 | Identity-aware storage / per-actor eviction (scaling §9) | CCS | ⏳ | `list_holders` + evict-actor → **CIRISPersist#125** |
