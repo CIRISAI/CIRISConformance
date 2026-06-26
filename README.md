@@ -2,6 +2,19 @@
 
 Cross-artifact conformance harness for the CIRIS federation stack — the substrate and fabric of **CEWP**, the **CIRIS Epistemic Web Platform** (pronounced "soup"): [github.com/CIRISAI/CEWP](https://github.com/CIRISAI/CEWP) · [FSD](reference/CEWP.md). It doubles as the **CEWP reference**: the specs it conforms against are vendored under [`reference/`](reference/).
 
+## What this is
+
+**CEWP is a governable, post-quantum, decentralized mesh.** It's a peer-to-peer federation where every load-bearing claim — *"this content is genuine," "this peer is trusted," "defer this to a human"* — is a signed wire-format artifact; identity and content are protected by post-quantum-hybrid cryptography; messages cross a live encrypted mesh with no central server; and who may join, speak, and moderate is gated by the substrate and rooted in accountable humans. The full platform thesis is in [`reference/CEWP.md`](reference/CEWP.md).
+
+**This repo is the neutral conformance suite that proves the independently-published wheels actually enforce those properties together** — not in a combined build where the cross-wheel seams vanish, but as the real, separately-shipped artifacts cohabiting in one process. Each property is a behaviour a published wheel *gates*, driven by a real test (never spec text, never a mock):
+
+- **Decentralized mesh** — messages cross a live transport node-to-node, no center. `test_340` drives A→B delivery across every holder mode over a 4-node / 3-owner fabric.
+- **Post-quantum** — identity and the audit chain are Ed25519 + ML-DSA-65 hybrid; the content/DEK cascade is X25519 + ML-KEM-768 (`test_250`, `test_100`, `test_320`). The wire *session* keys are classical (Reticulum) — PQ protects the long-lived secrets, where harvest-now-decrypt-later actually bites.
+- **Governable** — membership roots in an accountable human (`owner_bind`, CC 3.2), with delegated + revocable moderation authority and namespace admission (`test_270`, `test_240`, `test_260`), and a tamper-evident audit chain (`test_320`).
+- **Scales without big tech** — the replication discipline + scaling factors that make internet-scale feasible on ordinary hardware are checked properties, not slides (`test_210`, `test_211`, `test_200`).
+
+The grouped [test-case index](#test-case-index-by-property) below maps each property to the tests that enforce it and how.
+
 ## Why this exists
 
 The CIRIS stack ships as **separately-published PyO3 extension wheels** — storage, crypto, transport, node-serving — each built and released on its own cadence, but designed to run **together inside one Python process** (the CIRIS 3.0 cohabitation EPIC, [CIRISPersist#85](https://github.com/CIRISAI/CIRISPersist/issues/85)). That's how they run in production: one process, one persist `Engine`, one edge runtime, all sharing substrate handles.
@@ -179,20 +192,23 @@ Each test file is self-contained — no shared imports between test files — so
 
 Against the current pinned matrix (persist 10.4.0 / verify 7.5.0 / edge 7.1.0 / server 0.5.51), the suite runs **green on both backends** — sqlite *and* postgres, in full parity — across py3.10 + py3.12 on x86_64 and aarch64:
 
-**102 passed · 1 skipped · 2 expected-failures · 0 unexpected failures**
+**123 passed · 1 skipped · 1 expected-failure · 0 unexpected failures**
 
 - The **1 skip** is the HSM hardware-contrast cell, which only runs on a host with a real TPM (not a wheel gate — environment-conditional, correct).
-- The **2 expected-failures** are each blocked on a *filed* upstream issue and flip to a real enforced gate the moment that upstream ships:
+- The **1 expected-failure** is blocked on a *filed* upstream issue and flips to a real enforced gate the moment it ships:
   | xfail | Blocked on |
   |---|---|
-  | `test_050` true loopback delivery | needs a 2-node transport fixture — [Conformance#4](https://github.com/CIRISAI/CIRISConformance/issues/4) |
-  | `test_320` audit-chain accountability | `LensAudit.log_*` emits `sequence_number=0`, persist needs `≥1` — [CIRISServer#93](https://github.com/CIRISAI/CIRISServer/issues/93) |
+  | `test_240` `subject_key_ids` lowercase-hex | emit path admits uppercase hex (CC 2.6.3 / §0.6) — [CIRISPersist#293](https://github.com/CIRISAI/CIRISPersist/issues/293) |
 
 The version-skew lane (`-m version_skew`, real installs into throwaway venvs) runs as its own CI job and is green.
 
-## Test-case index
+## Test-case index (by property)
 
-`✅` = real enforced gate · `⏳` = expected-failure tracked to a filed upstream issue.
+Grouped by the property each test enforces, and how it's driven. `✅` = real enforced gate · `⏳` = expected-failure tracked to a filed upstream issue. (Numeric file order is incidental; tests are listed under the property they primarily prove.)
+
+### Cohabitation — the independently-shipped wheels actually run together
+
+*How:* install the real, separately-published wheels into one clean env and import / cohabit / hand off shared handles in a single process — each scenario in a fresh subprocess so nothing leaks between cases. This is the harness's reason to exist: failure modes that vanish in any single combined build.
 
 | File | Tier | Verifies | Status |
 |---|---|---|---|
@@ -200,30 +216,63 @@ The version-skew lane (`-m version_skew`, real installs into throwaway venvs) ru
 | `test_020_pairwise_imports.py` | substrate | Any two wheels coexist in one process (all pairs incl. `*-server`) | ✅ |
 | `test_030_cohabitation_init.py` | substrate | `edge.init_edge_runtime(persist.Engine)` capsule handshake | ✅ |
 | `test_040_pyclass_identity.py` | substrate | Cross-module PyClass identity invariants | ✅ |
-| `test_050_send_receive.py` | substrate | Send/receive surface; durable send (sender FK after [edge#203](https://github.com/CIRISAI/CIRISEdge/issues/203)); loopback ⏳ [Conformance#4](https://github.com/CIRISAI/CIRISConformance/issues/4) | ✅ |
 | `test_060_version_skew.py` | substrate | In-range cohabitation tolerance + below-floor pip refusal (clean-venv per case) | ✅ |
-| `test_070_hsm_transport_identity.py` | substrate | `hardware_hsm_only` cohab init → 32-byte transport identity | ✅ |
+| `test_070_hsm_transport_identity.py` | substrate | `hardware_hsm_only` cohab init → 32-byte transport identity (skips without a real TPM) | ✅ |
 | `test_080_mobile_target.py` | substrate | Android/Chaquopy bundling (abi3), keystore taxonomy, bring-up gate | ✅ |
+
+### Post-quantum cryptographic accountability — every claim is hybrid-signed and tamper-evident
+
+*How:* drive the real sign / verify / wrap surfaces and assert the post-quantum-hybrid shapes and the byte-exact canonicalization the signatures cover — Ed25519 + ML-DSA-65 identity, X25519 + ML-KEM-768 content/DEK, and a hash-chained, hybrid-signed audit log.
+
+| File | Tier | Verifies | Status |
+|---|---|---|---|
+| `test_250_key_grant_pqc.py` | substrate | DEK-grant PQC wrap (CC 5.1): v2 is X25519 + ML-KEM-768 hybrid, v1 classical-only, no cross-version downgrade | ✅ |
 | `test_100_ccc_hybrid_verify.py` | substrate (CCC) | Hybrid-signature verify policy matrix (strict / ed25519-fallback / soft-freshness) | ✅ |
-| `test_110_ccs_blob_integrity.py` | substrate (CCS) | Blob full-SHA integrity + signed round-trip | ✅ |
 | `test_120_ccp_canonical_bytes.py` | substrate (CCP) | Canonical-bytes determinism + §0.5/§0.6/§0.7 rejection (timestamp / hex / future) | ✅ |
-| `test_130_multimedia.py` | substrate + fabric | CEG multimedia: media blob storage, perceptual-hash gate, takedown scheduling, key-grant retire, budget eviction | ✅ |
-| `test_140_https_transport.py` | substrate | HTTPS transport stands up (mTLS + bearer config; clean refusal to unresolvable peer) | ✅ |
-| `test_150_rns_dest_hash.py` | substrate | RNS destination-hash golden vectors + wheel-recompute cross-check ([verify#28](https://github.com/CIRISAI/CIRISVerify/issues/28)) | ✅ |
-| `test_200_fabric_eviction.py` | fabric | Per-actor eviction + `withdraws`, eviction sweeper, trust-threshold setter | ✅ |
-| `test_230_intake_gate.py` | fabric | Trust × capacity intake gate: low-trust sender refused at edge `dispatch_inbound` (`trust_short_circuited`) | ✅ |
-| `test_210_fabric_scaling_factors.py` | fabric | Scaling-factor contract (multiplier curve, `k_eff` corridor, retention) | ✅ |
-| `test_211_fav_cost_asymmetry.py` | fabric | F-AV cost-asymmetry contract (Sybil cost floors, dormant-vTPM, the 7-finding catalog) | ✅ |
-| `test_220_reconsider_dos.py` | fabric | Reconsideration anti-abuse (F-AV-RECONSIDER-DOS): actor-budget + harassment-cluster gates | ✅ |
+| `test_110_ccs_blob_integrity.py` | substrate (CCS) | Blob full-SHA integrity + signed round-trip | ✅ |
+| `test_320_audit_accountability.py` | fabric | Tamper-evident audit chain (compliance D02/D23): server writes → persist hash-chain verifies | ✅ |
+
+### Decentralized mesh transport — messages cross live transports with no center
+
+*How:* stand up real edge runtimes over Reticulum (and HTTPS), exchange identities, and deliver between *separate node processes* — asserting real receipt, not just a send that returns, and rejecting malformed peers before storage.
+
+| File | Tier | Verifies | Status |
+|---|---|---|---|
+| `test_340_transport_delivery_modes.py` | fabric | Real multi-node A→B inline-text delivery across every holder mode — self / family / community / direct (= community of 2) — over a 4-node / 3-owner fabric (Conformance#4) | ✅ |
 | `test_300_multinode_federation.py` | fabric | Multi-node over shared substrate: cross-node visibility, multi-holder discovery, per-operator eviction | ✅ |
 | `test_310_peer_admission.py` | fabric | Fail-secure peer-key enrollment: tampered envelope / corrupted signature rejected before storage | ✅ |
-| `test_320_audit_accountability.py` | fabric | Tamper-evident audit chain (compliance D02/D23): server writes → persist verifies | ✅ |
-| `test_240_reserved_prefix_admission.py` | fabric | Namespace admission: non-member family-scope write refused; CC 3.4 reserved prefixes refused (persist 10.4.0); subject_key_ids lowercase-hex residual ⏳ [persist#293](https://github.com/CIRISAI/CIRISPersist/issues/293) | ✅ |
-| `test_250_key_grant_pqc.py` | substrate | DEK-grant PQC wrap (CC 5.1): v2 is X25519+ML-KEM-768 hybrid, v1 classical-only, no cross-version downgrade | ✅ |
-| `test_260_cohort_member_lifecycle.py` | fabric | Family cohort member add / remove (CEG #249 G1): idempotent add, immediate vs future-dated revoke, swap, member-side read | ✅ |
+| `test_050_send_receive.py` | substrate | Send/receive surface; durable send (sender FK after [edge#203](https://github.com/CIRISAI/CIRISEdge/issues/203)) | ✅ |
+| `test_140_https_transport.py` | substrate | HTTPS transport stands up (mTLS + bearer config; clean refusal to unresolvable peer) | ✅ |
+| `test_150_rns_dest_hash.py` | substrate | RNS destination-hash golden vectors + wheel-recompute cross-check ([verify#28](https://github.com/CIRISAI/CIRISVerify/issues/28)) | ✅ |
+
+### Governance — who may join, speak, and moderate, rooted in accountable humans
+
+*How:* drive the real admission / membership / moderation / safety surfaces and assert the gates — owner-binding to a human (`owner_bind`, CC 3.2), delegated + revocable authority, reserved-namespace refusal, content takedown, and abuse-source denial.
+
+| File | Tier | Verifies | Status |
+|---|---|---|---|
+| `test_240_reserved_prefix_admission.py` | fabric | Namespace admission: non-member family-scope write refused; CC 3.4 reserved prefixes refused (persist 10.4.0); `subject_key_ids` lowercase-hex residual ⏳ [persist#293](https://github.com/CIRISAI/CIRISPersist/issues/293) | ✅ |
 | `test_270_moderation_authority.py` | fabric | §11.10 moderation duty (CC 4.5.4): non-moderator refused at `file_moderation`; community authority files; appoint → `is_named_moderator` → remove revokes (persist 10.4.0) | ✅ |
+| `test_260_cohort_member_lifecycle.py` | fabric | Family cohort member add / remove (CEG #249 G1): idempotent add, immediate vs future-dated revoke, swap, member-side read | ✅ |
+| `test_130_multimedia.py` | substrate + fabric | CEG multimedia: media blob storage, perceptual-hash gate, takedown scheduling (CSAM/terrorist legal-basis), key-grant retire, budget eviction | ✅ |
 | `test_280_blackhole_denylist.py` | substrate | Transport abuse-source blackhole (CC 4.5): 16-byte Reticulum identity-hash width gate + list round-trip | ✅ |
-| `test_340_transport_delivery_modes.py` | fabric | Real multi-node A→B inline-text delivery across every holder mode — self / family / community / direct (= community of 2) — over a 4-node / 3-owner fabric (Conformance#4) | ✅ |
+| `test_220_reconsider_dos.py` | fabric | Reconsideration anti-abuse (F-AV-RECONSIDER-DOS): actor-budget + harassment-cluster gates | ✅ |
+
+### Scales without big tech — the fabric economics, as checked properties
+
+*How:* drive the replication discipline and the scaling-factor contract from the [FEDERATION_SCALING_MODEL](reference/FEDERATION_SCALING_MODEL.md) — what a node keeps, whose data it may evict, when it sheds stale data, the intake throttle, and the adversarial cost floors that keep Sybil attacks expensive.
+
+| File | Tier | Verifies | Status |
+|---|---|---|---|
+| `test_210_fabric_scaling_factors.py` | fabric | Scaling-factor contract (multiplier curve, `k_eff` corridor, retention) | ✅ |
+| `test_211_fav_cost_asymmetry.py` | fabric | F-AV cost-asymmetry contract (Sybil cost floors, dormant-vTPM, the 7-finding catalog) | ✅ |
+| `test_200_fabric_eviction.py` | fabric | Per-actor eviction + `withdraws`, eviction sweeper, trust-threshold setter | ✅ |
+| `test_230_intake_gate.py` | fabric | Trust × capacity intake gate: low-trust sender refused at edge `dispatch_inbound` (`trust_short_circuited`) | ✅ |
+
+### Packaging & tooling
+
+| File | Tier | Verifies | Status |
+|---|---|---|---|
 | `test_900_bench_smoke.py` | — | Cross-wheel benchmark suite runs and reports (the benchmark tier's bit-rot gate) | ✅ |
 | `test_912_install_pins_tool.py` | — | Unit pins for the propagation-race retry helper (`tools/install_pins.py`) | ✅ |
 
