@@ -1,5 +1,5 @@
 """
-RNS destination-hash recompute conformance (CEG 1.0-RC6 §5.6.8.8.1.1).
+RNS destination-hash recompute conformance (CC 0.4 CC 3.3.6.2.1).
 
 RC6 pins the RNS destination-hash construction in-spec so a conformant
 verifier can recompute `destination_hash` from the spec alone — closing the
@@ -23,7 +23,7 @@ exposed on the Python surface (CIRISVerify#28 lift / CIRISEdge PyO3 ask) —
 realtime-transport surfaces (federation_session KEX, realtime_av) are Rust-only
 today, so the dest-hash recompute follows the same exposure path.
 
-Spec: reference/CEG/05_namespace.md §5.6.8.8.1.1 (vendored, 1.0-RC6).
+Spec: reference/CIRIS_Constitution/part_3_the_namespace.md CC 3.3.6.2.1 (vendored, 1.0-RC6).
 """
 
 from __future__ import annotations
@@ -32,7 +32,7 @@ import hashlib
 
 import pytest
 
-# Pinned constants (CEG §5.6.8.8.1.1; RNS origin in comments).
+# Pinned constants (CC 3.3.6.2.1; RNS origin in comments).
 NAME_HASH_LEN = 10   # Identity.NAME_HASH_LENGTH = 80 bits
 DEST_HASH_LEN = 16   # Reticulum.TRUNCATED_HASHLENGTH = 128 bits
 
@@ -43,7 +43,7 @@ def ceg_destination_hash(
     x25519_pub: bytes,
     ed25519_pub: bytes,
 ) -> bytes:
-    """Reference implementation of CEG §5.6.8.8.1.1, by the book.
+    """Reference implementation of CC 3.3.6.2.1, by the book.
 
     This IS the closed conformance source — it does not call Reticulum; a
     verifier that reproduces these four steps has performed the AV-42 check.
@@ -75,7 +75,7 @@ _EXPECTED_DEST_HASH = "98baa5d17abd7d940741d2f7b850577c"
 @pytest.mark.ceg
 @pytest.mark.ccs
 def test_dest_hash_golden_vector():
-    """§5.6.8.8.1.1: the two-stage construction matches the frozen golden vector."""
+    """CC 3.3.6.2.1: the two-stage construction matches the frozen golden vector."""
     expanded = _APP_NAME + "." + ".".join(_ASPECTS)
     name_hash = hashlib.sha256(expanded.encode()).digest()[:NAME_HASH_LEN]
     identity_hash = hashlib.sha256(_X25519_PUB + _ED25519_PUB).digest()[:DEST_HASH_LEN]
@@ -135,7 +135,7 @@ def test_dest_hash_aspect_rejects_dot():
 @pytest.mark.ccc
 @pytest.mark.requires_verify
 def test_wheel_recomputes_dest_hash_per_spec():
-    """verify's wheel recompute MUST match §5.6.8.8.1.1 byte-for-byte (CIRISVerify#28, v7.3.0)."""
+    """verify's wheel recompute MUST match CC 3.3.6.2.1 byte-for-byte (CIRISVerify#28, v7.3.0)."""
     import ciris_verify  # noqa: F401
 
     recompute = getattr(ciris_verify, "rns_destination_hash", None)

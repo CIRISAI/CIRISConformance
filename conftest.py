@@ -400,8 +400,8 @@ def federation_module(tmp_path_factory):
 
 
 
-# ─── CEG conformance-profile script preamble ──────────────────────────
-# The CCP / CCC / CCS profile tests (CEG §0.2) all need a persist Engine
+# ─── CC conformance-profile script preamble ──────────────────────────
+# The CCP / CCC / CCS profile tests (CC 2.2) all need a persist Engine
 # carrying a 32-byte Ed25519 LocalSigner so they can sign + verify
 # canonical bytes. This builds that engine as `engine` and its base64
 # public key as `pk` inside a fresh subprocess. On import/construction

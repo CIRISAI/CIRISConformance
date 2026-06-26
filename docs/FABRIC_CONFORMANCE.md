@@ -6,11 +6,11 @@ and [`CEWP.md`](https://github.com/CIRISAI/CIRISNodeCore/blob/main/FSD/CEWP.md).
 
 | Tier | Marker | What it proves | Lives in |
 |---|---|---|---|
-| **Substrate** | `substrate` | The independently-built ciris-* wheels cohabit in one process and each primitive behaves per the CEG contract | `test_0xx` (cohabitation), `test_1xx` (CEG CCP/CCC/CCS) |
+| **Substrate** | `substrate` | The independently-built ciris-* wheels cohabit in one process and each primitive behaves per the CIRIS Constitution (CC 0.4) | `test_0xx` (cohabitation), `test_1xx` (CC 2.2 CCP/CCC/CCS) |
 | **Fabric** | `fabric` | The *emergent* federation behaviour — the replication discipline + the scaling factors that make "carry the internet on commodity hardware" hold | `test_2xx` |
 
 ```bash
-pytest -m substrate    # per-primitive cohabitation + CEG profiles
+pytest -m substrate    # per-primitive cohabitation + Constitution profiles
 pytest -m fabric       # replication discipline + scaling factors
 ```
 

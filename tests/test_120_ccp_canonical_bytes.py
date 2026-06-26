@@ -1,8 +1,8 @@
 """
 CEG-Conforming Producer (CCP) — canonical-bytes + sign/verify round-trip.
 
-CEG §0.2 defines the **CCP** profile: a producer MUST emit well-formed
-envelopes (§4) and sign them per the hybrid-sig reference. The
+CC 2.2 defines the **CCP** profile: a producer MUST emit well-formed
+envelopes (CC 2.1) and sign them per the hybrid-sig reference. The
 producer-side surface reachable at the cross-wheel boundary is persist's
 canonicalization pair:
 
@@ -16,12 +16,12 @@ input key order, (b) the signing form strips the signature fields, and
 result — closing the CCP↔CCC loop on real bytes.
 
 `test_canonicalization_rejects_noncanonical_timestamp` tracks the CEG
-§0.5/§0.6/§0.7 canonicalization-discipline gap: the spec says consumers
+CC 2.6.2/CC 2.6.3/CC 2.6.7 canonicalization-discipline gap: the spec says consumers
 MUST reject `+00:00` / uppercase-hex / future `signed_at`, but the wheel
 does not yet enforce it at this surface (tracked upstream as
 CIRISPersist#126). It is `xfail` until that lands.
 
-See CEG §0.2 / §4 / §0.5-§0.7 — CIRISRegistry/FSD/CEG/.
+See CC 2.2 / CC 2.1 / CC 2.6.2-CC 2.6.7 — CIRISRegistry/FSD/CIRIS_Constitution/.
 """
 
 from __future__ import annotations
@@ -64,7 +64,7 @@ try:
 except ValueError as exc:
     report["roundtrip_error"] = str(exc)
 
-# (d) CEG §0.5/§0.6/§0.7 canonicalization rejection — the opt-in validator
+# (d) CC 2.6.2/CC 2.6.3/CC 2.6.7 canonicalization rejection — the opt-in validator
 # persist v3.5.0 shipped for CIRISPersist#126 (separate from canonicalize_*).
 def _vchk(payload, now=None):
     try:
@@ -79,7 +79,7 @@ report["canon_validation"] = {
     "ts_lowerz":  _vchk({"signed_at": "2026-05-28T13:45:09.000z"}),
     "hex_lower":  _vchk({"root_hash": "ff00aa"}),
     "hex_upper":  _vchk({"root_hash": "FF00AA"}),
-    # §0.7: signed_at more than 5 min in the future, relative to now_iso.
+    # CC 2.6.7: signed_at more than 5 min in the future, relative to now_iso.
     "ts_present": _vchk({"signed_at": "2026-05-28T13:46:00.000Z"}, "2026-05-28T13:45:00.000Z"),
     "ts_future":  _vchk({"signed_at": "2026-05-28T13:51:00.000Z"}, "2026-05-28T13:45:00.000Z"),
 }
@@ -136,19 +136,19 @@ def test_producer_consumer_round_trip(ccp_canonical):
 @pytest.mark.ccp
 @pytest.mark.requires_persist
 def test_canonicalization_validator_rejects_noncanonical_forms(ccp_canonical):
-    """CEG §0.5/§0.6/§0.7: validate_envelope_canonical_form rejects non-canonical forms.
+    """CC 2.6.2/CC 2.6.3/CC 2.6.7: validate_envelope_canonical_form rejects non-canonical forms.
 
     persist v3.5.0 (CIRISPersist#126) shipped this as an opt-in validator
     distinct from `canonicalize_envelope`; the harness opts in explicitly.
     """
     v = ccp_canonical["canon_validation"]
-    # §0.5 datetime — only `…Z` with 3 fractional digits is canonical.
+    # CC 2.6.2 datetime — only `…Z` with 3 fractional digits is canonical.
     assert v["ts_ok"] == "accepted", v
     assert v["ts_offset"] == "canonicalization_timestamp", v
     assert v["ts_lowerz"] == "canonicalization_timestamp", v
-    # §0.6 hex — lowercase only.
+    # CC 2.6.3 hex — lowercase only.
     assert v["hex_lower"] == "accepted", v
     assert v["hex_upper"] == "canonicalization_hex", v
-    # §0.7 — signed_at more than 5 min in the future is rejected.
+    # CC 2.6.7 — signed_at more than 5 min in the future is rejected.
     assert v["ts_present"] == "accepted", v
     assert v["ts_future"] == "signed_at_in_future", v
