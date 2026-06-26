@@ -234,15 +234,12 @@ Each test file is self-contained — no shared imports between test files — so
 
 ## Results
 
-Against the current pinned matrix (persist 10.4.0 / verify 7.5.0 / edge 7.1.0 / server 0.5.51), the suite runs **green on both backends** — sqlite *and* postgres, in full parity — across py3.10 + py3.12 on x86_64 and aarch64:
+Against the current pinned matrix (persist 10.5.0 / verify 7.5.0 / edge 7.1.0 / server 0.5.51), the suite runs **green on both backends** — sqlite *and* postgres, in full parity — across py3.10 + py3.12 on x86_64 and aarch64:
 
-**123 passed · 1 skipped · 1 expected-failure · 0 unexpected failures**
+**124 passed · 1 skipped · 0 expected-failures · 0 unexpected failures**
 
 - The **1 skip** is the HSM hardware-contrast cell, which only runs on a host with a real TPM (not a wheel gate — environment-conditional, correct).
-- The **1 expected-failure** is blocked on a *filed* upstream issue and flips to a real enforced gate the moment it ships:
-  | xfail | Blocked on |
-  |---|---|
-  | `test_240` `subject_key_ids` lowercase-hex | emit path admits uppercase hex (CC 2.6.3 / §0.6) — [CIRISPersist#293](https://github.com/CIRISAI/CIRISPersist/issues/293) |
+- **0 expected-failures** — the last one (`test_240` `subject_key_ids` lowercase-hex) flipped to a real gate when persist 10.5.0 closed [CIRISPersist#293](https://github.com/CIRISAI/CIRISPersist/issues/293). Every Python-lane assertion is now a real enforced gate. (Substrate-internal Rust-lane features — STH/D17, hybrid-KEX correctness — are tracked in [`docs/CEG_CONFORMANCE.md`](docs/CEG_CONFORMANCE.md) and gated in CIRISServer's Rust suite.)
 
 The version-skew lane (`-m version_skew`, real installs into throwaway venvs) runs as its own CI job and is green.
 
@@ -295,7 +292,7 @@ Grouped by the property each test enforces, and how it's driven. `✅` = real en
 
 | File | Tier | Verifies | Status |
 |---|---|---|---|
-| `test_240_reserved_prefix_admission.py` | fabric | Namespace admission: non-member family-scope write refused; CC 3.4 reserved prefixes refused (persist 10.4.0); `subject_key_ids` lowercase-hex residual ⏳ [persist#293](https://github.com/CIRISAI/CIRISPersist/issues/293) | ✅ |
+| `test_240_reserved_prefix_admission.py` | fabric | Namespace admission: non-member family-scope write refused; CC 3.4 reserved prefixes refused (persist 10.4.0); `subject_key_ids` lowercase-hex refused (persist 10.5.0, CC 2.6.3/§0.6) | ✅ |
 | `test_270_moderation_authority.py` | fabric | §11.10 moderation duty (CC 4.5.4): non-moderator refused at `file_moderation`; community authority files; appoint → `is_named_moderator` → remove revokes (persist 10.4.0) | ✅ |
 | `test_260_cohort_member_lifecycle.py` | fabric | Family cohort member add / remove (CEG #249 G1): idempotent add, immediate vs future-dated revoke, swap, member-side read | ✅ |
 | `test_130_multimedia.py` | substrate + fabric | CEG multimedia: media blob storage, perceptual-hash gate, takedown scheduling (CSAM/terrorist legal-basis), key-grant retire, budget eviction | ✅ |

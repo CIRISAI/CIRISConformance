@@ -24,9 +24,9 @@ persist 10.4.0** (the reserved-prefix half of **CIRISPersist#288** closed): the
 substrate now enforces the prefix↔identity_type rules and refuses each with a
 distinct typed reason. (Through persist 10.2.2 all three were wrongly accepted.)
 The residual split out of #288 — `subject_key_ids[]` elements MUST be lowercase
-hex (CC 2.6.3) but an uppercase-hex entry is still admitted — is tracked as
-**CIRISPersist#293** and remains `xfail(strict=True)`, flipping the moment
-persist applies the §0.6 hex rule on the emit path.
+hex (CC 2.6.3 / §0.6) — closed in **persist 10.5.0** (**CIRISPersist#293**): the
+emit path now applies the §0.6 hex rule, so an uppercase-hex entry is refused.
+Both gates here are now real green gates.
 
 The scope gate that IS enforced — a `cohort_scope: family` attestation missing
 its required `family_id` is refused (`federation_write_scope_refused`, CC 2.3.1)
@@ -169,17 +169,14 @@ def test_reserved_prefixes_refused_from_agent_key(admission):
 
 
 @pytest.mark.requires_persist
-@pytest.mark.xfail(
-    strict=True,
-    reason="CIRISPersist#293 — the residual split out of #288 (whose reserved-prefix "
-    "half persist 10.4.0 closed). subject_key_ids[] elements MUST be lowercase hex "
-    "(CC 2.6.3 / §0.6), but emit_attestation_self still admits an uppercase-hex entry "
-    "on persist 10.4.0. The §0.6 hex rule is enforced on the canonical hash fields "
-    "(and location cell_ids) but not on the emit path's subject_key_ids. Flips to a "
-    "real gate when persist applies it there.",
-)
 def test_subject_key_ids_must_be_lowercase_hex(admission):
-    """CC 2.6.3: an uppercase-hex subject_key_ids entry is refused at admission."""
+    """CC 2.6.3 / §0.6: an uppercase-hex subject_key_ids entry is refused at admission.
+
+    Real gate as of **persist 10.5.0** (CIRISPersist#293 closed, the residual split
+    out of #288): `emit_attestation_self` now applies the §0.6 lowercase-hex rule to
+    `subject_key_ids[]` elements, so an uppercase-hex entry is refused
+    (`federation_invalid_argument`). Through persist 10.4.0 it was wrongly admitted.
+    """
     assert admission["subject_key_ids_upper_hex"] != "accepted", (
         f"uppercase-hex subject_key_ids admitted (CC 2.6.3): "
         f"{admission['subject_key_ids_upper_hex']}")
