@@ -533,3 +533,103 @@ def pytest_collection_modifyitems(config: pytest.Config, items: Iterable[pytest.
                 item.add_marker(
                     pytest.mark.skip(reason=f"{module} not installed in current env")
                 )
+    # Record each test's markers for the machine-readable conformance report
+    # (after tiering + requires_* skips, so the recorded set is final).
+    for item in items:
+        _CONFORMANCE["markers"][item.nodeid] = sorted(
+            m.name for m in item.iter_markers()
+        )
+
+
+# ─── Machine-readable conformance report ──────────────────────────────
+# `pytest --conformance-report=PATH` writes a JSON certification artifact:
+# the pinned matrix, per-marker rollups, and per-test outcomes, plus a single
+# `passed_all_gates` boolean an implementer can assert on. Keyed on the existing
+# marker taxonomy (substrate/fabric/ceg/ccp/ccc/ccs/requires_*), so "does
+# Implementation X conform?" becomes a checkable file, not a screenful of dots.
+
+_CONFORMANCE: dict = {"outcomes": {}, "markers": {}}
+
+# Markers that name a *property* worth rolling up (vs. incidental tags).
+_REPORT_MARKERS = (
+    "substrate", "fabric", "cohabitation", "ceg", "ccp", "ccc", "ccs",
+    "version_skew", "requires_persist", "requires_edge", "requires_verify",
+    "requires_lens",
+)
+
+
+def pytest_addoption(parser: pytest.Parser) -> None:
+    parser.addoption(
+        "--conformance-report", action="store", default=None, metavar="PATH",
+        help="write a machine-readable JSON conformance report to PATH",
+    )
+
+
+def _classify(report: pytest.TestReport) -> str | None:
+    """Map a phase report to a single conformance outcome token."""
+    wasxfail = hasattr(report, "wasxfail")
+    if report.when == "call":
+        if report.passed:
+            return "xpassed" if wasxfail else "passed"
+        if report.failed:
+            return "failed"
+        if report.skipped:
+            return "xfailed" if wasxfail else "skipped"
+    elif report.when == "setup":
+        if report.skipped:
+            return "xfailed" if wasxfail else "skipped"
+        if report.failed:
+            return "error"
+    elif report.when == "teardown" and report.failed:
+        return "error"
+    return None
+
+
+def pytest_runtest_logreport(report: pytest.TestReport) -> None:
+    outcome = _classify(report)
+    if outcome is None:
+        return
+    outcomes = _CONFORMANCE["outcomes"]
+    if report.when == "call":
+        outcomes[report.nodeid] = outcome  # call phase is authoritative
+    elif report.when == "setup":
+        outcomes.setdefault(report.nodeid, outcome)  # only if it never ran
+    elif report.when == "teardown" and outcome == "error":
+        outcomes[report.nodeid] = "error"  # a clean test that fails teardown
+
+
+def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
+    path = session.config.getoption("--conformance-report")
+    if not path:
+        return
+    outcomes = _CONFORMANCE["outcomes"]
+    markers = _CONFORMANCE["markers"]
+    totals: dict[str, int] = {}
+    by_marker: dict[str, dict[str, int]] = {}
+    tests = []
+    for nodeid, outcome in sorted(outcomes.items()):
+        ms = markers.get(nodeid, [])
+        tests.append({"test": nodeid, "outcome": outcome, "markers": ms})
+        totals[outcome] = totals.get(outcome, 0) + 1
+        for m in ms:
+            if m in _REPORT_MARKERS:
+                bucket = by_marker.setdefault(m, {})
+                bucket[outcome] = bucket.get(outcome, 0) + 1
+    # A gate is "not passed" if anything failed, errored, or unexpectedly passed
+    # (an xpassed strict-xfail means an expected-failure must be flipped).
+    passed_all = not (totals.get("failed", 0) or totals.get("error", 0)
+                      or totals.get("xpassed", 0))
+    url = get_database_url()
+    report = {
+        "schema": "ciris-conformance-report/v1",
+        "matrix": WheelMatrix.load().versions,
+        "database_backend": "postgres" if url.startswith("postgres") else "sqlite",
+        "exit_status": int(exitstatus),
+        "passed_all_gates": passed_all,
+        "totals": totals,
+        "by_marker": by_marker,
+        "tests": tests,
+    }
+    Path(path).write_text(json.dumps(report, indent=2, sort_keys=True))
+    print(f"\nconformance report → {path} "
+          f"(passed_all_gates={passed_all}, {totals})")

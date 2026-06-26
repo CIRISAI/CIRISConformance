@@ -64,9 +64,48 @@ See [`docs/FABRIC_CONFORMANCE.md`](docs/FABRIC_CONFORMANCE.md) for the tier cove
 
 Beyond cohabitation, this harness verifies the three [CEG 0.1](https://github.com/CIRISAI/CIRISRegistry/tree/main/FSD/CEG) conformance profiles (§0.2) — **CCP** (producer), **CCC** (consumer), **CCS** (substrate). See [`docs/CEG_CONFORMANCE.md`](docs/CEG_CONFORMANCE.md) for the profile definitions, the §0.5 fractal-self reading discipline, and a coverage matrix tracking which CEG paths are tested today vs. pending an upstream surface. Profile tests carry the `ceg` marker plus `ccp`/`ccc`/`ccs`; run one with `pytest -m ccc`.
 
-## Compliance controls
+## Compliance coverage map
 
-Several [CIRIS compliance controls](https://ciris.ai/compliance) reduce to a **substrate-enforced** mechanism — a behaviour a published wheel actually gates, not agent-side policy or governance. Those get a real conformance test driving the wheel: reconsideration anti-abuse (`test_220`, the F-AV-RECONSIDER-DOS guard), fail-secure peer-key enrollment (`test_310`), the §0.5–§0.7 canonical-bytes rejection rules (`test_120`), and the tamper-evident audit chain (`test_320`, D02/D23), and family cohort member add/remove (`test_260`, CEG #249 G1). Controls that live in the agent (conscience faculties, the WiseBus, the decision pipeline) are out of scope here — they're tested in CIRISAgent's own suite, not against the substrate wheels.
+The [CIRIS compliance catalog](https://ciris.ai/compliance) defines 27 controls (D01–D27). Most of each control lives in the **agent** — the conscience faculties, the H3ERE decision pipeline, the WiseBus, and the human-judgment (DEFER) steps — and is correctly tested in CIRISAgent's own suite. A subset, though, **reduce to a behaviour a published wheel actually gates** (a cryptographic, storage, admission, or transport mechanism). This map records which controls have such a substrate-enforced facet that *this* suite drives against the real wheels. **6 of 27 controls have a substrate-enforced facet covered here — 3 fully, 3 partially**; the rest are agent-side. (This replaces a "what we don't test" disclaimer with a precise boundary.)
+
+| Control | Substrate-enforceable requisite | Addressed by | Coverage |
+|---|---|---|---|
+| D01 — non_maleficence | — (conscience scalars; harm-class typing agent-side) | CIRISAgent suite | — |
+| D02 — integrity | Tamper-evident hash-chained, hybrid-signed audit log | `test_320` | ✅ |
+| D03 — justice | — (discrimination floor + escalation routing, agent/WiseBus) | CIRISAgent suite | — |
+| D04 — prohibited | — (capability-name floor enforced at the WiseBus) | CIRISAgent suite | — |
+| D05 — detection | — (cross-trace detectors are lens-side, not yet drivable) | CIRISAgent suite | — |
+| D06 — goal | — (memory-scope tags + stakeholder enumeration) | CIRISAgent suite | — |
+| D07 — locality_decision_scale | — (deferral taxonomy + domain routing at the WiseBus) | CIRISAgent suite | — |
+| D08 — autonomy | — (GDPR consent/DSAR pipeline is an agent service) | CIRISAgent suite | — |
+| D09 — fidelity | — (trace exposure + attestation; per-stakeholder log) | CIRISAgent suite | — |
+| D10 — beneficence | — (agent-side conscience/ethics review) | CIRISAgent suite | — |
+| D11 — multilateral_participation | — (forum/kind taxonomy + DSAR, agent service) | CIRISAgent suite | — |
+| D12 — conscience | — (config-threshold faculties run inside the agent) | CIRISAgent suite | — |
+| D13 — testimonial_witness | — (witness preservation is agent policy) | CIRISAgent suite | — |
+| D14 — witness_diversity | — (witness-set N≥3 admission gate upstream in NodeCore) | CIRISAgent suite | — |
+| D15 — moderation | Delegated, revocable moderation authority at the emit boundary | `test_270` | ✅ |
+| D16 — method | — (fixed-pipeline + bus-prohibition discipline) | CIRISAgent suite | — |
+| D17 — transparency_log | (signed disclosure register / Merkle-STH — not driven cross-wheel) | CIRISAgent suite | — |
+| D18 — attestation_l_3_5 | Hardware-rooted (L2) key surface; full ladder consumer-side | `test_070`, `test_080` | ◐ |
+| D19 — partner_role | — (WACertificate scopes; taxonomy lives in Registry) | CIRISAgent suite | — |
+| D20 — approach | — (agent-side cognitive-state routing) | CIRISAgent suite | — |
+| D21 — progress_measure | — (telemetry policy; anchored only via the D23 chain) | CIRISAgent suite | — |
+| D22 — expertise | — (inverse boundary via DEFER→WiseAuthority) | CIRISAgent suite | — |
+| D23 — accountability | Tamper-evident audit log (named-accountability facet agent-side) | `test_320` | ◐ |
+| D24 — reconsideration | Bounded reconsideration admission (anti-DoS / harassment-cluster) | `test_220` | ✅ |
+| D25 — credits | — (dual-signed CreditRecord; accrual loop awaits CIRISBilling) | CIRISAgent suite | — |
+| D26 — key_boundary | Hardware-rooted signer + storage-kind taxonomy; PQC DEK-grant wrap | `test_070`, `test_080`, `test_250` | ◐ |
+| D27 — provenance | — (signed build-manifest / tree-verify is an agent/CI surface) | CIRISAgent suite | — |
+
+**How the covered controls are gated:**
+- **D02 / D23 → `test_320`** — `ciris_server.LensAudit` writes entries; persist's `audit_verify_chain` walks the hash-chained, Ed25519 + ML-DSA-65–signed log and returns `ok`, with a typed break diagnostic on tamper. (D23's *named*-accountability / WiseAuthority-ruling facet stays agent-side → ◐; the tamper-evident log it rests on is the gated half.)
+- **D15 → `test_270`** — drives persist's `file_moderation` / `add_moderator` / `is_named_moderator`: a non-duty key is refused (`federation_delegated_scope_unauthorized`), and appoint→verify→revoke walks the owner-bound scoped-delegation chain.
+- **D18 → `test_070`/`test_080`** — the L2 hardware-rooted facet only (the engine reports a recognized keystore kind; a hardware-rooted signer yields a 32-byte transport identity). The L1/L3/L4/L5 ladder is consumer-side composition → ◐.
+- **D24 → `test_220`** — drives `ciris_server.ReconsiderDosGuard`: admits a fresh filing, refuses past the per-actor budget, and refuses repeat same-pair filings as `HarassmentClusterDetected`.
+- **D26 → `test_070`/`test_080` + `test_250`** — the hardware-rooted signer + storage-kind taxonomy is driven at cohab init, and `test_250` pins the v2 X25519 + ML-KEM-768 DEK-grant wrap as non-downgradable. The full `no_seed_in_heap` predicate is upstream and not yet drivable → ◐.
+
+**Totals: 3 ✅ · 3 ◐ · 21 agent-side.** The most consequential agent-side-only controls are **D04 — prohibited** (the categorical capability floor) and **D12 — conscience** (the optimization-veto / coherence / entropy faculties): both enforced inside the agent at the WiseBus and conscience layer, not at any wheel surface. **D17 — transparency_log** rests on a CIRISVerify Merkle/STH disclosure register no current cross-wheel test drives — so it is *not* claimed here (the audit chain `test_320` verifies serves D02/D23, a different requisite).
 
 ## How to run
 
@@ -84,7 +123,12 @@ pytest -m fabric           # replication discipline + scaling factors
 pytest -m ccc              # one CEG profile (producer/consumer/substrate)
 pytest -m version_skew     # the clean-venv version-skew lane (builds throwaway venvs; slow)
 pytest tests/test_030_cohabitation_init.py -v
+
+# Emit a machine-readable certification artifact (for "does Implementation X conform?"):
+pytest --conformance-report=conformance.json
 ```
+
+`--conformance-report` writes a JSON report — the pinned matrix, a per-marker rollup (`substrate`/`fabric`/`ccp`/`ccc`/`ccs`/`requires_*`), every test's outcome, and a single top-level `passed_all_gates` boolean (false if anything failed, errored, or a strict-xfail unexpectedly passed). An implementer can certify against the suite by asserting `passed_all_gates` on the report instead of scraping pytest output.
 
 Each scenario runs in a **fresh Python subprocess**: PyO3 type registration is process-global, so once a wheel is imported you cannot rewind it — a test that imported a wheel would contaminate the next (mechanics in the first drop-down below). The same suite runs against **both** sqlite and postgres in CI; backend-agnostic invariants must hold identically on each.
 
