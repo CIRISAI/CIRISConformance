@@ -223,7 +223,7 @@ The version-skew lane (`-m version_skew`, real installs into throwaway venvs) ru
 | `test_260_cohort_member_lifecycle.py` | fabric | Family cohort member add / remove (CEG #249 G1): idempotent add, immediate vs future-dated revoke, swap, member-side read | ✅ |
 | `test_270_moderation_authority.py` | fabric | §11.10 moderation duty (CC 4.5.4): non-moderator refused at `file_moderation`; community authority files; appoint → `is_named_moderator` → remove revokes (persist 10.4.0) | ✅ |
 | `test_280_blackhole_denylist.py` | substrate | Transport abuse-source blackhole (CC 4.5): 16-byte Reticulum identity-hash width gate + list round-trip | ✅ |
-| `test_330_two_node_roundtrip.py` | fabric | Real two-node transport A→B inline-text round-trip (edge#217 abort + 30s timeout fixed; send returns 'sent' but B never receives) ⏳ [edge#220](https://github.com/CIRISAI/CIRISEdge/issues/220) | ⏳ |
+| `test_340_transport_delivery_modes.py` | fabric | Real multi-node A→B inline-text delivery across every holder mode — self / family / community / direct (= community of 2) — over a 4-node / 3-owner fabric (Conformance#4) | ✅ |
 | `test_900_bench_smoke.py` | — | Cross-wheel benchmark suite runs and reports (the benchmark tier's bit-rot gate) | ✅ |
 | `test_912_install_pins_tool.py` | — | Unit pins for the propagation-race retry helper (`tools/install_pins.py`) | ✅ |
 
