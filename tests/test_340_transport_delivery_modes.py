@@ -17,17 +17,17 @@ over the FFI). The four ways two endpoints come to share a scope:
 - **direct** — a community of exactly two (same mechanism as community).
 
 Non-infrastructure family/community membership requires each node to be
-**owner-bound to a `user`-role human** (CC 3.2 / CC 3.4.7.1) via `owner_bind`,
-else `federation_unowned_community_member`. The minimal fabric that exercises all
-modes is **4 nodes / 3 owners**: owner O1 holds N1+N2 (their self group), O2
-holds N3, O3 holds N4 — so a 3-owner family/community AND a 2-owner direct
+**steward-bound to a `user`-role human** (CC 3.2 / CC 3.4.7.1) via `steward_bind`,
+else `federation_unstewarded_community_member`. The minimal fabric that exercises
+all modes is **4 nodes / 3 stewards**: steward O1 holds N1+N2 (their self group),
+O2 holds N3, O3 holds N4 — so a 3-steward family/community AND a 2-steward direct
 community are both real.
 
 Real gate as of **edge 7.1.0 + persist 10.4.0**: edge 7.1.0 spawns the inbound
 dispatch listeners in `init_edge_runtime` (CIRISEdge#217/#220), and the receiver
 keeps its `register_inline_text_handler` subscription handle alive (the handle's
 `Drop` unsubscribes — dropping it silently tears the listener down). The fixture
-stands up four real edge processes + three owner-setup processes over one shared
+stands up four real edge processes + three steward-setup processes over one shared
 substrate and drives one send per mode.
 """
 
@@ -124,11 +124,11 @@ def _node(tmp, role, *, listen_port, boot_ports):
     return head + _NODE_SRC
 
 
-# Owner setup runs as THREE sequential owner processes (one live engine per
-# process). Dependency order: O3 binds N4 → O2 binds N3 + founds the 2-owner
+# Steward setup runs as THREE sequential steward processes (one live engine per
+# process). Dependency order: O3 binds N4 → O2 binds N3 + founds the 2-steward
 # direct community {N3,N4} → O1 binds N1+N2 (+ self-occurrences) and founds the
-# 3-owner family + community {N1,N3,N4}. Each member must be owner-bound before a
-# community/family that includes it is written (CC 3.2).
+# 3-steward family + community {N1,N3,N4}. Each member must be steward-bound
+# before a community/family that includes it is written (CC 3.2).
 _OWNER_PREAMBLE = (
     "import os, json, sys, time, tempfile, secrets\n"
     "import ciris_persist as cp\n"
@@ -141,11 +141,11 @@ _OWNER_PREAMBLE = (
 )
 
 _OWNER3 = _OWNER_PREAMBLE + (
-    "eng.owner_bind(R['n4'], ['infra:transport'])\n"
+    "eng.steward_bind(R['n4'], ['infra:transport'])\n"
     "open(DONE3, 'w').write('ok'); print('OWNER3 done', file=sys.stderr); sys.exit(0)\n"
 )
 _OWNER2 = _OWNER_PREAMBLE + (
-    "eng.owner_bind(R['n3'], ['infra:transport'])\n"
+    "eng.steward_bind(R['n3'], ['infra:transport'])\n"
     "while not os.path.exists(DONE3): time.sleep(0.2)\n"
     "eng.put_community_json(json.dumps({'community_key_id': owner, 'community_name': 'D',\n"
     "    'members': [{'key_id': owner, 'joined_at': NOW, 'role': 'founder'},\n"
@@ -154,7 +154,7 @@ _OWNER2 = _OWNER_PREAMBLE + (
     "open(DONE2, 'w').write(json.dumps({'direct': owner})); print('OWNER2 done', file=sys.stderr); sys.exit(0)\n"
 )
 _OWNER1 = _OWNER_PREAMBLE + (
-    "eng.owner_bind(R['n1'], ['infra:transport']); eng.owner_bind(R['n2'], ['infra:transport'])\n"
+    "eng.steward_bind(R['n1'], ['infra:transport']); eng.steward_bind(R['n2'], ['infra:transport'])\n"
     "for occ in (R['n1'], R['n2']):\n"
     "    eng.put_identity_occurrence_json(json.dumps({'identity_key_id': owner, 'occurrence_key_id': occ,\n"
     "        'device_class': 'agent', 'asserted_at': NOW, 'persist_row_hash': ''}))\n"

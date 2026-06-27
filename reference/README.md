@@ -7,7 +7,7 @@ repo is self-contained, and so a reader can see *what* is being conformed
 to alongside the tests that check it.
 
 The authoritative standard the suite conforms against is the **CIRIS
-Constitution** (`CC 0.4`) — the **superalignment standard** for the CIRIS
+Constitution** (`CC 0.5.1`) — the **superalignment standard** for the CIRIS
 ecosystem. CIRISConformance tests the substrate's compliance with it; the
 CIRISAgent suite + safety batteries test the agent's; together they are the
 system's constitutional-compliance claim. **The Constitution superseded CEG** —
@@ -25,7 +25,7 @@ numbers in these documents.
 
 | File | Vendored from | Source commit |
 |---|---|---|
-| [`CIRIS_Constitution/`](CIRIS_Constitution/) — **the CIRIS Constitution `CC 0.4`, the superalignment standard** (parts 1–8; superseded + absorbed CEG) | `CIRISRegistry/FSD/CIRIS_Constitution/` | Registry @ `2fb7a2c` |
+| [`CIRIS_Constitution/`](CIRIS_Constitution/) — **the CIRIS Constitution `CC 0.5.1`, the superalignment standard** (parts 1–8; superseded + absorbed CEG) | `CIRISRegistry/FSD/CIRIS_Constitution/` | Registry @ `c81a3b5` |
 | [`CEWP.md`](CEWP.md) — the CIRIS Epistemic Web Platform FSD ("soup") | `CIRISNodeCore/FSD/CEWP.md` | NodeCore @ `dfd158e` |
 | [`FEDERATION_SCALING_MODEL.md`](FEDERATION_SCALING_MODEL.md) — what carrying the internet costs at v1 | `CIRISNodeCore/FSD/FEDERATION_SCALING_MODEL.md` | NodeCore @ `dfd158e` |
 | [`scale_model.rs`](scale_model.rs) — the scaling "toy" **v0.6** (`cargo run --example scale_model`; adds the `fav_findings()` adversarial-cost module vs Verify Fed TM v1.1) | `CIRISNodeCore/examples/scale_model.rs` | NodeCore @ `dfd158e` |
@@ -33,7 +33,7 @@ numbers in these documents.
 | [`synthesis/Corridor_Dynamics.tex`](synthesis/) — the flagship synthesis paper, *Corridor Dynamics in Coordinated Systems* (v2; reasoning-shape / ρ / k_eff corridor / trace commons) | `coherence-ratchet/papers/Corridor Dynamics.tex` | coherence-ratchet @ `ffcd62a` |
 | [`synthesis/research_status_entry.md`](synthesis/research_status_entry.md) — the ciris.ai/research-status catalog entry (DOI + summary) | `coherence-ratchet/copy/web/` | coherence-ratchet @ `ffcd62a` |
 
-Snapshot date: 2026-06-26 (vendored the CIRIS Constitution `CC 0.4`, now the authoritative standard; CEG marked superseded). Prior: 2026-05-31 (scaling toy re-vendored at v0.6).
+Snapshot date: 2026-06-26 (re-vendored the CIRIS Constitution at `CC 0.5.1` — the stewardship reframe `owner`→`steward`, the `affiliations` institutional cohort, `age_assurance`/`age_self_declared` namespace split, reverse-quorum moderation + moderator-existence gate, and the infohazard glossary/consent gate; conformed by the persist 11 / verify 8.1 / edge 7.3 / server 0.5.54 floor). Prior: 2026-06-26 (CIRIS Constitution `CC 0.4`, CEG marked superseded); 2026-05-31 (scaling toy re-vendored at v0.6).
 
 ## Prior art & state-of-the-art comparison
 

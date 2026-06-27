@@ -16,9 +16,9 @@ RATCHET measures a **within-agent** coherence number (`N_eff ≈ 7.1`) and hones
 
 The Kish identity `k_eff = k / (1 + ρ(k−1))` (proved as a theorem in `RATCHET …/k_eff_formula`) says that adding *correlated* constraints does nothing — `k_eff` saturates at `1/ρ`, so "more constituents is a non-solution to coordination failure." To raise effective dimensionality you must **decorrelate**. CEWP supplies exactly the decorrelating, non-gameable axes a single agent cannot generate for itself:
 
-1. **Decorrelation → genuinely raises `k_eff`.** Constraints produced by *independent* processes — other nodes' attestations, witness diversity, consensus, human owner-binding — are low-`ρ` with respect to the agent's internal manifold, so they add *new* effective dimensions rather than collapsing into the existing ~7. (This is the structural generalization of the polyglot-encoding trick: decorrelate the evaluation — *within* an agent via 29-language encoding, *across* agents via independent cryptographic parties.)
+1. **Decorrelation → genuinely raises `k_eff`.** Constraints produced by *independent* processes — other nodes' attestations, witness diversity, consensus, human steward-binding — are low-`ρ` with respect to the agent's internal manifold, so they add *new* effective dimensions rather than collapsing into the existing ~7. (This is the structural generalization of the polyglot-encoding trick: decorrelate the evaluation — *within* an agent via 29-language encoding, *across* agents via independent cryptographic parties.)
 2. **Externalization → closes the adaptive gap.** You cannot observe-and-adapt to a signature scheme you do not hold the key for, a quorum you do not control, a witness set satisfied by independent nodes, or an append-only audit you cannot rewrite. The constraint becomes **exogenous** to the agent — RATCHET's unenforceable "`P_D` fixed before `τ`" assumption is *enforced by the federation* instead of assumed.
-3. **Non-forgeability → anchored outside self-report.** Cryptographic identity (cannot forge who you are), owner-binding to a human (cannot claim membership without an accountable anchor), tamper-evident audit (cannot rewrite history), namespace authority (cannot emit reserved-prefix attestations). These are not "the agent says it is coherent" — they are "the cryptography and the federation say it is authorized and consistent."
+3. **Non-forgeability → anchored outside self-report.** Cryptographic identity (cannot forge who you are), steward-binding to a human (cannot claim membership without an accountable anchor), tamper-evident audit (cannot rewrite history), namespace authority (cannot emit reserved-prefix attestations). These are not "the agent says it is coherent" — they are "the cryptography and the federation say it is authorized and consistent."
 
 ## The conformance suite's role
 
@@ -27,7 +27,7 @@ Each CEWP axis is an external, independently-verifiable constraint — and that 
 | CEWP external constraint | Verified by |
 |---|---|
 | hybrid signatures (Ed25519 + ML-DSA-65) | `test_100`, `test_310` |
-| owner-binding to a human (CC 3.2) | `test_270` / `test_340` setup (`owner_bind`) |
+| steward-binding to a human (CC 3.2) | `test_270` / `test_340` setup (`steward_bind`) + `test_360`/`test_361` (admission + minor liveness) |
 | namespace / reserved-prefix admission (CC 3.4) | `test_240` |
 | delegated, revocable moderation authority (CC 4.5) | `test_270` |
 | tamper-evident, hash-chained audit (CC 5.3.1) | `test_320` |
