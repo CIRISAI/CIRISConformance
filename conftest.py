@@ -335,7 +335,8 @@ cp.reset_engine()
 engine = cp.Engine(DB_URL, key_id, local_key_id=key_id, local_key_path=_seed,
                    local_pqc_key_id=key_id + "-pqc", local_pqc_key_path=_pqc_seed)
 # identity_type defaults to "agent"; inject IDENTITY_TYPE="user" for an
-# owner-bound identity (is_owner_bound checks the type set contains `user`).
+# steward-bound identity (is_steward_bound checks the type set contains `user`;
+# persist 11 renamed the owner→steward surface, semantics preserved).
 _id_type = globals().get("IDENTITY_TYPE", "agent")
 kid = engine.register_self_federation_key(_id_type, IDENTITY_REF, None, None, None)
 report = {"key_id": key_id}

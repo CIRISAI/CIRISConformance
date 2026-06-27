@@ -10,10 +10,10 @@ authority model (`src/federation/admission.rs`):
 - `file_moderation(content_sha256, community_id, duty, allegation_type)` is
   admitted IFF the engine's signer reaches the target as a `moderate`
   duty-holder — otherwise `federation_delegated_scope_unauthorized`.
-- `add_moderator(community_id, moderator_key_id, duty)` emits an **owner-bound**
+- `add_moderator(community_id, moderator_key_id, duty)` emits a **steward-bound**
   scoped `delegates_to` appointment edge (returns its `attestation_id`).
 - `is_named_moderator(k, community_id, duty)` walks from the community's
-  authority set (members with `role:"founder"`, each gated by `is_owner_bound`)
+  authority set (members with `role:"founder"`, each gated by `is_steward_bound`)
   down the scoped-delegation chain to `k`. The authority root itself is a
   moderator zero-hop.
 
@@ -21,10 +21,10 @@ This drives the full lifecycle against the REAL persist surfaces:
 
 **Negative gate** (single engine): a registered agent key holding no moderation
 duty is refused at `file_moderation` (`federation_delegated_scope_unauthorized`),
-and `add_moderator` still mints a well-formed owner-bound appointment edge.
+and `add_moderator` still mints a well-formed steward-bound appointment edge.
 
 **Positive lifecycle** (multi-node, real gate as of **persist 10.4.0** —
-CIRISPersist#290 shipped `put_community_json`): a founder (owner-bound via
+CIRISPersist#290 shipped `put_community_json`): a founder (steward-bound via
 `identity_type=user`) creates a community and is recognized as its moderator
 zero-hop, so it can `file_moderation` against its own community; appointing a
 separate registered key as a `moderate` delegate makes `is_named_moderator`
@@ -76,7 +76,7 @@ try:
 except Exception as exc:
     report["non_moderator_file"] = str(exc)[:80]
 
-# add_moderator still mints a well-formed owner-bound appointment edge.
+# add_moderator still mints a well-formed steward-bound appointment edge.
 try:
     report["appointment_id"] = engine.add_moderator(kid, kid, "moderate")
 except Exception as exc:
@@ -102,12 +102,12 @@ def moderation():
 
 
 # ── Positive lifecycle: a real community authority + an appointed delegate ──
-# The founder node creates a community it founds (owner-bound via the `user`
+# The founder node creates a community it founds (steward-bound via the `user`
 # identity_type), files as the zero-hop authority, then appoints/removes a
 # separately-registered moderator key. MOD_KID comes from a prior member node.
 _FOUNDER_BODY = r"""
-# This node registered as identity_type=user (owner-bound) via the preamble's
-# IDENTITY_TYPE injection, so `kid` is the founder's owner-bound federation id.
+# This node registered as identity_type=user (steward-bound) via the preamble's
+# IDENTITY_TYPE injection, so `kid` is the founder's steward-bound federation id.
 founder = kid
 engine.put_community_json(json.dumps({
     "community_key_id": founder, "community_name": "conformance-comm",
@@ -165,7 +165,7 @@ def test_non_moderator_cannot_file_moderation(moderation):
 
 @pytest.mark.requires_persist
 def test_add_moderator_emits_appointment_edge(moderation):
-    """`add_moderator` mints an owner-bound scoped-delegation appointment edge."""
+    """`add_moderator` mints a steward-bound scoped-delegation appointment edge."""
     aid = moderation["appointment_id"]
     assert _is_uuid(aid), (
         f"add_moderator did not return a well-formed appointment attestation_id: {aid}"
@@ -175,11 +175,11 @@ def test_add_moderator_emits_appointment_edge(moderation):
 # ── Positive-lifecycle tests (real gate as of persist 10.4.0 / #290) ──────
 @pytest.mark.requires_persist
 def test_community_authority_can_file_moderation(moderation_authority):
-    """CC 4.5.4: the owner-bound community authority is a moderator zero-hop and may file."""
+    """CC 4.5.4: the steward-bound community authority is a moderator zero-hop and may file."""
     r = moderation_authority
     assert r["stage"] == "done", r
     assert r["founder_is_named"] == "true", (
-        f"the community's owner-bound founder is not recognized as its moderator: {r}")
+        f"the community's steward-bound founder is not recognized as its moderator: {r}")
     assert r["founder_can_file"] == "admitted", (
         f"the community authority was refused at file_moderation: {r}")
 
@@ -190,7 +190,7 @@ def test_appointed_moderator_is_recognized(moderation_authority):
 
     Real gate as of **persist 10.4.0** (CIRISPersist#290 shipped
     `put_community_json`): the founder appoints a separately-registered key as a
-    `moderate` delegate, the CC 4.5.5 walk reaches it from the owner-bound authority
+    `moderate` delegate, the CC 4.5.5 walk reaches it from the steward-bound authority
     root, so `is_named_moderator` resolves true and `moderators_of` lists it.
     """
     r = moderation_authority

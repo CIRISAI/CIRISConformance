@@ -10,7 +10,7 @@ The neutral **verification layer** of **CIRIS** — *institutional infrastructur
 
 - **Decentralized mesh** — messages cross a live transport node-to-node, no center. `test_340` drives A→B delivery across every holder mode over a 4-node / 3-owner fabric.
 - **Post-quantum** — identity and the audit chain are Ed25519 + ML-DSA-65 hybrid; the content/DEK cascade is X25519 + ML-KEM-768 (`test_250`, `test_100`, `test_320`). The wire *session* keys are classical (Reticulum) — PQ protects the long-lived secrets, where harvest-now-decrypt-later actually bites.
-- **Governable** — membership roots in an accountable human (`owner_bind`, CC 3.2), with delegated + revocable moderation authority and namespace admission (`test_270`, `test_240`, `test_260`), and a tamper-evident audit chain (`test_320`).
+- **Governable** — membership roots in an accountable human (`steward_bind`, CC 3.2), with delegated + revocable moderation authority and namespace admission (`test_270`, `test_240`, `test_260`), and a tamper-evident audit chain (`test_320`).
 - **Scales without big tech** — the replication discipline + scaling factors that make internet-scale feasible on ordinary hardware are checked properties, not slides (`test_210`, `test_211`, `test_200`).
 
 **Why a *conformance* suite — what the cryptography is actually protecting.** The cryptography is not the interesting part; what it protects is. The bet behind CIRIS is that *manufacturing accountable reasoning that survives independent verification is far more expensive than emitting an unaccountable action* — a consistent deception across many independent constraints costs combinatorially more than the truth, so you raise the cost of misalignment rather than hoping it was trained away (the research lineage is catalogued at [ciris.ai/research-status](https://ciris.ai/research-status); the synthesis is vendored under [`reference/`](reference/)). That cost is only real when the constraints are **external and independently verifiable** — a signature you cannot forge, a membership or authority you cannot fake, a hash-chained audit you cannot escape — *not* a model's own self-reported coherence. This suite is exactly that external layer made executable: it proves those cryptographic, admission, and accountability constraints actually hold, against the real separately-published artifacts. It is the **engineering tier** of the alignment claim — the part that is checkable *today*. The cognitive / value layer is the agent's (the conscience faculties, tested in the CIRISAgent suite), and the broader thesis is a live, falsifiable research program — so this suite stays honest about which gates are real today vs. tracked to a filed upstream issue (`✅` vs `⏳`). The full argument — and specifically what the **federation** adds beyond a single agent's internal coherence (`N_eff`) — is in [`docs/ALIGNMENT_RATIONALE.md`](docs/ALIGNMENT_RATIONALE.md).
@@ -145,7 +145,7 @@ The [CIRIS compliance catalog](https://ciris.ai/compliance) defines 27 controls 
 
 **How the substrate-gated controls are driven (the `✅` substrate / `🦀` Rust rows):**
 - **D02 / D23 → `test_320`** — `ciris_server.LensAudit` writes entries; persist's `audit_verify_chain` walks the hash-chained, Ed25519 + ML-DSA-65–signed log and returns `ok`, with a typed break diagnostic on tamper. (D23 also carries a named-accountability / WiseAuthority facet owned by the agent map.)
-- **D15 → `test_270`** — persist's `file_moderation` / `add_moderator` / `is_named_moderator`: a non-duty key is refused (`federation_delegated_scope_unauthorized`); appoint→verify→revoke walks the owner-bound scoped-delegation chain.
+- **D15 → `test_270`** — persist's `file_moderation` / `add_moderator` / `is_named_moderator`: a non-duty key is refused (`federation_delegated_scope_unauthorized`); appoint→verify→revoke walks the steward-bound scoped-delegation chain.
 - **D17 → CIRISServer `tests/stream_sth_consistency.rs`** (Rust lane, PR #108) — `ciris-persist` builds an RFC 6962 STH consistency proof; the independently-published `ciris-verify-core` verifies it; forged root / tampered proof fail closed.
 - **D18 → `test_070`/`test_080`** — the L2 hardware-rooted facet (recognized keystore kind; hardware-rooted signer → 32-byte transport identity). The L1/L3/L4/L5 ladder is consumer-side composition in the agent map.
 - **D24 → `test_220`** — `ciris_server.ReconsiderDosGuard`: admits a fresh filing, refuses past the per-actor budget, refuses repeat same-pair filings as `HarassmentClusterDetected`.
@@ -334,7 +334,7 @@ Grouped by the property each test enforces, and how it's driven. `✅` = real en
 
 ### Governance — who may join, speak, and moderate, rooted in accountable humans
 
-*How:* drive the real admission / membership / moderation / safety surfaces and assert the gates — owner-binding to a human (`owner_bind`, CC 3.2), delegated + revocable authority, reserved-namespace refusal, content takedown, and abuse-source denial.
+*How:* drive the real admission / membership / moderation / safety surfaces and assert the gates — steward-binding to a human (`steward_bind`, CC 3.2), delegated + revocable authority, reserved-namespace refusal, content takedown, and abuse-source denial.
 
 | File | Tier | Verifies | Status |
 |---|---|---|---|
