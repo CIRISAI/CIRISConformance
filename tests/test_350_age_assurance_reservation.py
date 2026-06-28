@@ -230,15 +230,20 @@ def test_witness_key_admitted_on_age_assurance(admission):
 
 
 @pytest.mark.requires_persist
-@pytest.mark.xfail(strict=True, reason=(
-    "CC 3.4.11 optional rule not yet enforced (persist 11.0.0): the "
-    "self-declared rung carries a {band}, NEVER a {level} — "
-    "age_self_declared:level:adult SHOULD be refused, but the substrate admits "
-    "it. Flips to a real gate when emit_attestation_self rejects a {level} token "
-    "on the age_self_declared: prefix. Filed: CIRISPersist#307."))
 def test_age_self_declared_rejects_level_token(admission):
-    """CC 3.4.11: a {level} token on the self prefix is refused (self level is `self` by construction)."""
+    """CC 3.4.11: a {level} token on the self prefix is refused (self level is `self` by construction).
+
+    The self-declared rung carries a `{band}`, NEVER a `{level}` — its level is
+    `self` by construction (§3.4.11). Probed against persist 11.5.0:
+    `age_self_declared:level:adult` is now REFUSED at admission with
+    `federation_dimension_rejected`. This shipped in CIRISPersist#307, so what was
+    an xfail(strict) on persist 11.0.0 is now a real green gate.
+    """
     assert admission["agent_age_self_declared_level"] != "accepted", (
         f"age_self_declared:level:* was admitted — the self rung must carry a "
         f"{{band}}, not a {{level}} (CC 3.4.11): "
+        f"{admission['agent_age_self_declared_level']}")
+    assert "federation_dimension_rejected" in admission["agent_age_self_declared_level"], (
+        f"expected federation_dimension_rejected on a {{level}} token on the "
+        f"self-declared prefix (CC 3.4.11 / CIRISPersist#307): "
         f"{admission['agent_age_self_declared_level']}")
