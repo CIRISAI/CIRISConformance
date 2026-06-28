@@ -1,6 +1,6 @@
 # CIRIS Constitution conformance profiles in this harness
 
-The **[CIRIS Constitution](../reference/CIRIS_Constitution/) `CC 0.5.1`** — the
+The **[CIRIS Constitution](../reference/CIRIS_Constitution/) `CC 0.6`** — the
 ecosystem's **superalignment standard** — defines three normative conformance
 profiles in **CC 2.2**. (The Constitution **superseded CEG**: the CEG wire-grammar
 is absorbed into it — grammar → `part_2`, namespace → `part_3`, transport →
@@ -35,7 +35,7 @@ adds a Cartesian admission gate on self-attestation as **non-conformant**.
 consumer-policy-weighted with no substrate enforcement gate; gated at the Rust
 layer where applicable, see CIRISServer below.)
 
-## Why this harness can't yet cover all of CC 0.5.1
+## Why this harness can't yet cover all of CC 0.6
 
 This harness drives the **real published wheels** (persist / verify /
 edge). A test is only meaningful if it exercises actual binary behavior —
@@ -77,21 +77,29 @@ artificial PyO3 surface) · ⏳ pending an upstream seam · 🏛 governance/proc
 | F-AV-RECONSIDER-DOS rate-limit / cumulative budget | CCC | ⏳ | verify v4.5.0 (CIRISVerify#46) — **Conformance#7** Scenario 1 |
 | Hybrid KEX (X25519 + ML-KEM-768) | CCC | ◷🦀 | **bench-only** at the Rust layer — CIRISServer `benches/pqc_av_streaming.rs` runs the `ciris_edge::transport::federation_session` handshake for *timing*, but there is no correctness assertion (shared-secret agreement / fail-closed on tampered ciphertext). Correctness gate added by the server Rust conformance harness (in progress). |
 | Realtime A/V mesh two-layer hybrid-PQC seal (CC 5.3.3.2.5) | CCS | 🦀 | CIRISServer `tests/alm_chain.rs::inner_e2e_survives_relay_chain` (inner E2E plaintext recovered byte-identical through 1–5 relay reseal hops) + `::wrong_outer_key_at_a_hop_fails_closed` (outer AEAD fails closed), vs the pinned edge |
+| Holder-scoped transport delivery (self/family/community/direct) | CCS | ⏳ | `test_340` xfail(strict) — **regression**: persist 11.5.0 deadlocks edge `init_edge_runtime(enable_transport=True)` Reticulum bring-up (A/B-confirmed: 11.0.0 works, 11.5.0 hangs, edge held constant) → no fabric node becomes ready → **CIRISPersist#320**. Was a real green gate on the CC 0.5.1 floor; flips back the moment the deadlock is fixed |
 | R1/Q1 partition+heal merge contracts (Fed TM v1.1) | CCS | ⏳ | CIRISVerify#48/#49 — **Conformance#7** Scenario 3 |
 | CC 5.3.2.1 holds_bytes 24h TTL | CCS | ⏳ | needs injectable clock → folded into CIRISPersist#125 |
 | Identity-aware storage / per-actor eviction (scaling §9) | CCS | ⏳ | `list_holders` + evict-actor → **CIRISPersist#125** |
 | Trust-recursion-depth admission (scaling §1.4) | CCS | ⏳ | depth-N graph walk → **CIRISNodeCore#21** |
 | CC 3.2 steward-binding (node/agent) admission + resolution | CCS | ✅ | `test_360` — `steward_bind`/`is_steward_bound_json`/`steward_bindings_of_json` (persist 11.0.0, owner→steward reframe; un-stewarded community reject token `federation_unstewarded_community_member` via `test_340`) |
-| CC 3.2 user-target admission rule (adult un-stewardable; minor-ward only) | CCS | ⏳ | `test_360` xfail(strict) — `grant_delegation`/`steward_bind` admit an adult-target user binding; no I1 age band over the Engine → **CIRISPersist#306** (filed) |
-| CC 3.2 minor-stewardship liveness (steward-less minor fails secure) | CCS | ⏳ | `test_361` xfail(strict) — a `user`-role key self-satisfies `is_steward_bound` (the "K is U" anchor), so a steward-less minor can't be distinguished from a self-sovereign adult absent the I1 age band → **CIRISPersist#306** (filed) |
-| CC 3.4.11 age-assurance reservation (`age_assurance:*` witness-only) | CCS | ✅ | `test_350` — agent key refused (`federation_reserved_prefix_emitter_mismatch`); a `identity_type="witness"` key is admitted; `age_self_declared:band:*` subject-signed admitted |
+| CC 3.2 user-target steward binding — adult-target rejected | CCS | ✅ | `test_360` — `grant_delegation`/`steward_bind` onto a `user` target rejected (`federation_user_target_steward_binding_forbidden`), the adult-is-un-stewardable guarantee (persist 11.5.0) |
+| CC 3.2 user-target admission — *conditional* minor-guardianship admit | CCS | ⏳ | `test_360` xfail(strict) — the forbid is *wholesale* (minor AND adult); the positive case (admit iff `age_band(T)==minor ∧ age_band(S)==adult ∧ S signed`) is not exposed over the FFI → **CIRISPersist#306/#309** (tracked) |
+| CC 3.2 minor-stewardship liveness (steward-less minor fails secure) | CCS | ⏳ | `test_361` xfail(strict) — the legal adult→minor binding can't be created at all (wholesale forbid), so a withdrawn-binding fail-secure posture isn't machine-checkable → **CIRISPersist#306/#309** (tracked) |
+| CC 3.4.11 age-assurance reservation (`age_assurance:*` witness-only) | CCS | ✅ | `test_350` — agent key refused (`federation_reserved_prefix_emitter_mismatch`); `identity_type="witness"` admitted; `age_self_declared:band:*` subject-signed admitted; `age_self_declared:level:*` refused (`federation_dimension_rejected`, persist 11.5.0 — closes CIRISPersist#307) |
+| CC 3.4.13 one-way age ratchet + `age_band_json` resolution | CCS | ✅ | `test_351` — `age_band_json` resolves the I1 band; a minor's `age_self_declared:band:adult` emit is accepted but the resolved band stays `"minor"` (self can only lower); a self-bound witness `age_assurance:*` rung graduates its own band (read-union witness-outranks-self). xfail: cross-subject witness graduation (witness→other subject) not exposed → **CIRISPersist#309** |
 | CC 3.4.11 self-declared `{band}`-not-`{level}` rule | CCS | ⏳ | `test_350` xfail(strict) — `age_self_declared:level:*` is admitted but should be refused → **CIRISPersist#307** (filed) |
-| CC 4.4.3.2.8 `affiliations` institutional cohort scope | CCS | ⏳ | `test_262`/`test_263` xfail(strict) — cohort admission enum is hard-coded `self\|family\|community`; `affiliations` rejected (`unknown cohort "affiliations"`); no `crypto_tier` resolver, no compartment/exclusion surface → **CIRISPersist#308** (filed; Constitution §4.4 changelog defers affiliations) |
+| CC 4.4.3.2.8 `affiliations` institutional cohort scope + tier | CCS | ✅ | `test_262` — `affiliations` admitted as a cohort scope; `cohort_scope_crypto_tier("affiliations") == "community_dek"` (persist 11.5.0, CIRISPersist#308 admission shipped) |
+| CC 4.4.3.2.8 affiliations membership lifecycle | CCS | ✅ | `test_263` — 3-arg `cohort_add_member` add/idempotent/immediate-revoke; future-dated revoke correctly rejected (CommunityDek epoch bumps at write, SecReview F4) |
+| CC 3.2/3.4.2 cohort membership-change quorum | CCS | ✅ | `test_264` — `cohort_verify_membership_quorum` verifies a real 2-of-3 / 3-of-3 hybrid-cosigned membership change, rejects 1-of-3 |
+| CC 4.4.3.2.8 affiliations compartments / per-member exclusions / disclosure | CCS | 🦀 | declared-config limbs not on the Python wheel (no compartment-DEK / exclusion / disclosure surface) — Rust-lane / unexposed (**CIRISPersist#308** comment) |
 | CC 4.5.4 moderator-existence admission gate (stewardless founder refused) | CCS | ✅ | `test_271` — `put_community_json` refuses a non-steward-bound founder (`federation_unstewarded_community_member`); `is_named_moderator_json`/`moderators_of_json` resolution primitives |
 | CC 4.5.4/4.5.13 moderator-existence **federation-apply** gate + reverse-quorum vote | CCS | ⏳ | `test_271` xfail(strict) — only the resolution primitive is exposed, no apply-step gate that consumes it / fails a moderator-less community secure; the 48h recovery / 24h candidacy / live-majority vote is time-governance with no surface → **CIRISPersist#238** (tracked) |
 | CC 4.5.13 infohazard consent primitive + `content_class` reservation | CCS | ✅ | `test_272` — `consent:state:granted` + `consent:scope:view` admitted; `content_class:infohazard`/`reported` reserved to `substrate_persist` (all other identity types `federation_reserved_prefix_emitter_mismatch`) |
 | CC 4.5.13 infohazard consent-gate **enforcement** (flagged read requires consent) | CCC | ⏳ | `test_272` xfail(strict) — no substrate view/reveal/gate-decision surface refusing a flagged read absent consent; interstitial enforcement is consumer/LensCore policy → **CIRISPersist#238** (tracked) |
-| CC §5.4 / §11 scope-native privacy wire profile (record_id/symbol_key HMAC vectors, fragmentation, welcome-wrap, announce suppression) | CCS | 🦀 | not on the Python wheel surface (probed: no `derive_record_id`/`derive_symbol_key`/`scope_privacy` on edge 7.3.0) — a substrate-internal Rust-to-Rust feature; gated in the CIRISServer Rust lane against the pinned triple |
+| CC §5.4 scope-native privacy `record_id` golden vectors | CCS | ✅ | `test_500` — `ciris_verify.scope_privacy.derive_record_id` reproduces all three normative §5.4.1 vectors **byte-exact** (`K_record_id=0x11*32`; community/federation/self record-types; CBOR byte-string preimage); now Python-drivable via **verify 8.3.0** (was 🦀) |
+| CC §5.4 scope-native privacy `symbol_key` / `witness_cover_leaf` construction | CCS | ✅ | `test_500` — `derive_symbol_key`/`witness_cover_leaf` gated by the construction properties the spec pins (determinism, salt/index/position/epoch diversification, 32-byte length, u16_be index sensitivity); spec ships no numeric output vectors for these |
+| CC §5.4 / §11 fragmentation / welcome-wrap / announce suppression | CCS | 🦀 | the remaining scope-privacy wire limbs are not on the Python surface — substrate-internal; gated in the CIRISServer Rust lane |
 | CC 4.4.3.1.1 sub-quorum fallback hard_case tokens | CCC | 🏛 | composition/policy tier, not a substrate call |
 | CC 4.5.1.2 meta-amendment entrenchment | — | 🏛 | governance process (SemVer + 2-of-3 accord), not a wheel behavior |
 

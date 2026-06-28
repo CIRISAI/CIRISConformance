@@ -1,29 +1,35 @@
 """
-Fabric tier — CC 0.5.1 §4.4.3.2.8 affiliations cohort add / revoke / active-read lifecycle.
+Fabric tier — CC 0.6 §4.4.3.2.8 affiliations cohort add / revoke / active-read lifecycle.
 
 An affiliation (`cohort_scope: affiliations`) shares the community machinery
-(CC 4.4.3.2.8): membership is the load-bearing authorization surface that gates
+(CC §4.4.3.2.8): membership is the load-bearing authorization surface that gates
 read access to affiliation-scoped content under the CommunityDek, with
 **forward-secrecy on removal** (a removed key MUST stop appearing as an active
-member the instant the removal takes effect, re-wrapping the DEK — CC 4.4.3.2.1).
-The membership lifecycle is therefore identical in shape to the family/community
-roster lifecycle (test_260), just keyed on the `affiliations` cohort
-discriminator: an `add` shows the key in the active roster and is idempotent on
-re-add; an immediate `revoke` drops it; a future-dated revoke leaves it active
-until its `effective_at`.
+member the instant the removal takes effect, re-wrapping the DEK — CC §4.4.3.2.2).
+
+Because affiliations ride the **community** revocation table (not the family one),
+the removal semantics are the community's, not the family's:
+
+- **add** — `cohort_add_member("affiliations", ...)` returns `True` on a genuine
+  add and is idempotent (`False`) on a re-add; the new key shows in
+  `cohort_active_members_json("affiliations", ...)`.
+- **revoke** — `cohort_revoke_member` with `effective_at <= now` drops the key
+  from the active roster *immediately*.
+- **forward-secrecy is immediate-only** — unlike a `family` revoke (test_260),
+  a **future-dated** community/affiliations revoke is **REJECTED at the
+  boundary**: `community membership revocation effective_at … is future-dated;
+  community removal is immediate for forward-secrecy (SecReview F4)`. The
+  CommunityDek epoch bumps at write time, so a scheduled-future removal that
+  left the DEK un-rotated would be a forward-secrecy hole; the substrate
+  fail-closes it. This gate asserts that rejection as the real, enforced
+  invariant (it is NOT an xfail — it is the affiliations tier behaving
+  correctly and *differently* from family).
 
 This drives the REAL persist cohort lifecycle surfaces (`cohort_add_member`,
 `cohort_revoke_member`, `cohort_active_members_json`) over the shared substrate —
 member nodes are genuine registered federation keys, the founder is owner-bound
-(`user`) and steward-bound into a real community so only the cohort-scope is under
-test.
-
-**Status on persist 11.0.0: xfail(strict=True).** The cohort admission enum is
-`self | family | community`; the `affiliations` discriminator is rejected at the
-boundary (`unknown cohort "affiliations"`), so an affiliations roster cannot be
-created at all and the lifecycle is not Python-drivable. The strict-xfail flips to
-a hard gate the instant persist admits the token (see test_262 for the
-admission-boundary gate this lifecycle depends on).
+(`user`) and steward-bound into a real community so only the cohort-scope is
+under test.
 """
 
 from __future__ import annotations
@@ -70,11 +76,14 @@ step("readd_alice", lambda: engine.cohort_add_member(
 # add bob, then immediate-revoke bob → forward secrecy drops him now
 step("add_bob", lambda: engine.cohort_add_member(
     "affiliations", founder, json.dumps({"key_id": BOB, "joined_at": NOW})))
+step("after_add_bob", roster)
 step("revoke_bob", lambda: engine.cohort_revoke_member(
     "affiliations", founder, BOB, json.dumps({"effective_at": NOW, "reason": "removed"})))
 step("after_revoke_bob", roster)
 
-# future-dated revoke of alice → she stays active until 2099
+# future-dated revoke of alice → REJECTED: community/affiliations removal is
+# immediate-only for forward secrecy (SecReview F4). The boundary fail-closes;
+# alice stays active because the revoke never landed.
 step("future_revoke_alice", lambda: engine.cohort_revoke_member(
     "affiliations", founder, ALICE, json.dumps({"effective_at": FUTURE})))
 step("after_future_revoke_alice", roster)
@@ -101,48 +110,54 @@ def affiliation_lifecycle(federation_module):
 
 
 @pytest.mark.requires_persist
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "persist 11.0.0 cohort admission enum is self|family|community; the "
-        '`affiliations` discriminator is rejected (unknown cohort "affiliations"), '
-        "so an affiliations roster cannot be created and CC 4.4.3.2.8 membership "
-        "is not Python-drivable. See test_262 for the admission-boundary gate. Filed: CIRISPersist#308."
-    ),
-)
 def test_affiliation_add_is_observable_and_idempotent(affiliation_lifecycle):
-    """CC 4.4.3.2.8: adding a member to an affiliations roster is observable + idempotent."""
+    """CC §4.4.3.2.8: adding a member to an affiliations roster is observable + idempotent."""
     r = affiliation_lifecycle
     assert r["stage"] == "done", r
     assert r["add_alice"]["ok"] is True and r["add_alice"]["result"] is True, r
     assert r["after_add"]["ok"] is True, r
-    assert len(r["after_add"]["result"]) == 1, (
+    assert r["alice"] in r["after_add"]["result"], (
         f"the added member is not on the active affiliations roster: {r}")
     # idempotent re-add is a no-op (False)
     assert r["readd_alice"]["ok"] is True and r["readd_alice"]["result"] is False, r
 
 
 @pytest.mark.requires_persist
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "persist 11.0.0 does not admit the `affiliations` cohort discriminator "
-        '(unknown cohort "affiliations"); the forward-secrecy revoke lifecycle of '
-        "CC 4.4.3.2.8 cannot be driven until the token is exposed (see test_262). Filed: CIRISPersist#308."
-    ),
-)
-def test_affiliation_revoke_honors_effective_at(affiliation_lifecycle):
-    """CC 4.4.3.2.1 forward secrecy: immediate revoke drops now; future-dated stays active."""
+def test_affiliation_immediate_revoke_drops_member(affiliation_lifecycle):
+    """CC §4.4.3.2.2 forward secrecy: an immediate revoke drops the member now."""
     r = affiliation_lifecycle
     assert r["stage"] == "done", r
-    # bob was added then immediately revoked → forward secrecy drops him now.
     assert r["add_bob"]["ok"] is True and r["add_bob"]["result"] is True, r
+    assert r["bob"] in r["after_add_bob"]["result"], r
     assert r["revoke_bob"]["ok"] is True, r
-    assert r["after_revoke_bob"]["ok"] is True, r
     assert r["bob"] not in r["after_revoke_bob"]["result"], (
         f"an immediately-revoked affiliations member is still active: {r}")
-    # alice future-revoked (2099) → still active now (effective_at honored).
+
+
+@pytest.mark.requires_persist
+def test_affiliation_future_dated_revoke_is_rejected(affiliation_lifecycle):
+    """CC §4.4.3.2.2 / SecReview F4: future-dated community/affiliations revoke is rejected.
+
+    Distinct from the `family` cohort (test_260, which honors a future
+    `effective_at`): an affiliation rides the community revocation table, whose
+    DEK epoch bumps at write time, so a future-dated removal would leave the DEK
+    un-rotated — a forward-secrecy hole. The substrate fail-closes the call.
+    """
+    r = affiliation_lifecycle
+    assert r["stage"] == "done", r
+    fr = r["future_revoke_alice"]
+    assert fr["ok"] is False, (
+        "a future-dated affiliations revoke must be REJECTED (community removal "
+        f"is immediate for forward secrecy), but it was accepted: {r}")
+    # The PyO3 boundary surfaces only the error *kind* token (the descriptive
+    # "future-dated … immediate for forward-secrecy (SecReview F4)" detail lives
+    # on the Rust Error and is dropped by federation_err_to_py), so we assert on
+    # the invalid-argument rejection kind — the immediate-only invariant
+    # rejecting the future date.
+    assert fr["error"] == "federation_invalid_argument", (
+        "the future-dated revoke was rejected for an unexpected reason — expected "
+        f"the invalid-argument (immediate-removal) gate: {fr}")
+    # Because the revoke never landed, alice is still an active member.
     assert r["after_future_revoke_alice"]["ok"] is True, r
-    assert r["after_future_revoke_alice"]["result"] == r["after_revoke_bob"]["result"], (
-        "a future-dated affiliations revocation dropped the member early — the "
-        f"active read must honor effective_at: {r}")
+    assert r["alice"] in r["after_future_revoke_alice"]["result"], (
+        f"a rejected future-dated revoke wrongly dropped the member: {r}")

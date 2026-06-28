@@ -1,38 +1,36 @@
 """
-Fabric tier — CC 0.5.1 §4.4.3.2.8 `affiliations` is the fourth admitted cohort scope.
+Fabric tier — CC 0.6 §4.4.3.2.8 `affiliations` is the fourth admitted cohort scope.
 
-CC 0.5.1 adds `affiliations` as a NEW `cohort_scope` value alongside
-`self`/`family`/`community` (CC 4.4.3.2.8): an affiliation gathers by *necessity*
-(the institution/office a role requires) rather than *interest*, but it **shares
-the CommunityDek crypto tier** (CC 4.4.3.2.1) and all the community machinery
-(DEK cascade, forward-secrecy on removal, `consensus_protocol` admission). The
-load-bearing, enforced behaviour is therefore the very first one: the substrate
-must **admit `affiliations` as a cohort scope** at all — the generic cohort
-admission boundary (`cohort_add_member` / `cohort_active_members_json` /
-`cohort_groups_of_json`, all keyed by a `cohort` discriminator string) must
-recognize `"affiliations"` the same way it recognizes `"community"`, and (CC
-4.4.3.2.1, table) resolve it to the Community/CommunityDek tier rather than the
-Commons/infrastructure plaintext exception.
+CC §4.4.3.2.8 adds `affiliations` as a NEW `cohort_scope` value alongside
+`self`/`family`/`community`: an affiliation gathers by *necessity* (the
+institution/office a role requires) rather than *interest*, but it **shares the
+CommunityDek crypto tier** (CC §4.4.3.2.1) and all the community machinery (DEK
+cascade, forward-secrecy on removal, `consensus_protocol` admission). The
+load-bearing, enforced behaviour is therefore two-fold:
 
-This gate drives the REAL persist cohort-admission boundary over the shared
-substrate (a fully owner-bound `user` founder, mirroring test_270, so the only
-thing being tested is the scope-token admission, not an unrelated steward gate):
+1. the substrate must **admit `affiliations` as a cohort scope** at all — the
+   generic cohort admission boundary (`cohort_add_member` /
+   `cohort_active_members_json` / `cohort_groups_of_json`, all keyed by a
+   `cohort` discriminator string) must recognize `"affiliations"` the same way
+   it recognizes `"community"`; and
+2. it must **resolve `affiliations` to the CommunityDek crypto tier** (CC table
+   §4.4.3.2.1) — i.e. `cohort_scope_crypto_tier("affiliations") == "community_dek"`,
+   the per-community DEK cascade, NOT the Commons/infrastructure plaintext
+   exception.
 
-- An admitted scope: `cohort_add_member("community", ...)` is accepted.
-- The scope under test: `cohort_add_member("affiliations", ...)` MUST be admitted
-  symmetrically — and the read surfaces (`cohort_active_members_json`,
-  `cohort_groups_of_json`) must accept the `"affiliations"` discriminator.
+Shipped in persist 11.5.0 (CIRISPersist#308): `affiliations` is now admitted,
+backed by the shared community row, and resolves to `community_dek`. This gate
+drives the REAL persist cohort-admission boundary + the crypto-tier resolver
+over the shared substrate (a fully owner-bound `user` founder, mirroring
+test_270, so the only thing under test is the scope-token admission, not an
+unrelated steward gate):
 
-**Status on persist 11.0.0: xfail(strict=True).** The cohort admission enum is
-hard-coded to `self | family | community`; every `affiliations` operation is
-rejected at the boundary with
-`ValueError: unknown cohort "affiliations" (expected one of: self | family | community)`.
-There is also no `crypto_tier(...)` resolver exposed on the Python wheel, so the
-affiliations→CommunityDek tier resolution (CC 4.4.3.2.1) cannot be probed at all.
-This matches the Constitution's own changelog ("Address `affiliations` … remains
-deferred to a later candidate round", §4.4 deferrals). The strict-xfail is the
-real signal that the surface is not yet exposed; it flips to a hard gate the
-instant persist admits the token.
+- Control: `cohort_add_member("community", ...)` is admitted and resolves to
+  `community_dek`.
+- Under test: `cohort_add_member("affiliations", ...)` is admitted symmetrically,
+  the read surfaces accept the `"affiliations"` discriminator, AND the tier
+  resolver returns `community_dek` (NOT the `commons` plaintext exception, and
+  distinct from the `self`/`family` `invisible_encrypted` tier).
 """
 
 from __future__ import annotations
@@ -48,8 +46,8 @@ _NOW = "2026-06-25T00:00:00.000Z"
 # An owner-bound (`user`) founder creates a real community (so any membership
 # steward gate is satisfied) and then drives the cohort-admission boundary for
 # BOTH the known-good `community` scope and the scope under test, `affiliations`.
-# Each probe records either the admitted result or the raised error string, so
-# the test asserts on the substrate's actual admission decision.
+# It also probes the crypto-tier resolver for every scope so the test asserts on
+# the substrate's actual tier-resolution decision (CC §4.4.3.2.1 table).
 _FOUNDER_BODY = r"""
 founder = kid  # owner-bound via IDENTITY_TYPE="user" in the preamble
 
@@ -79,8 +77,9 @@ probe("affiliations_active_read",
 probe("affiliations_groups_read",
       lambda: engine.cohort_groups_of_json("affiliations", founder))
 
-# Is the affiliations→CommunityDek tier resolution (CC 4.4.3.2.1) even probeable?
-report["has_crypto_tier_resolver"] = hasattr(engine, "crypto_tier")
+# CC §4.4.3.2.1 crypto-tier resolution for every cohort scope.
+for scope in ("self", "family", "community", "affiliations", "commons"):
+    probe("tier_" + scope, (lambda s: lambda: engine.cohort_scope_crypto_tier(s))(scope))
 
 report["stage"] = "done"
 """
@@ -104,24 +103,37 @@ def test_community_scope_is_admitted_control(affiliation_scope):
 
 
 @pytest.mark.requires_persist
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "persist 11.0.0 cohort admission enum is hard-coded to "
-        "self|family|community; `affiliations` is rejected at the boundary with "
-        'ValueError: unknown cohort "affiliations". CC 0.5.1 §4.4.3.2.8 makes it '
-        "the fourth cohort_scope tier (shares CommunityDek) — not yet exposed on "
-        "the Python wheel (Constitution §4.4 changelog: affiliations deferred). Filed: CIRISPersist#308."
-    ),
-)
 def test_affiliations_is_an_admitted_cohort_scope(affiliation_scope):
-    """CC 4.4.3.2.8: `affiliations` MUST be an admitted cohort scope like `community`."""
+    """CC §4.4.3.2.8: `affiliations` MUST be an admitted cohort scope like `community`."""
     r = affiliation_scope
     add = r["affiliations_add"]
     assert add["admitted"] is True, (
-        "`affiliations` is not admitted as a cohort scope — the CC 4.4.3.2.8 "
+        "`affiliations` is not admitted as a cohort scope — the CC §4.4.3.2.8 "
         f"fourth-tier admission is unenforced on this wheel: {add}")
     # The read surfaces must accept the discriminator too (a scope you can write
     # but cannot read back is not a usable cohort tier).
     assert r["affiliations_active_read"]["admitted"] is True, r
     assert r["affiliations_groups_read"]["admitted"] is True, r
+    # The admitted-and-readable affiliations roster actually contains the founder
+    # the add wrote (not just an empty, vacuously-accepting surface).
+    roster = json.loads(r["affiliations_active_read"]["result"])
+    assert any(m.get("key_id") for m in roster), (
+        f"affiliations roster read back empty after a successful add: {r}")
+
+
+@pytest.mark.requires_persist
+def test_affiliations_resolves_to_the_community_dek_tier(affiliation_scope):
+    """CC §4.4.3.2.1 table: `affiliations` shares the CommunityDek crypto tier."""
+    r = affiliation_scope
+    for scope in ("community", "affiliations"):
+        t = r["tier_" + scope]
+        assert t["admitted"] is True, f"crypto-tier resolver rejected {scope!r}: {t}"
+    assert r["tier_affiliations"]["result"] == "community_dek", (
+        "`affiliations` must resolve to the CommunityDek tier (the per-community "
+        f"DEK cascade), the same tier as `community`: {r}")
+    # ...and it is NOT the Commons plaintext exception, nor the self/family
+    # structural-invisibility tier — the affiliation's DEK is its sole
+    # confidentiality boundary (CC §4.4.3.2.1).
+    assert r["tier_affiliations"]["result"] == r["tier_community"]["result"], r
+    assert r["tier_affiliations"]["result"] != r["tier_commons"]["result"], r
+    assert r["tier_affiliations"]["result"] != r["tier_self"]["result"], r
