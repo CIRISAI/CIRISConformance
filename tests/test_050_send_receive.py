@@ -1,26 +1,29 @@
 """
 Federation send/receive conformance — what the cross-wheel boundary
-actually supports today (edge 0.19.0 + persist 3.3.1).
+actually supports today (edge 8.6.1 + persist 12.2.0).
 
 This file used to be a blanket `skip` "pending CIRISPersist#109" — long
 closed. The honest, current state, established empirically against the
 real wheels:
 
 - ✅ `init_edge_runtime` composes persist + edge in one process; the
-  resulting `Edge` exposes `signer_key_id`, `register_inline_text_handler`,
-  and `metrics_snapshot` (8 counters).
-- ✅ An ephemeral `send_inline_text` to an **unresolvable** peer refuses
-  cleanly with a typed `RuntimeError` ("destination unreachable") — the
-  edge cohabits with persist and fails closed, it does not crash.
+  resulting `Edge` exposes `signer_key_id`, `register_opaque_handler`,
+  and `metrics_snapshot` (8 counters). As of edge 8 (CIRISConformance#53)
+  the inline-text surface was ripped and replaced by the opaque-envelope
+  API (`register_opaque_handler` / `send_opaque_event` /
+  `send_opaque_request`); `send_inline_text*` no longer exist.
+- ✅ A synchronous `send_opaque_request` to an **unresolvable** peer
+  refuses cleanly with a typed `RuntimeError` ("destination unreachable")
+  — the edge cohabits with persist and fails closed, it does not crash.
+  (`send_opaque_event` is the durable, fire-and-forget class; the
+  request class is the one that awaits resolution and can refuse.)
 - ❌ A true **loopback round-trip** (deliver to self) is not achievable
   in a single process: Reticulum has no self-route without a peer
   announce / directory resolution, so the message can't be delivered
-  back. This needs a multi-node fixture (tracked as Conformance#4) and
-  is marked `xfail` below — visible, not skipped.
-- ❌ `send_durable_inline_text` currently aborts the process in this
-  synchronous cohabitation embedding ("no reactor running" → SIGABRT);
-  filed upstream. It is intentionally NOT exercised here so it can't take
-  the suite down; see the module note.
+  back. This needs a multi-node fixture (tracked as Conformance#4).
+- ✅ `send_opaque_event` returns a `DurableHandle` and lands the payload
+  in persist's edge_outbound_queue (`pending`) — the durable path is
+  exercised below.
 
 Scripts end with `os._exit(0)` after flushing: an `Edge` holding a live
 Reticulum transport can panic on drop during interpreter teardown, which
@@ -32,7 +35,11 @@ from __future__ import annotations
 import sys
 import pytest
 
-from conftest import get_database_url, run_python_script
+from conftest import (
+    get_database_url,
+    run_python_script,
+    xfail_if_pg_edge_runtime_crash,
+)
 
 
 def _send_receive_script(database_url: str) -> str:
@@ -58,13 +65,18 @@ report = {"stage": "start"}
 report["signer_key_id"] = edge.signer_key_id()
 report["metrics_keys"] = sorted(edge.metrics_snapshot().keys())
 
+# edge 8 opaque surface: register_opaque_handler(kind:int, cb) where
+# cb(sender_key_id, payload)->(status:int, payload:bytes); subscribe_opaque
+# fans OpaqueEvents out to per-kind callbacks.
+_KIND = 7
 observed = []
-edge.register_inline_text_handler(lambda *a: observed.append(a))
+edge.register_opaque_handler(_KIND, lambda sender, payload: (200, b""))
+edge.subscribe_opaque(_KIND, lambda sender, kind, payload: observed.append((sender, payload)))
 report["handler_registered"] = True
 
-# Ephemeral send to an unresolvable peer → clean typed refusal.
+# Synchronous request to an unresolvable peer → clean typed refusal.
 try:
-    edge.send_inline_text("unresolvable-peer-key", "hello")
+    edge.send_opaque_request("unresolvable-peer-key", _KIND, b"hello", timeout_ms=2000)
     report["ephemeral"] = {"error": None}
 except Exception as exc:
     report["ephemeral"] = {
@@ -72,11 +84,13 @@ except Exception as exc:
         "unreachable": "destination unreachable" in str(exc),
     }
 
-# Loopback delivery to self (aspirational — see module docstring).
+# Loopback delivery to self (aspirational — see module docstring). Durable
+# fire-and-forget; Reticulum has no single-process self-route so it never
+# fans back to the local subscriber.
 try:
-    edge.send_inline_text(edge.signer_key_id(), "loopback-body")
+    edge.send_opaque_event(edge.signer_key_id(), _KIND, b"loopback-body")
     time.sleep(0.3)
-    report["loopback_delivered"] = any("loopback-body" in str(a) for a in observed)
+    report["loopback_delivered"] = any(b"loopback-body" in bytes(p) for _s, p in observed)
 except Exception as exc:
     report["loopback_delivered"] = False
     report["loopback_error"] = f"{type(exc).__name__}: {str(exc)[:140]}"
@@ -92,6 +106,7 @@ os._exit(0)
 @pytest.fixture(scope="module")
 def send_receive():
     result = run_python_script(_send_receive_script(get_database_url()))
+    xfail_if_pg_edge_runtime_crash(result)  # CIRISPersist#354 (postgres native abort)
     try:
         payload = result.parsed_stdout()
     except Exception:
@@ -144,7 +159,8 @@ def _durable_send_script(database_url: str) -> str:
     to SIGSEGV (CIRISEdge#50, edge's bundled uninitialized libsqlite3; closed
     in edge 1.0.1 via `auditwheel --exclude libsqlite3.so.0`). Unique key per
     subprocess for shared-backend isolation; send to our own registered key so
-    the outbound FK constraint is satisfied.
+    the outbound FK constraint is satisfied. As of edge 8 the durable class is
+    `send_opaque_event(recipient_key_id, kind, payload)` → `DurableHandle`.
     """
     header = f"DB_URL = {database_url!r}\n"
     body = r'''
@@ -163,10 +179,11 @@ engine = cp.Engine(DB_URL, _k, local_key_id=_k, local_key_path=_seed,
                    local_pqc_key_id=_k + "-pqc", local_pqc_key_path=_pqc)
 kid = engine.register_self_federation_key("agent", "durable-ref", None, None, None)
 edge = init_edge_runtime(engine, _idp, listen_addr="127.0.0.1:0")
-handle = edge.send_durable_inline_text(kid, "durable-hello")
+handle = edge.send_opaque_event(kid, 7, b"durable-hello")
 outbound = engine.list_outbound(10)  # list_outbound(limit, status=None, ...)
 print(json.dumps({"durable_returned": type(handle).__name__,
-                  "enqueued": "pending" in str(outbound)}))
+                  "enqueued": "pending" in str(outbound),
+                  "queue_id_present": bool(handle.queue_id)}))
 sys.stdout.flush()
 os._exit(0)
 '''
@@ -190,6 +207,7 @@ def test_durable_send_enqueues_to_outbound_queue():
     Either regression fails this directly.
     """
     result = run_python_script(_durable_send_script(get_database_url()), timeout=15)
+    xfail_if_pg_edge_runtime_crash(result)  # CIRISPersist#354 (postgres native abort)
     payload = result.parsed_stdout()
     assert payload["durable_returned"] == "DurableHandle", payload
     assert payload["enqueued"] is True, payload

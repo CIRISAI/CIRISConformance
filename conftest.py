@@ -199,6 +199,34 @@ def run_python_script(
     return result
 
 
+# ─── persist 12.2.0 × postgres edge-runtime crash (CIRISPersist#354) ───
+# On the postgres backend, persist 12.2.0 makes edge's init_edge_runtime abort the
+# subprocess (SIGABRT/SIGSEGV) via a background tokio net/addr panic that unwinds
+# across the FFI — shortly AFTER bring-up, so it lands non-deterministically on
+# whichever edge-runtime scenario is live when it fires. sqlite is fine; persist
+# 11.0.0 is fine (attributed one variable at a time). It is a native-crash noise
+# source, not a conformance signal, so any edge-runtime fixture calls this right
+# after run_python_script: on the postgres crash signature it imperatively xfails
+# (real gate preserved on sqlite AND on postgres when the abort doesn't fire),
+# tracked to the issue; the gate flips back the moment persist stops aborting.
+_PG_EDGE_CRASH_REASON = (
+    "persist 12.2.0 + postgres: init_edge_runtime background tokio task panicked in "
+    "net/addr and aborted the subprocess (rc=%s). sqlite + persist 11.0.0 both fine. "
+    "Tracked: CIRISPersist#354.")
+
+
+def xfail_if_pg_edge_runtime_crash(result: "ScriptResult") -> None:
+    """Imperatively `pytest.xfail` iff this is the postgres init_edge_runtime abort.
+
+    Signature: postgres backend + the subprocess died on a signal (negative
+    returncode — SIGABRT -6 / SIGSEGV -11) with no parseable stdout. Call BEFORE
+    `parsed_stdout()` in any fixture that brings up an edge runtime."""
+    if (get_backend_label() == "postgres"
+            and result.returncode < 0
+            and not result.stdout.strip()):
+        pytest.xfail(_PG_EDGE_CRASH_REASON % result.returncode)
+
+
 # ─── Version-skew clean-venv fixture ──────────────────────────────────
 # Some conformance properties are about NON-current version combos: does
 # edge tolerate an older-but-in-range persist? does pip actually REFUSE a

@@ -29,12 +29,16 @@ from __future__ import annotations
 
 import pytest
 
-from conftest import get_database_url, run_python_script
+from conftest import (
+    get_database_url,
+    run_python_script,
+    xfail_if_pg_edge_runtime_crash,
+)
 
 pytestmark = pytest.mark.fabric
 
 _INTAKE_BODY = r"""
-import json, sys, os, tempfile, secrets
+import json, sys, os, tempfile, secrets, base64
 try:
     import ciris_persist as cp
     from ciris_edge.ciris_edge import init_edge_runtime
@@ -63,8 +67,13 @@ if not hasattr(edge, "build_signed_inbound_envelope"):
 dest = edge.signer_key_id()
 
 def dispatch():
+    # edge 8 (CIRISConformance#53): the inline-text wire variant was ripped;
+    # the intake gate runs after verify regardless of body type, so drive a
+    # valid opaque wire variant. `OpaqueEvent` body is {"kind", "payload"}
+    # (payload = base64 opaque bytes).
     env = edge.build_signed_inbound_envelope(
-        kid, _sender_seed, dest, "InlineText", json.dumps({"text": "intake"}))
+        kid, _sender_seed, dest, "OpaqueEvent",
+        json.dumps({"kind": 7, "payload": base64.b64encode(b"intake").decode()}))
     # dispatch_inbound_bytes returns a dict {"outcome": ...} directly.
     return edge.dispatch_inbound_bytes(env, "http").get("outcome")
 
@@ -95,6 +104,7 @@ def _intake_script(database_url: str) -> str:
 @pytest.fixture(scope="module")
 def intake_gate():
     result = run_python_script(_intake_script(get_database_url()))
+    xfail_if_pg_edge_runtime_crash(result)  # CIRISPersist#354 (postgres native abort)
     payload = result.parsed_stdout()
     if payload.get("_error") == "absent":
         pytest.fail("edge.build_signed_inbound_envelope is missing — the intake-gate "

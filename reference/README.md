@@ -25,7 +25,7 @@ numbers in these documents.
 
 | File | Vendored from | Source commit |
 |---|---|---|
-| [`CIRIS_Constitution/`](CIRIS_Constitution/) — **the CIRIS Constitution `CC 0.6`, the superalignment standard** (parts 1–8; superseded + absorbed CEG) | `CIRISRegistry/FSD/CIRIS_Constitution/` | Registry @ `e0d81c8` |
+| [`CIRIS_Constitution/`](CIRIS_Constitution/) — **the CIRIS Constitution `CC 0.9`, the superalignment standard** (parts 1–8 + [`WIRE_VOCABULARY.md`](CIRIS_Constitution/WIRE_VOCABULARY.md) manifest + `CHANGELOG.md`; superseded + absorbed CEG) | **`CIRISConstitution/`** (the Constitution now has its **own repo**, extracted from `CIRISRegistry/FSD/`) | Constitution @ `4b95878` |
 | [`CEWP.md`](CEWP.md) — the CIRIS Epistemic Web Platform FSD ("soup") | `CIRISNodeCore/FSD/CEWP.md` | NodeCore @ `dfd158e` |
 | [`FEDERATION_SCALING_MODEL.md`](FEDERATION_SCALING_MODEL.md) — what carrying the internet costs at v1 | `CIRISNodeCore/FSD/FEDERATION_SCALING_MODEL.md` | NodeCore @ `dfd158e` |
 | [`scale_model.rs`](scale_model.rs) — the scaling "toy" **v0.6** (`cargo run --example scale_model`; adds the `fav_findings()` adversarial-cost module vs Verify Fed TM v1.1) | `CIRISNodeCore/examples/scale_model.rs` | NodeCore @ `dfd158e` |
@@ -33,7 +33,7 @@ numbers in these documents.
 | [`synthesis/Corridor_Dynamics.tex`](synthesis/) — the flagship synthesis paper, *Corridor Dynamics in Coordinated Systems* (v2; reasoning-shape / ρ / k_eff corridor / trace commons) | `coherence-ratchet/papers/Corridor Dynamics.tex` | coherence-ratchet @ `ffcd62a` |
 | [`synthesis/research_status_entry.md`](synthesis/research_status_entry.md) — the ciris.ai/research-status catalog entry (DOI + summary) | `coherence-ratchet/copy/web/` | coherence-ratchet @ `ffcd62a` |
 
-Snapshot date: 2026-06-27 (re-vendored the CIRIS Constitution at `CC 0.6` — adult-incapacity stewardship, 7 child-safety rulings, age + capacity assurance dimensions with the one-way age ratchet, accord H6/H7 + live-quorum pins; conformed by the persist 11.5 / verify 8.3 / edge 7.3 / server 0.5.61 floor). Prior: 2026-06-26 (`CC 0.5.1` — stewardship reframe `owner`→`steward`, `affiliations` cohort, `age_assurance`/`age_self_declared` split, infohazard gate); 2026-06-26 (`CC 0.4`, CEG superseded); 2026-05-31 (scaling toy v0.6).
+Snapshot date: 2026-07-03 (re-vendored the CIRIS Constitution at `CC 0.9` from its new standalone **CIRISConstitution** repo — 0.7 hash-pinned two-tier wire vocabulary (§2.6.4 + `WIRE_VOCABULARY.md`), 0.8/0.8.1 Book IX coherence mathematics into Part VI (`J=F=k_eff·λ·σ`, σ continuous-decay attestation), 0.9 CEG replication storage-contention axis (CC 6.1.5.2 — `StorageBudgetV1` + `CorpusWantV1` pin-on-consent); conformed by the persist 12.2 / verify 8.5 / edge 8.6 / server 0.5.78 floor). Prior: 2026-06-27 (`CC 0.6`, still at `CIRISRegistry/FSD/`); 2026-06-26 (`CC 0.5.1`); 2026-06-26 (`CC 0.4`, CEG superseded); 2026-05-31 (scaling toy v0.6).
 
 ## Prior art & state-of-the-art comparison
 

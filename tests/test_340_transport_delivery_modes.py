@@ -25,10 +25,18 @@ community are both real.
 
 Real gate as of **edge 7.1.0 + persist 10.4.0**: edge 7.1.0 spawns the inbound
 dispatch listeners in `init_edge_runtime` (CIRISEdge#217/#220), and the receiver
-keeps its `register_inline_text_handler` subscription handle alive (the handle's
-`Drop` unsubscribes — dropping it silently tears the listener down). The fixture
-stands up four real edge processes + three steward-setup processes over one shared
-substrate and drives one send per mode.
+keeps its opaque subscription handle alive (the handle's `Drop` unsubscribes —
+dropping it silently tears the listener down). The fixture stands up four real
+edge processes + three steward-setup processes over one shared substrate and
+drives one send per mode.
+
+edge 8 (CIRISConformance#53) ripped the inline-text surface: the receiver now
+subscribes via `subscribe_opaque(kind, cb)` and the sender publishes via
+`send_opaque_event(recipient, kind, payload)`. NOTE the opaque send carries no
+scope/holder selector (the old `send_inline_text_with_outcome` community_id /
+in_family_context args are gone), so the four holder modes collapse to one send
+shape — the scope selector needs re-exposing upstream before this becomes a real
+per-mode gate. Currently moot: this file is doubly blocked (see below).
 """
 
 from __future__ import annotations
@@ -76,7 +84,11 @@ edge = init_edge_runtime(eng, idp, listen_addr=listen, bootstrap_peers=boot,
     announce_interval_seconds=2, enable_transport=True, hybrid_policy="ed25519_fallback",
     agent_occurrence_key_id=kid)
 got = []
-SUB = edge.register_inline_text_handler(lambda sender, body: got.append([sender, body]))  # keep alive
+# edge 8 (CIRISConformance#53): the inline-text handler was ripped; the
+# generic successor is subscribe_opaque(kind, cb) where cb(sender, kind,
+# payload:bytes). Keep the subscription handle ALIVE (its Drop unsubscribes).
+KIND = 7
+SUB = edge.subscribe_opaque(KIND, lambda sender, kind, payload: got.append([sender, payload.decode("utf-8", "replace")]))  # keep alive
 open(READY, "w").write(json.dumps({"role": ROLE, "kid": kid,
     "dest_hash": edge.reticulum_dest_hash_hex(), "transport": edge.transport_identity_pubkeys()}))
 
@@ -99,12 +111,15 @@ if os.path.exists(CMD):
         target, mode, text = spec["target_kid"], spec["mode"], spec["text"]
         for _ in range(4):
             try:
-                if mode == "family":
-                    edge.send_inline_text_with_outcome(target, text, None, True)
-                elif mode == "self":
-                    edge.send_inline_text_with_outcome(target, text, None, False)
-                else:  # community / direct
-                    edge.send_inline_text_with_outcome(target, text, setup[spec["cid_key"]], False)
+                # edge 8 send_opaque_event(recipient, kind, payload) carries NO
+                # scope/holder selector — the community_id / in_family_context
+                # args that send_inline_text_with_outcome took are GONE, so all
+                # four modes collapse to the same durable send here. Holder
+                # scoping must be resolved edge-internally from the recipient's
+                # membership rows (or the scope selector needs re-exposing:
+                # upstream gap, see module note). Moot on this floor: the
+                # persist #320 deadlock means no node ever reaches this.
+                edge.send_opaque_event(target, KIND, text.encode("utf-8"))
             except Exception as exc:
                 print("SEND ERR " + str(exc)[:80], file=sys.stderr)
             time.sleep(2)
@@ -207,10 +222,12 @@ def delivery_fabric(tmp_path_factory):
     # (concurrent first-migration races with "duplicate column"); the rest open
     # the already-migrated DB.
     launch("n2")
-    # 12s (was 40s): under the persist 11.5.0 transport-bringup deadlock n2 hangs
-    # forever inside init_edge_runtime, so fail FAST and surface a sentinel the
-    # per-test strict-xfail absorbs (see _TRANSPORT_DEADLOCK) instead of hanging
-    # the suite. A node that genuinely *exits* early is still a hard failure.
+    # 12s (was 40s): under the persist transport-bringup regression (CIRISPersist#320)
+    # n2 never becomes ready inside init_edge_runtime — a deadlock at persist 11.5.0
+    # that on the current persist 12.2.0 floor aborts with SIGSEGV instead — so fail
+    # FAST and let the per-test strict-xfail absorb it (see _TRANSPORT_DEADLOCK)
+    # rather than hanging the suite. When bring-up is fixed a node exiting early is
+    # again a hard signal.
     n2_deadline = time.time() + 12
     while time.time() < n2_deadline and not os.path.exists(paths["n2.ready"]):
         if procs["n2"].poll() is not None:
@@ -297,19 +314,32 @@ def _bodies(result_for_role):
     return {body for _sender, body in result_for_role.get("got", [])}
 
 
-# Real end-to-end transport delivery is broken on the CC 0.6 floor by a persist
-# 11.5.0 regression: init_edge_runtime(enable_transport=True) deadlocks inside the
-# Reticulum bring-up and never returns, so no fabric node becomes ready. Confirmed
-# by A/B with the edge version held constant — edge 7.3.0 + persist 11.0.0 returns
-# in ~0.004s; edge 7.3.0 + persist 11.5.0 hangs (and edge 7.4.0 + persist 11.0.0
-# also returns ~0.003s, so edge is NOT the culprit). Each delivery test guards on
-# the fixture's _transport_up sentinel under strict-xfail, so the moment persist
-# fixes the deadlock the bring-up succeeds, delivery flows, and these flip back to
-# real green gates. Tracked: CIRISPersist#320.
+# Real end-to-end transport delivery is DOUBLY blocked on the edge-8 floor:
+#
+# (1) persist transport bring-up regression (CIRISPersist#320): the same
+#     init_edge_runtime(enable_transport=True) path that first regressed at persist
+#     11.5.0 is STILL broken across the 11.5.0–12.2.0 floor. At 11.5.0 it deadlocked
+#     (edge held constant — edge 7.3.0 + persist 11.0.0 returns in ~0.004s, +11.5.0
+#     hangs — so persist is the culprit, not edge); on the current edge 8.6.1 +
+#     persist 12.2.0 floor the bring-up now ABORTS with SIGSEGV (rc=-11) inside
+#     init_edge_runtime before it returns (reproduced standalone: it never prints
+#     past "PRE init"). Either way the fabric node never becomes ready, so the
+#     fixture fast-fails and the strict-xfail absorbs it.
+# (2) edge 8 (CIRISConformance#53) removed the inline-text surface; the node body is
+#     migrated to subscribe_opaque / send_opaque_event, but the opaque send no longer
+#     carries a scope/holder selector, so the per-mode gate can't be real until that
+#     is re-exposed upstream. BOTH must resolve before these flip to green.
+#
+# Each delivery test guards on the _transport_up sentinel under strict-xfail.
 _TRANSPORT_DEADLOCK = (
-    "persist 11.5.0 regression: init_edge_runtime(enable_transport=True) deadlocks "
-    "in Reticulum bring-up (edge held constant — 11.0.0 works, 11.5.0 hangs), so no "
-    "fabric node becomes ready. Tracked: CIRISPersist#320.")
+    "doubly blocked on the edge-8 floor: (1) init_edge_runtime(enable_transport=True) "
+    "is broken in transport bring-up across persist 11.5.0–12.2.0 (edge held constant: "
+    "11.0.0 works, 11.5.0+ does not) — a deadlock at 11.5.0 that on the current "
+    "edge 8.6.1 + persist 12.2.0 floor aborts with SIGSEGV (rc=-11) inside "
+    "init_edge_runtime, so no fabric node becomes ready (CIRISPersist#320); AND "
+    "(2) edge 8 removed the inline-text surface (CIRISConformance#53) and the opaque "
+    "send carries no scope/holder selector, so per-mode delivery can't be a real gate "
+    "until re-exposed. Both must resolve.")
 
 
 @pytest.mark.cohabitation
