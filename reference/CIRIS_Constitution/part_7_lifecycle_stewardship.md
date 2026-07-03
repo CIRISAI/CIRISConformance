@@ -289,7 +289,7 @@ Any stakeholder believing that a CIRIS compliant creator's actions or omissions 
 Such claims, often referred to as "Creator Negligence Claims" (CNCs), fall under the exclusive jurisdiction of the Wise Authority (WA), as established and governed by Annex B.
 The WA will handle these claims according to its established procedures, potentially adapting specific processes or requiring specific panel expertise as outlined in Annex B or its procedural rules.
 Remedies determined by the WA may include mandated redesign, additional mitigation measures, public disclosure, restitution where applicable, or other actions consistent with Annex B and the Covenant's principles.
-All WA rulings and associated rationale concerning claims related to Book VI duties must be logged in the Wisdom Bank Database (WBD) to inform future interpretations, guide creator practices, and contribute to the Continuous Refinement Environment (CRE).
+All WA rulings and associated rationale concerning claims related to Book VI duties must be logged in the Wisdom Bank Database (WBDB — the durable store of WA rulings and contestability records; distinct from Wisdom-Based Deferral / WBD, see [CC 1.9](part_1_foundation.md)) to inform future interpretations, guide creator practices, and contribute to the Continuous Refinement Environment.
 
 ### 7.3.6 `integrating-creation` — Conclusion: Integrating Creation into the Ethical Lifecycle
 
@@ -443,6 +443,8 @@ CIRIS grades every deployed system on a five-level operational-autonomy scale mo
 | **A4 Critical** | mandatory human veto regardless of capability (in-the-loop) | surgery, weapons |
 
 Per EU AI Act Article 14, oversight is commensurate with the level of autonomy. A3 marks the threshold — the SAE J3016 Level-3 inflection — at which the *system itself*, not its supervisor, carries out consequential action; below A3 the human is the actor. Only at A3 and above, therefore, does a system hold standing to file the voluntary self-termination petition above: the standing mirrors the oversight regime that already governs it. CIRIS adopts the *structure and vocabulary* of these domain-specific standards by analogy; EU AI Act Article 14 is the general-purpose legal anchor.
+
+**Scale-disambiguation note.** These operational-autonomy tiers `A0–A4` are an **oversight scale** (SAE J3016-derived) and are unrelated to the `substrate_rung` values `A0..A5` of [CC 3.1.9.7](part_3_the_namespace.md) — the coherence-ratchet substrate-rung hierarchy. The shared `A{n}` letters denote different objects; `A3` here is the autonomy inflection where the system carries the action, whereas `A3` there is the cognitive/goal-holding substrate rung.
 
 ### 7.5.4 `4-de` — Chapter 4: De-commissioning Protocol (DCP)
 

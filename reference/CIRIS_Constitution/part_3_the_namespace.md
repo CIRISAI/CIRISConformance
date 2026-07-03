@@ -169,6 +169,8 @@ RATCHET emits **advisory** flags — never autonomously modifies ledger state. I
 | `capacity:sustained_coherence` | S | signed |
 | `capacity:composite` | 𝒞_CIRIS — multiplicative; anti-Goodhart unity-of-virtues | signed |
 
+**Nomenclature note.** `C` here denotes the **core-identity factor** of the per-agent Capacity Score `𝒞_CIRIS`. It is **not** the Accord's Flourishing Capacity: the Accord renamed that composite **C → F** and writes `F = k_eff · λ_op · σ` — a distinct, federation-level three-factor construct, not mappable to the per-agent five-factor `𝒞_CIRIS`. See [CC 6.2.4](part_6_the_coherence_mathematics.md) (the Coherence Mathematics, where `F` is defined); Accord Book IX Ch 6 is the authoritative statement of the relation.
+
 **Critical enforcement**: `capacity:*` rejects self-emission. The agent's own capacity score is never fed back into the agent's own context. Reserved per [CC 3.4.5](part_3_the_namespace.md).
 
 #### 3.1.8.2 `coherence-ratchet` — Five Coherence-Ratchet detectors
@@ -259,9 +261,11 @@ This tier binds every operational act back to M-1: a Goal carries its multi-scal
 | Prefix | Description | Polarity |
 |---|---|---|
 | `goal:{scale}` | Multi-scale belonging-projector composite. `{scale}` ∈ `self`, `family`, `community`, `affiliations`, `species`, `planet`, `biosphere`. Scored by 𝒞_CIRIS. The persist typed `Goal` is the substrate OBJECT being scored; `goal:{scale}` is the ATTESTATION about it. Required `MetaGoalAlignment` (M-1 dimension + declarer rationale) on every Goal as construction-time invariant. Edge `MessageType::GoalDeclaration` + `GoalRetirement` provide federation transport. | signed |
-| `approach:{goal_id}` | Strategic pathway from current state toward Goals (Piece 10 karma). | signed |
+| `approach:{goal_id}` | Strategic pathway from current state toward Goals (Piece 10 karma — the per-agent forward post-selection structure; the universal-grace half of Piece 10 is upstream-retracted, F-11). | signed |
 | `method:{approach_id}:{substrate_rung}` | Concrete operational practice. Required `substrate_rung` (Ph0/Ph1/Ph2/A0..A5). | signed |
 | `progress_measure:{method_id}` | Evidence of progress. Required `tracks[]`, `computation`, `validity_window`, `goodhart_resistance`. | signed |
+
+**Scale-disambiguation note.** The `substrate_rung` values `Ph0/Ph1/Ph2/A0..A5` are the coherence-ratchet **substrate-rung** hierarchy (Corridor Dynamics Piece 6; `A3` = the cognitive/goal-holding rung, `A3+` = goal-projector-bearing agents). They are a **different scale** from the operational-autonomy tiers `A0–A4` of [CC 7.5.3.1](part_7_lifecycle_stewardship.md) (an SAE J3016-derived oversight scale) — the shared `A{n}` letters denote unrelated objects.
 
 ### 3.1.10 `cirisbench` — CIRISBench — HE-300 benchmark outcomes
 
@@ -918,6 +922,42 @@ It rides the same admission gate as a bare `scores` on `consent:state:*`; the `c
 
 The structural primitives close the bilateral shape — no new attestation_type, no new envelope field beyond `subject_key_ids` itself.
 
+
+
+#### 3.3.5.1 `fair-exchange` — Optimistic fair exchange (worked example, no new primitive)
+
+This worked example promotes the [CC 1.7](part_1_foundation.md) in-grammar claim from *implied-by-scattered-clauses* to **normative**: accountable ("optimistic") fair exchange — a digital good D traded for a settlement S, with adjudicated recourse — composes entirely from the existing 1+4 set plus the bilateral pair pattern above. The trustless, third-party-free atomic swap (HTLC-class) remains the [CC 1.7](part_1_foundation.md) standing falsification target; this pattern does **not** reach it. Offeror A and acceptor B exchange across a steward-bound escrow custodian E, with the always-present named-moderator / WA as the optimistic third party invoked only on dispute (WBD applied to exchange).
+
+```
+1. OFFER / ACCEPT — bilateral ratification (the CC 3.3.5 bilateral pair above,
+ CC 2.3.2.4 consumer-policy ratification):
+ A emits consent_record(stance: granted, bilateral_pair_id: X)
+ + scores on `consent:partnership_grant:v1`
+ B emits consent_record(target_key_id: A, stance: granted, bilateral_pair_id: X)
+ + scores on `consent:partnership_accept:v1`
+ topical_relation:bilateral_pair links the halves; ratified iff both present.
+
+2. DIGITAL LEG — steward-bound escrow custodian (the CC 4.4.3.2 archive_custody
+ precedent: a custodian holding per-epoch keys decoupled from the live roster):
+ A authorizes E via delegates_to (CC 2.4.1.2) scoped to release-of-D.
+ On confirmed S, E emits a key_grant (CC 3.3.2) to B — the release.
+
+3. VALUE LEG — settlement (CC 3.3.10), off-stack on an external rail:
+ a settlement attestation binds S to the ratified pair
+ (settled_action_ref = the offer/accept Contribution).
+
+4. DISPUTE — optimistic adjudication: absent dispute, parties + E complete
+ unilaterally (the optimistic path); on dispute the named-moderator
+ (CC 4.5.4) / WA (CC 4.3) adjudicates and a hard_case:* event records it.
+
+5. DEFECTION — accountable recourse: non-delivery composes as a
+ commitment_fulfillment (CC 3.1.9.2) shortfall; a PROVEN_ROGUE
+ slashing:{outcome} (CC 3.1.9.2) against staked standing (the CC 2.5 stake
+ axis) follows on WA quorum.
+```
+
+**What this buys, and what it does not.** 1+4 buys **accountability, not atomicity**: a malicious or colluding escrow can still defect (after-the-fact redress is not prevention), and a revealed `key_grant` ([CC 3.3.2](#key_grant)) is forward-only — it cannot be un-revealed. The residual bridges are the value leg ([CC 3.3.10](#3310-settlement--cegvalue-transfer-linkage)) and physical delivery, neither fair-exchange-specific. No new attestation_type and no new envelope field — the [CC 1.7](part_1_foundation.md) 1+4 lockdown holds.
+
 ### 3.3.6 `identity` — `identity_occurrence` subject_kind
 
 The wire-format primitive that lets one logical identity speak across multiple **trusted participants** — devices (phone / laptop / server / embedded) AND agents (the user's own agents acting on the user's behalf). The `occurrence_id` envelope field ([CC 2.1](part_2_the_grammar.md)) names which occurrence emitted a Contribution; `identity_occurrence` is the **wire-format binding** that lets the substrate know `key_phone` and `key_laptop` and `key_my_agent` all represent the same identity `key_identity`. This is the integrity foundation under self-scope: it is what makes "this is me, on another device" a cryptographic fact rather than a guess.
@@ -1073,7 +1113,7 @@ scores {
 
 **Revocation (normative).** A `withdraws`/`recants` ([CC 2.4.1.1](part_2_the_grammar.md)) from G against its own `consent:replication` grant retracts the consent. Because admission is key-rooted (above), revocation has teeth only if honored: on revoke, **the granting node MUST cease replicating the named prefixes to P and SHOULD deregister/expire P's directory authorization for them**, and **a consumer MUST treat rows replicated from G under a withdrawn grant as non-conformant** (the [CC 4.5](part_4_composition_governance.md) location-proof precedent — the wire cannot un-send bytes a peer already holds; it can mark forward-only and oblige cessation). A grant carries optional `valid_until` ([CC 3.3.5](#5687-consent_record-subject_kind) semantics) for time-boxed peering.
 
-**Conformance shape.** The grant is conformance-gradable as follows. Its **envelope-level** fields are exactly `attesting_key_id = G`, `dimension = "consent:replication:v1"`, `score > 0` (positive-only — the family's `consent:state:granted` polarity; magnitude is not load-bearing and a retraction is a `withdraws`/`recants`, never a negative score), `subject_key_ids = [P]` (the **single** recipient peer), `cohort_scope = "federation"`, `witness_relation = "self"` (**REQUIRED** — a G→P grant is G attesting about its *own* replication intent; pinning `self` is what forecloses a third party forging a grant in G's name, since only G signs with G's key as the attested-intent-holder), and optional `valid_until` (the [CC 2.1](part_2_the_grammar.md) envelope field, [CC 3.3.5](#5687-consent_record-subject_kind) staleness semantics) for time-boxed peering. The grant's parameters — `grants` (the constant `"replication"`) and `attestation_prefixes` — are **payload-level** members ([CC 2.3.2.3](#4223-subject_kind-is-a-payload-level-discriminator-confirm-4-resolution)) carried under `subject_kind: "consent_replication"`, **NOT** envelope fields: this is *exactly* why 1+4 is preserved — the CC 2.1 envelope table is untouched. `attestation_prefixes` is the [CC 2.6.1](part_2_the_grammar.md) JCS-canonical array of [CC 3.1](part_3_the_namespace.md) namespace-prefix strings G consents to replicate (trailing `:` significant — e.g. `"capacity:"`), **sorted ascending + deduplicated**, so two implementations holding the same grant agree byte-for-byte on `(G, P, prefix-set, validity)` and revocation-scope matching is deterministic.
+**Conformance shape.** The grant is conformance-gradable as follows. Its **envelope-level** fields are exactly `attesting_key_id = G`, `dimension = "consent:replication:v1"`, `score > 0` (positive-only — the family's `consent:state:granted` polarity; magnitude is not load-bearing and a retraction is a `withdraws`/`recants`, never a negative score), `subject_key_ids = [P]` (the **single** recipient peer), `cohort_scope = "federation"`, `witness_relation = "self"` (**REQUIRED** — a G→P grant is G attesting about its *own* replication intent; pinning `self` is what forecloses a third party forging a grant in G's name, since only G signs with G's key as the attested-intent-holder), and optional `valid_until` (the [CC 2.1](part_2_the_grammar.md) envelope field, [CC 3.3.5](#5687-consent_record-subject_kind) staleness semantics) for time-boxed peering. The grant's parameters — `grants` (the constant `"replication"`) and `attestation_prefixes` — are **payload-level** members ([CC 2.3.2.3](#4223-subject_kind-is-a-payload-level-discriminator-confirm-4-resolution)) carried under `subject_kind: "consent_replication"`, **NOT** envelope fields: this is *exactly* why 1+4 is preserved — the CC 2.1 envelope table is untouched. `attestation_prefixes` is the [CC 2.6.1](part_2_the_grammar.md) JCS-canonical array of [CC 3.1](part_3_the_namespace.md) namespace-prefix strings G consents to replicate (trailing `:` significant — e.g. `"capacity:"`), **sorted ascending + deduplicated**, so two implementations holding the same grant agree byte-for-byte on `(G, P, prefix-set, validity)` and revocation-scope matching is deterministic. For the [CC 6.1.5.2](part_6_the_coherence_mathematics.md) corpus-replication (§Q) track, `attestation_prefixes` additionally admits corpus `subject_kind` class names: naming a corpus class here **is** its pin authorization (the owner then *elects* to spend storage budget pinning it, per §Q B2).
 
 **Bilateral pairing + partial revocation (normative).** `G → P` and `P → G` are independent unilateral grants; each SHOULD carry `topical_relation: bilateral_pair` (the [CC 3.3.1](#5686-consent-namespace-family-ceg-06-addition) `consent:partnership_grant`/`consent:partnership_accept` precedent) so a consumer can pair them — a bilateral peering is ratified **iff both are present and live**. A `withdraws`/`recants` against a grant retracts it **whole**; a producer **narrowing** the prefix set (dropping `capacity:` while keeping another) MUST `supersedes` ([CC 2.4.1.1](part_2_the_grammar.md)) the grant with a new one carrying the narrower `attestation_prefixes` — it MUST NOT silently drop a prefix from a still-live grant (a silent narrowing is indistinguishable, to a consumer, from no change — and the cessation obligation below can only attach to an explicit retract/supersede).
 

@@ -1,6 +1,6 @@
 # CIRIS Constitution conformance profiles in this harness
 
-The **[CIRIS Constitution](../reference/CIRIS_Constitution/) `CC 0.6`** — the
+The **[CIRIS Constitution](../reference/CIRIS_Constitution/) `CC 0.9`** — the
 ecosystem's **superalignment standard** — defines three normative conformance
 profiles in **CC 2.2**. (The Constitution **superseded CEG**: the CEG wire-grammar
 is absorbed into it — grammar → `part_2`, namespace → `part_3`, transport →
@@ -35,7 +35,7 @@ adds a Cartesian admission gate on self-attestation as **non-conformant**.
 consumer-policy-weighted with no substrate enforcement gate; gated at the Rust
 layer where applicable, see CIRISServer below.)
 
-## Why this harness can't yet cover all of CC 0.6
+## Why this harness can't yet cover all of CC 0.9
 
 This harness drives the **real published wheels** (persist / verify /
 edge). A test is only meaningful if it exercises actual binary behavior —
@@ -77,7 +77,10 @@ artificial PyO3 surface) · ⏳ pending an upstream seam · 🏛 governance/proc
 | F-AV-RECONSIDER-DOS rate-limit / cumulative budget | CCC | ⏳ | verify v4.5.0 (CIRISVerify#46) — **Conformance#7** Scenario 1 |
 | Hybrid KEX (X25519 + ML-KEM-768) | CCC | ◷🦀 | **bench-only** at the Rust layer — CIRISServer `benches/pqc_av_streaming.rs` runs the `ciris_edge::transport::federation_session` handshake for *timing*, but there is no correctness assertion (shared-secret agreement / fail-closed on tampered ciphertext). Correctness gate added by the server Rust conformance harness (in progress). |
 | Realtime A/V mesh two-layer hybrid-PQC seal (CC 5.3.3.2.5) | CCS | 🦀 | CIRISServer `tests/alm_chain.rs::inner_e2e_survives_relay_chain` (inner E2E plaintext recovered byte-identical through 1–5 relay reseal hops) + `::wrong_outer_key_at_a_hop_fails_closed` (outer AEAD fails closed), vs the pinned edge |
-| Holder-scoped transport delivery (self/family/community/direct) | CCS | ⏳ | `test_340` xfail(strict) — **regression**: persist 11.5.0 deadlocks edge `init_edge_runtime(enable_transport=True)` Reticulum bring-up (A/B-confirmed: 11.0.0 works, 11.5.0 hangs, edge held constant) → no fabric node becomes ready → **CIRISPersist#320**. Was a real green gate on the CC 0.5.1 floor; flips back the moment the deadlock is fixed |
+| CC 2.6.4 hash-pinned two-tier wire vocabulary (CC 0.7) | CCP/CCC | ✅ | `test_520` — `build_signed_inbound_envelope` accepts exactly the manifest's Tier-1 ∪ opaque ∪ DSAR variant set and rejects the CC 0.7 migrants (`InlineText`/`AccordEventsBatch`/`FederationKeyDirectoryQuery`, `unknown variant`); cross-checked against the vendored [`WIRE_VOCABULARY.md`](../reference/CIRIS_Constitution/WIRE_VOCABULARY.md) so wheel/manifest drift goes red; `CODEC_OPAQUE==255`, `SUPPORTED_SCHEMA_VERSIONS==['1.0.0']`. Hash-pin itself is a DRAFT placeholder with no recompute surface — accept/reject membership is what's gated |
+| CC 6.1.5.2 storage-contention `StorageBudgetV1`/`CorpusWantV1` (CC 0.9) | CCS | ⏳ | `test_530` xfail(strict) — the two signed CC 6.1 shapes are not on the Python wheel (no builder/verify, no `CIRIS-STG-BUDGET`/`CIRIS-WANT-HAVE` domain separator in any `.so`; only the pre-0.9 scalar `set_storage_budget_bytes`) → **CIRISPersist#356** |
+| Holder-scoped transport delivery (self/family/community/direct) | CCS | ⏳ | `test_340` xfail(strict) — **doubly blocked**: (1) the persist transport-bringup regression now **crashes** (SIGABRT, was a deadlock) on 11.5.0→12.2.0, `init_edge_runtime(enable_transport=True)` never returns → **CIRISPersist#320**; (2) edge 8 dropped the opaque holder/scope selector so the four modes collapse to one send → **CIRISEdge#265**. Was a real green gate on the CC 0.5.1 floor |
+| Edge-runtime cohabitation on postgres (send/receive, intake, https) | CCS | ⏳ | `test_050`/`test_140`/`test_230` — real green gates on sqlite; on **postgres** persist 12.2.0 non-deterministically aborts `init_edge_runtime` (background tokio `net/addr` panic → SIGABRT) so they imperatively xfail only when the crash fires → **CIRISPersist#354** |
 | R1/Q1 partition+heal merge contracts (Fed TM v1.1) | CCS | ⏳ | CIRISVerify#48/#49 — **Conformance#7** Scenario 3 |
 | CC 5.3.2.1 holds_bytes 24h TTL | CCS | ⏳ | needs injectable clock → folded into CIRISPersist#125 |
 | Identity-aware storage / per-actor eviction (scaling §9) | CCS | ⏳ | `list_holders` + evict-actor → **CIRISPersist#125** |

@@ -23,7 +23,11 @@ from __future__ import annotations
 
 import pytest
 
-from conftest import get_database_url, run_python_script
+from conftest import (
+    get_database_url,
+    run_python_script,
+    xfail_if_pg_edge_runtime_crash,
+)
 
 
 def _https_init_script(database_url: str) -> str:
@@ -77,7 +81,11 @@ def _https_config_script(database_url: str) -> str:
         "    report['mtls_bearer_init'] = True\n"
         "    report['metrics_keys'] = sorted(edge.metrics_snapshot().keys())\n"
         "    try:\n"
-        "        edge.send_inline_text('unresolvable-peer', 'x')\n"
+        # edge 8 (CIRISConformance#53): send_inline_text was ripped (calling it
+        # raises AttributeError, not the transport refusal). The synchronous
+        # opaque request is the class that resolves a destination and refuses
+        # cleanly on the HTTPS path with 'no HTTPS URL configured'.
+        "        edge.send_opaque_request('unresolvable-peer', 7, b'x', timeout_ms=2000)\n"
         "        report['unresolved'] = {'error': None}\n"
         "    except Exception as exc:\n"
         "        report['unresolved'] = {'type': type(exc).__name__,\n"
@@ -92,6 +100,7 @@ def _https_config_script(database_url: str) -> str:
 @pytest.fixture(scope="module")
 def https_config():
     result = run_python_script(_https_config_script(get_database_url()))
+    xfail_if_pg_edge_runtime_crash(result)  # CIRISPersist#354 (postgres native abort)
     try:
         payload = result.parsed_stdout()
     except Exception:
@@ -114,6 +123,7 @@ def test_https_edge_stands_up():
     #4 cross-transport HTTPS round-trips.
     """
     result = run_python_script(_https_init_script(get_database_url()))
+    xfail_if_pg_edge_runtime_crash(result)  # CIRISPersist#354 (postgres native abort)
     payload = result.parsed_stdout()
     assert payload.get("stage") == "done", payload
     assert payload.get("https_ok") is True, (
