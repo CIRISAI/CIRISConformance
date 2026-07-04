@@ -1,0 +1,12 @@
+# CC-floor ciris-* wheel triple the evidence registry is derived against.
+# Kept SEPARATE from matrices/current.yaml on purpose: current.yaml is the
+# broad cohabitation matrix (owned by the floor-bump effort) and may lag or lead
+# this triple mid-migration. The registry pins the exact floor whose live status
+# `evidence/gen_cc_tests.py` recorded, so `git diff evidence/cc_tests.tsv` in CI
+# is reproducible. Bumping the floor here (+ regenerating) is a deliberate
+# registry update — see evidence/README.md.
+#
+# CC 1.0-rc floor (persist 12.5.0 / verify 8.7.0 / edge 8.7.2).
+ciris-persist==12.5.0
+ciris-verify==8.7.0
+ciris-edge==8.7.2

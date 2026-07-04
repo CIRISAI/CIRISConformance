@@ -209,3 +209,57 @@ jobs:
 
       - name: run version-skew suite
         run: pytest -v --tb=short -m version_skew tests/test_060_version_skew.py
+
+  evidence-registry:
+    # The `test:` tier of the CC evidence-tag registry (CIRISConformance#59 /
+    # CIRISConstitution#17). evidence/cc_tests.tsv maps CC normative claims to the
+    # conformance tests/vectors that establish them; the Constitution's
+    # check_claims.py pins THIS repo by commit and resolves against it. The `status`
+    # column is DERIVED from the live suite (never hand-edited), so it can never
+    # silently drift. This job regenerates the TSV and fails on `git diff` — the
+    # map is force-kept in lockstep with the suite.
+    #
+    # It installs the CC-floor triple from evidence/floor_pins.txt (NOT
+    # matrices/current.yaml): the registry is pinned to the exact floor whose live
+    # status was recorded, so regeneration here reproduces a floor-generated commit
+    # even while current.yaml is mid-migration. sqlite only — the mapped claims are
+    # backend-independent substrate primitives.
+    name: evidence registry (cc_tests.tsv up-to-date)
+    runs-on: ubuntu-latest
+    env:
+      CIRIS_CONFORMANCE_DATABASE_URL: "sqlite::memory:"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: install runtime system libs for the verify wheel
+        # The scope-privacy (test_500) native lib lazy-loads the TPM2 stack; without
+        # it the record_id gates would env-skip and the generator would abort. Same
+        # provisioning as the core conformance job.
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libtss2-tctildr0t64 || \
+            sudo apt-get install -y -qq libtss2-tctildr0
+
+      - name: install harness + dev tooling
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: install the CC-floor ciris-* triple (evidence/floor_pins.txt)
+        run: pip install -r evidence/floor_pins.txt
+
+      - name: regenerate evidence/cc_tests.tsv from the live suite
+        run: python evidence/gen_cc_tests.py
+
+      - name: fail if the registry is out of date
+        run: |
+          git diff --exit-code -- evidence/cc_tests.tsv || {
+            echo "::error::evidence/cc_tests.tsv is stale — regenerate with 'python evidence/gen_cc_tests.py' and commit"
+            git --no-pager diff -- evidence/cc_tests.tsv
+            exit 1
+          }
