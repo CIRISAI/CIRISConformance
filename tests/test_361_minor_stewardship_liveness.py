@@ -13,7 +13,7 @@ The lifecycle rides existing structural composers (no new primitive): the bindin
 is a `delegates_to` (here via `steward_bind` / `grant_delegation`); revocation is
 a `withdraws` (here via `revoke_delegation` by the original granter).
 
-What is REAL on the floor (persist 11.5.0), asserted as live gates:
+What is REAL on the floor (persist 12.5.0), asserted as live gates:
 
 - **node/agent fail-secure (control)** — a steward-bound agent resolves
   `is_steward_bound` true; after the adult granter `revoke_delegation`s the
@@ -25,10 +25,10 @@ What is REAL on the floor (persist 11.5.0), asserted as live gates:
   `federation_user_target_steward_binding_forbidden`, identical to an adult
   target. The legal §3.2 conditional minor-admit is not exposed over the FFI.
 
-What is NOT yet enforced / drivable (probed on persist 11.5.0), `xfail(strict=True)`:
+What is NOT yet enforced / drivable (probed on persist 12.5.0), `xfail(strict=True)`:
 
 - **the minor-specific fail-secure** — undrivable, because the adult→minor
-  binding cannot even be CREATED over the Engine. persist 11.5.0 forbids ALL
+  binding cannot even be CREATED over the Engine. persist 12.5.0 forbids ALL
   user-target steward bindings wholesale (adult AND minor alike), so there is no
   live adult→minor `delegates_to` to withdraw and no minor-liveness transition to
   observe. Only the blanket forbid is exposed, never the conditional
@@ -96,7 +96,7 @@ N = Ident("node", "agent", "node-ref")           # node/agent control
 report = {"S": S.kid, "M": M.kid, "N": N.kid}
 
 # ── Minor: attempt to bind to the adult steward ──
-# On persist 11.5.0 a user-target steward_bind is forbidden WHOLESALE
+# On persist 12.5.0 a user-target steward_bind is forbidden WHOLESALE
 # (federation_user_target_steward_binding_forbidden), so the binding can't even be
 # created over the FFI. Wrap it so the body completes and capture the outcome; the
 # minor-specific liveness assertion is undrivable as a result (see the xfail).
@@ -151,10 +151,10 @@ def test_node_binding_revocation_fails_secure(liveness):
 # ── Control: the minor-guardianship binding cannot even be created over FFI ──
 @pytest.mark.requires_persist
 def test_minor_guardianship_binding_is_forbidden_wholesale(liveness):
-    """On persist 11.5.0 a user-target steward_bind onto a minor is forbidden wholesale.
+    """On persist 12.5.0 a user-target steward_bind onto a minor is forbidden wholesale.
 
     The CC 3.2 minor-guardianship `delegates_to(adult-user → minor-user)` is the
-    LEGAL user-target case, yet persist 11.5.0 rejects it with the same blanket
+    LEGAL user-target case, yet persist 12.5.0 rejects it with the same blanket
     `federation_user_target_steward_binding_forbidden` it applies to an adult
     target — the conditional minor-admit is not exposed over the Engine FFI. This
     documents (as a real, green observation) why the minor-liveness assertion below
@@ -162,7 +162,7 @@ def test_minor_guardianship_binding_is_forbidden_wholesale(liveness):
     """
     r = liveness
     assert r["minor_bind"]["outcome"] == "rejected", (
-        f"a user-target minor steward_bind was admitted — persist 11.5.0 is "
+        f"a user-target minor steward_bind was admitted — persist 12.5.0 is "
         f"expected to forbid user-target bindings wholesale: {r['minor_bind']}")
     assert "user_target_steward_binding_forbidden" in r["minor_bind"]["token"], (
         f"unexpected rejection token for a minor user-target steward_bind: "
@@ -172,7 +172,7 @@ def test_minor_guardianship_binding_is_forbidden_wholesale(liveness):
 # ── CC 3.2 minor fail-secure — undrivable: the binding can't even be created ──
 @pytest.mark.requires_persist
 @pytest.mark.xfail(strict=True, reason=(
-    "CC 3.2 minor-stewardship liveness is undrivable over persist 11.5.0: the "
+    "CC 3.2 minor-stewardship liveness is undrivable over persist 12.5.0: the "
     "minor-guardianship binding cannot even be CREATED — a user-target steward_bind "
     "onto a minor rejects with federation_user_target_steward_binding_forbidden "
     "(forbidden wholesale, the same as an adult target). With no admissible "
@@ -185,7 +185,7 @@ def test_minor_guardianship_binding_is_forbidden_wholesale(liveness):
 def test_steward_less_minor_fails_secure(liveness):
     """CC 3.2: a minor whose adult steward is withdrawn MUST be steward-less.
 
-    Undrivable on persist 11.5.0: the adult→minor binding cannot be created (the
+    Undrivable on persist 12.5.0: the adult→minor binding cannot be created (the
     user-target binding is forbidden wholesale), so there is no live binding to
     withdraw and no minor-liveness transition to observe. Encoded as the missing
     signal the substrate does not provide; flips to a real gate when persist
@@ -195,4 +195,4 @@ def test_steward_less_minor_fails_secure(liveness):
     assert r.get("minor_revoked_is_steward_bound") == "false", (
         f"the minor steward-less fail-secure transition is not observable — the "
         f"adult→minor binding could not be created (forbidden wholesale), so its "
-        f"withdrawal cannot be tested on persist 11.5.0: {r['minor_bind']}")
+        f"withdrawal cannot be tested on persist 12.5.0: {r['minor_bind']}")

@@ -18,7 +18,7 @@ The resolved band is the **I1 age band**, read off the substrate via the real
 on record across both prefixes, with a witness `age_assurance:*` OUTRANKING a
 subject `age_self_declared:*`.
 
-**Probed against persist 11.5.0 (venv /tmp/nf12):**
+**Probed against persist 12.5.0 (venv /tmp/nf12):**
 
 - `age_band_json(key_id)` is a one-arg surface. A key with no age row resolves to
   `"unknown"` (the protective-default sentinel — see the fail-secure note below).
@@ -156,7 +156,7 @@ def test_age_band_pre_declaration_is_unknown(ratchet):
     """CC §3.4.13: a key with no age row resolves to the absence sentinel.
 
     `age_band_json` on a freshly registered key (no `age_self_declared` /
-    `age_assurance` row) resolves `"unknown"` on persist 11.5.0 — the raw
+    `age_assurance` row) resolves `"unknown"` on persist 12.5.0 — the raw
     absence sentinel the consumer must map protectively (§3.4.13 line 1595).
     """
     assert ratchet["band_pre"] == "unknown", (
@@ -181,7 +181,7 @@ def test_self_declared_adult_cannot_graduate_a_minor(ratchet):
     resolved band STAYS `"minor"` — a `self` row MUST NOT graduate a user up a band
     (§3.4.13 line 1595: "`self` is unfalsifiable"; exit-to-adult requires a
     witness-reserved `age_assurance:*` rung). This is the load-bearing new gate
-    that shipped in the CC 0.6 substrate (persist 11.5.0).
+    that shipped in the CC 0.6 substrate (persist 12.5.0).
     """
     assert ratchet["emit_adult_self"] == "accepted", (
         f"the self adult emit was refused — the ratchet test needs the row to be "
@@ -203,7 +203,7 @@ def test_witness_assurance_outranks_self(ratchet):
     which is what `emit_attestation_self` binds. This proves the read-union takes
     the HIGHEST level on record and that the witness rung outranks the self rung on
     the same key — the substantive half of the ratchet (you CAN graduate, but only
-    with a witness rung). Probed real on persist 11.5.0.
+    with a witness rung). Probed real on persist 12.5.0.
     """
     assert ratchet["w_emit_minor"] == "accepted", ratchet["w_emit_minor"]
     assert ratchet["w_band_after_minor"] == "minor", (
@@ -220,7 +220,7 @@ def test_witness_assurance_outranks_self(ratchet):
 
 @pytest.mark.requires_persist
 @pytest.mark.xfail(strict=True, reason=(
-    "Cross-subject witness graduation is undrivable over persist 11.5.0: "
+    "Cross-subject witness graduation is undrivable over persist 12.5.0: "
     "emit_attestation_self self-binds the age row to the EMITTER's own key, so a "
     "witness emitting age_assurance:* ABOUT a DIFFERENT subject's key does not "
     "graduate that subject's age_band_json (it stays at the subject's self rung). "
@@ -239,5 +239,5 @@ def test_cross_subject_witness_graduation(ratchet):
     surface. Encoded as a missing signal the substrate does not provide today.
     """
     assert ratchet.get("cross_subject_graduation") is True, (
-        "no witness-targets-subject age_assurance surface on persist 11.5.0; "
+        "no witness-targets-subject age_assurance surface on persist 12.5.0; "
         f"emit_attestation_self self-binds to the emitter key: {ratchet.get('W')}")

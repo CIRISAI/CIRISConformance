@@ -20,15 +20,15 @@ A binding where the steward `S` is a minor, or where the signer is not the
 steward, is likewise rejected. `node`/`agent`-target admission is governed by the
 older steward-binding gate and is NOT affected by this rule.
 
-What is REAL on the floor (persist 11.5.0): the structural steward surface
+What is REAL on the floor (persist 12.5.0): the structural steward surface
 exists — `steward_bind`, `grant_delegation`, `is_steward_bound_json`,
 `steward_bindings_of_json`. A node/agent steward-binding is admitted and resolves
 `is_steward_bound` true (asserted real, the control). The **adult-target
 rejection is now REAL**: `grant_delegation`/`steward_bind` onto a `user`-role
 identity reject with `federation_user_target_steward_binding_forbidden` — the CC
-3.2 un-stewardable-adult guarantee is enforced (was xfail on persist 11.0.0).
+3.2 un-stewardable-adult guarantee is enforced (was xfail on persist 12.5.0).
 
-What is NOT exposed (probed on persist 11.5.0): the **conditional minor-admit**.
+What is NOT exposed (probed on persist 12.5.0): the **conditional minor-admit**.
 The user-target forbid is WHOLESALE — adult AND minor targets reject with the
 SAME `federation_user_target_steward_binding_forbidden`. So the positive CC 3.2
 case (admit a user-target binding iff `age_band(T)==minor ∧ age_band(S)==adult ∧
@@ -163,10 +163,10 @@ def test_node_steward_binding_is_admitted_and_resolves(admission):
 def test_adult_target_user_binding_is_rejected(admission):
     """CC 3.2: a user-target steward-binding onto an adult MUST be rejected.
 
-    Probed real on persist 11.5.0: `grant_delegation` targeting a `user`-role
+    Probed real on persist 12.5.0: `grant_delegation` targeting a `user`-role
     identity is rejected with `federation_user_target_steward_binding_forbidden`.
     The CC 3.2 un-stewardable-adult guarantee is now enforced at admission — what
-    was an xfail(strict) on persist 11.0.0 is a real green gate.
+    was an xfail(strict) on persist 12.5.0 is a real green gate.
     """
     r = admission
     assert r["adult_target"]["outcome"] == "rejected", (
@@ -181,9 +181,9 @@ def test_adult_target_user_binding_is_rejected(admission):
 def test_adult_target_steward_bind_is_rejected(admission):
     """CC 3.2: `steward_bind` onto an adult user MUST be rejected unconditionally.
 
-    Probed real on persist 11.5.0: `steward_bind` onto a `user`-role identity is
+    Probed real on persist 12.5.0: `steward_bind` onto a `user`-role identity is
     rejected with `federation_user_target_steward_binding_forbidden`. Now a real
-    green gate (was xfail on persist 11.0.0; CIRISPersist#306 shipped the forbid).
+    green gate (was xfail on persist 12.5.0; CIRISPersist#306 shipped the forbid).
     """
     r = admission
     assert r["adult_target_steward_bind"]["outcome"] == "rejected", (
@@ -196,7 +196,7 @@ def test_adult_target_steward_bind_is_rejected(admission):
 
 @pytest.mark.requires_persist
 @pytest.mark.xfail(strict=True, reason=(
-    "User-target steward binding is forbidden WHOLESALE on persist 11.5.0: "
+    "User-target steward binding is forbidden WHOLESALE on persist 12.5.0: "
     "grant_delegation/steward_bind onto ANY user-role target (adult AND minor "
     "alike) reject with federation_user_target_steward_binding_forbidden. The CC "
     "3.2 POSITIVE minor-guardianship admission path (admit a user-target binding "
@@ -211,7 +211,7 @@ def test_minor_target_user_binding_is_admitted_only_because_minor(admission):
 
     The positive case the rule requires — a user-target binding ADMITTED because
     the target is a minor and the steward is a verified adult who signed it — is
-    not exposed: persist 11.5.0 forbids ALL user-target bindings wholesale. This
+    not exposed: persist 12.5.0 forbids ALL user-target bindings wholesale. This
     asserts the conditioned admit that the rule mandates, which the FFI cannot
     express today (the minor leg rejects with the same blanket forbid as the adult
     leg). Flips to a real gate when persist exposes the conditional minor-admit.
@@ -222,4 +222,4 @@ def test_minor_target_user_binding_is_admitted_only_because_minor(admission):
     assert r["minor_target"]["outcome"] == "admitted", (
         f"the §3.2 conditional minor-guardianship binding is not admissible over "
         f"the FFI — user-target binding is forbidden wholesale (adult AND minor "
-        f"alike) on persist 11.5.0: {r['minor_target']}")
+        f"alike) on persist 12.5.0: {r['minor_target']}")

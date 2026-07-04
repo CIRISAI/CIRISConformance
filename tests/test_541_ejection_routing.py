@@ -46,7 +46,14 @@ wrong — the source `AggregationMetaV1::verify_for_admission` runs
   • the agg-meta signing preimage is BINARY (verify `holonomic/aggregation.rs:73`):
     `b"AGG-META-v1\\0\\0\\0\\0\\0" ‖ u32_be(version) ‖ lp(content_id) ‖ lp(corpus_kind)
     ‖ u32_be(tier) ‖ lp(aggregation_algorithm_id) ‖ u32_be(source_count) ‖
-    member_commitment[32] ‖ lp(noise_floor_descriptor)`, `lp(x)=u32_be(len)‖utf8(x)`;
+    member_commitment[32] ‖ lp(noise_floor_descriptor) ‖ u32_be(n_eff)`,
+    `lp(x)=u32_be(len)‖utf8(x)`. §19.7.1.2 (CC 6.1.2 G-B, CIRISVerify#167): verify
+    8.7.0 **version-bumped `AggregationMetaV1` to v2** — the struct gained a signed
+    `pub n_eff: u32` (the Kish effective-source count `(Σmᵢ)²/Σmᵢ²`) appended to the
+    preimage, and admission now runs a **dominance gate**. A v1 tier (no signed
+    n_eff) is ALWAYS rejected `aggregation_meta_dominated`; a v2 tier is admitted
+    only when `2·n_eff ≥ source_count` (n_eff ≥ ⌈N/2⌉, the noise-floor ratio 0.5).
+    A balanced fold signs `n_eff == source_count`;
   • signed bound-hybrid: `ed = local_sign(preimage)`, `pqc = local_pqc_sign(preimage ‖ ed)`,
     aggregator pubkeys resolved off the composite manifest envelope.
 
@@ -139,9 +146,11 @@ def _lp(b):
     if isinstance(b, str):
         b = b.encode("utf-8")
     return _u32(len(b)) + b
-def agg_meta_preimage(version, content_id, corpus_kind, tier, algo, source_count, mc32, nfd):
+def agg_meta_preimage(version, content_id, corpus_kind, tier, algo, source_count, mc32, nfd, n_eff):
+    # §19.7.1.2 (verify 8.7.0): AggregationMetaV1 v2 appends u32_be(n_eff) — the
+    # signed Kish effective-source count — after the noise_floor_descriptor.
     return (DOMAIN_AGG_META + _u32(version) + _lp(content_id) + _lp(corpus_kind)
-            + _u32(tier) + _lp(algo) + _u32(source_count) + mc32 + _lp(nfd))
+            + _u32(tier) + _lp(algo) + _u32(source_count) + mc32 + _lp(nfd) + _u32(n_eff))
 
 
 # ── engine (bound-hybrid: agg-meta + composite manifest are both PQC-mandatory) ──
@@ -212,7 +221,10 @@ MC_HEX = mc32.hex()
 AGG_CID = f"agg-root-{NS}"
 AGG_LEVEL = 1
 AGG_CORPUS = "aggregate:trace"            # aggregate_corpus_kind("trace")
-V_VERSION, V_TIER, V_ALGO, V_NFD = 1, 1, "raptorq-pyramid-v1", "mean+stddev"
+V_VERSION, V_TIER, V_ALGO, V_NFD = 2, 1, "raptorq-pyramid-v1", "mean+stddev"
+# §19.7.1.2 dominance gate: a balanced fold signs n_eff == source_count (uniform
+# masses → Kish n_eff == N), which clears the noise-floor ratio (2·n_eff ≥ N).
+V_N_EFF = len(member_ids)
 
 
 def build_agg_json(agg_cid, member_commitment_hex, mc_bytes, *,
@@ -223,7 +235,7 @@ def build_agg_json(agg_cid, member_commitment_hex, mc_bytes, *,
     # ML-DSA-65 half (the classical-only hard-cut signal).
     content_id = sig_content_id if sig_content_id is not None else agg_cid
     pre = agg_meta_preimage(V_VERSION, content_id, AGG_CORPUS, V_TIER, V_ALGO,
-                            len(member_ids), mc_bytes, V_NFD)
+                            len(member_ids), mc_bytes, V_NFD, V_N_EFF)
     ed_sig = as_bytes(eng.local_sign(pre))
     pqc_sig = b"" if blank_pqc else as_bytes(eng.local_pqc_sign(pre + ed_sig))
     return {
@@ -240,6 +252,7 @@ def build_agg_json(agg_cid, member_commitment_hex, mc_bytes, *,
             "tier": V_TIER,
             "aggregation_algorithm_id": V_ALGO,
             "source_count": len(member_ids),
+            "n_eff": V_N_EFF,
             "member_commitment_hex": member_commitment_hex,
             "noise_floor_descriptor": V_NFD,
             "sig_ed25519_b64": base64.b64encode(ed_sig).decode(),
@@ -279,6 +292,8 @@ report = {
     "agg_record": {k: rec[k] for k in
                    ("aggregate_content_id", "aggregation_level", "fan_in", "member_commitment")},
     "member_commitment_hex": MC_HEX,
+    "agg_meta_version": V_VERSION,
+    "n_eff_signed": V_N_EFF,
     "n_sources": len(SOURCES),
     "symbols_per_source": TOTAL,
     "consent_encoding": "string:active|withdrawn|unknown",
@@ -401,6 +416,10 @@ def test_signed_aggregation_meta_admitted(drive):
     # The stored navigation commitment is the WholenessWitness Merkle we computed.
     assert rec["member_commitment"] == drive["member_commitment_hex"]
     assert len(drive["member_commitment_hex"]) == 64  # 32-byte root, hex
+    # §19.7.1.2: the admitted composite is a v2 AggregationMetaV1 carrying a signed
+    # n_eff == source_count (a balanced fold) — clears the dominance gate.
+    assert drive["agg_meta_version"] == 2
+    assert drive["n_eff_signed"] == drive["n_sources"] == 3
 
 
 # ─── The §19.7.3 verdict routing (behavioral) ─────────────────────────
