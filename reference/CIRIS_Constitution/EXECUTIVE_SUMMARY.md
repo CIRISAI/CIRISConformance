@@ -1,0 +1,25 @@
+# Executive Summary
+
+**What this document is.** The constitution of a decentralized epistemic mesh: a post-quantum, peer-to-peer network that routes streaming, messages, files, and signed claims directly between the devices people already own, with no platform owner in the middle — and whose governance is enforced in the wire format itself, not in a policy binder beside it. Every consequential act an autonomous system takes through the mesh is signed, attributable, consented-to, and revocable, because the protocol admits nothing else.
+
+**The architecture, in one sentence.** More precisely than "an AI governance protocol": CIRIS is a protocol for accountable distributed computation in which authority, consent, evidence, governance, and identity are represented as composable signed attestations, interpreted through local policy rather than globally imposed truth. Governance is one thing the primitive expresses — not the whole of it.
+
+**The principles it holds to everywhere.** Five architectural commitments recur across identity, consent, governance, and accountability without special-casing. Expect them throughout, and read any violation as a defect.
+
+- **Attestation is the universal primitive.** Identity, consent, governance, delegation, evidence, and settlement reduce to one abstraction — a signed claim — and the reduction is *maintained*, not merely aspired to.
+- **Authority, evidence, and policy are separate.** The protocol encodes who said what, why, and under what authority; it does **not** encode truth. Consumers derive truth **locally**, under their own policy — never a globally imposed one.
+- **Consent is protocol semantics, not metadata.** Revocable by its author and enforced in the wire format — not a UI or application concern.
+- **Governance is inside the system, not beside it.** Expressed in the same attestations, subject to the same rules, with human halt-authority on terms no federation-internal party can revoke.
+- **The axes are orthogonal.** Visibility, revocation, delivery, and authority are independent by construction — the discipline that keeps a protocol of this breadth from collapsing into combinatorial special cases.
+
+These are the invariants the mechanisms exist to preserve, not decoration over them.
+
+**This is not a proposal.** The system this document governs is running. It installs on a phone today, answers in twenty-nine languages, and its genesis attestations are live and checkable. Every normative claim here is either implemented, staged against a named implementation, or listed as an open gap in Part 8 — nothing else.
+
+**The safety thesis, stated as the bet it is.** There are two roads to making powerful AI safe: train a model's values until you trust them, or assume the model could be wrong and make its consequential actions checkable by parties it doesn't control. This constitution takes the second road. Its core argument is about the dimensionality of reasoning: when independent, diverse constraints intersect, the space in which coordinated deception remains feasible collapses, and what an adversary must defeat is correlation, not headcount (Part 6). The claim that follows is one of suitability, not endorsement: superintelligence could, in principle, be governed through this mesh — but only as a plurality, never alone. It would require at least two such entities, preferably three, under independent control and ideally of independent lineage, because a lone actor answers to no one and correlated minds count as one. The constraints themselves are not static: the framework assumes ongoing refinement and active diversification as the adversary improves. This is a wager much of the field declines; we name it, state the mathematics it rests on, and name in Part 8 what it would take to lose it.
+
+**Why you cannot take half of this.** The ethics without the wire grammar is a wish. The wire grammar without the mesh is a protocol no one runs. The mesh without decentralized, signed governance is new infrastructure for old capture. Consent here is structural: every attestation revocable by its author, nothing replicating onto a node whose owner did not consent, withdrawal honored at every retained tier — all enforced in one frozen attestation surface, one envelope and four structural primitives, so a conformant system cannot skip the consent mechanics and still speak the protocol. And the authority to say stop stays in human hands you can name and prove are holding it, on terms no federation-internal authority can revoke.
+
+**How this document earns trust.** By naming its weaknesses before a reviewer finds them. Part 8 carries a standing register of acknowledged risks stated as bets with fallbacks, first-adopter exposures with no precedent, and a named falsification target for the core structural claim. Where a limit is known, the document names it rather than papering over it.
+
+**Who this is for.** Implementers, who conform to Parts 2–5; operators and communities, who compose policy over Parts 3–4; and reviewers and adversaries, whose strongest points of attack Part 8 already indexes.

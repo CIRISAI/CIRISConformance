@@ -26,31 +26,28 @@ descent below the noise floor regardless of pin state (CC 6.1.5 N5 / B6). A pin
 holds content above the floor against *capacity* pressure only, never against
 *revocation*.
 
-STATUS ON THE FLOOR WHEEL (persist 12.2.0 / edge 8.6.1 / verify 8.5.0): the CC 0.9
-shapes are **not yet on the Python surface**. Probed exhaustively —
-`ciris_persist` (module + Engine), `ciris_edge.ciris_edge`, and `ciris_verify`
-carry **no** `StorageBudgetV1` / `CorpusWantV1` builder or verifier, and neither
-`.so` contains the `CIRIS-STG-BUDGET` / `CIRIS-WANT-HAVE` domain separators. The
-pre-0.9 surface that DOES exist — `Engine.set_storage_budget_bytes` (CIRISPersist#123)
-and `Engine.cache_budget_bytes` (CIRISPersist#148) — is the *old scalar per-node
-byte budget driving reactive eviction*, i.e. exactly the "no owner budget, only
-reactive eviction after content landed" gap CC 0.9 was written to close. It is
-NOT the signed per-`cohort_scope` `StorageBudgetV1` shape, so it does not satisfy
-this gate.
+STATUS ON THE CC 1.0-rc1 FLOOR (persist 12.5.0 / edge 8.7.2 / verify 8.7.0): the
+CC 0.9 shapes **now ship on the Engine** (CIRISPersist#356, CLOSED) as six
+bound-hybrid builder/verify/predicate methods —
+`build_storage_budget_v1` / `verify_storage_budget_v1` / `storage_budget_supersedes`
+and `build_corpus_want_v1` / `verify_corpus_want_v1` / `corpus_want_admits`. Each
+`build_*` signs the CC 6.1.3 length-prefixed domain-separated preimage with the
+engine's Ed25519+ML-DSA-65 key halves and returns the wire JSON; `verify_*` checks
+both signature halves + structural validity at ingest; the validation rules
+(pin_reserve ≤ budget, self/family suppression, lexicographic sort+dedup) are
+enforced at build time (raising `ciris_persist.LensQueryError`). So the first two
+gates are now **real behavioral drives** (round-trip, anti-rollback, admission).
 
-Therefore this is an **`xfail(strict=True)`** gate, not a fabricated green one:
-each test probes for the specific missing builder/verify surface (across every
-plausible name, mirroring how the sibling CC 6.1 shape `FountainContent` surfaces
-as `Engine.put_fountain_content` / `get_fountain_content`) and asserts it is
-present + drivable. While the surface is absent the assertion fails → xfailed;
-the day persist/edge ships `StorageBudgetV1` / `CorpusWantV1` the probe finds it,
-the test xpasses, and `strict=True` turns that xpass RED — forcing this gate to
-be flipped to a real behavioral assertion (monotonic-revision anti-rollback,
-want/have round-trip, pin-never-defeats-revocation) at that time.
-
-Upstream: file against CIRISPersist (the `put_fountain_content` sibling owner) to
-add `put_storage_budget_v1` / `verify_storage_budget_v1` / `put_corpus_want_v1`
-with the CC 6.1.3 binary preimage + #57 freeze-gate vectors.
+The pin-never-defeats-revocation leg (B6/N5) is **still one leg short**: the §Q
+shapes are wire-negotiation objects only — there is **no pin-install surface**
+(no `put_storage_budget_v1` / `install_storage_budget`; `build_storage_budget_v1`
+returns a signed wire object that does NOT govern fountain eviction). The
+revocation half IS drivable and works (`evict_fountain_content_hard_delete` purges
+admitted fountain content — confirmed in the driver), but "a pin holds content
+above the floor under capacity pressure" cannot be STAGED, so the invariant "the
+pin does not survive revocation" cannot be exercised. That leg stays
+`xfail(strict=True)` with a precise reason until a pin-install surface that
+governs eviction ships.
 
 Spec: reference/CIRIS_Constitution/part_6_the_coherence_mathematics.md §6.1.5.2 (CC 0.9).
 """
@@ -61,23 +58,20 @@ import pytest
 
 from conftest import get_database_url, run_python_script
 
-# CC 6.1.5.2 pinned 16-byte domain separators (verify byte-exact once the shape
-# ships — the sole in-spec anchor a builder's preimage must begin with).
+# CC 6.1.5.2 pinned 16-byte domain separators (the in-spec preimage anchors —
+# enforced inside the Rust builder; the Python surface returns wire JSON, not the
+# raw preimage, so these are documented here rather than byte-checked from Python).
 DOMSEP_STORAGE_BUDGET = b"CIRIS-STG-BUDGET"
 DOMSEP_CORPUS_WANT = b"CIRIS-WANT-HAVE\x00"
 
 
-# ─── Surface probe ────────────────────────────────────────────────────
-# Enumerate the CC 6.1 shape surface across every namespace + naming form that
-# persist/edge/verify could plausibly ship it under, so this gate flips the day
-# it lands regardless of the exact symbol chosen. A name is a hit only if it
-# names the SHAPE (storage_budget / corpus_want / the domain-sep slugs) AND a
-# build/put/verify/sign verb — the pre-0.9 scalar `set_storage_budget_bytes` /
-# `cache_budget_bytes` are deliberately NOT matched (they carry no shape verb and
-# are the reactive-eviction budget CC 0.9 supersedes).
-
-_PROBE_BODY = r"""
-import json, sys, os, tempfile, secrets
+# ─── Behavioral driver ────────────────────────────────────────────────
+# Drive the six §Q Engine methods end-to-end in one hybrid-signing subprocess and
+# report every outcome as a boolean the tests assert on. Build/verify signs with
+# the engine's Ed25519+ML-DSA-65 halves; validation rejections surface as a
+# `ciris_persist.LensQueryError` at build time (captured via `raised(...)`).
+_DRIVE_BODY = r"""
+import json, sys, os, tempfile, secrets, base64, hashlib
 
 def report_error(detail):
     print(json.dumps({"_error": "import", "detail": detail})); sys.exit(2)
@@ -86,148 +80,247 @@ try:
     import ciris_persist as cp
 except ImportError as exc:
     report_error(str(exc))
-try:
-    from ciris_edge import ciris_edge as cei
-except Exception:
-    cei = None
-try:
-    import ciris_verify as cv
-except Exception:
-    cv = None
 
 _d = tempfile.mkdtemp()
 _s = os.path.join(_d, "s"); open(_s, "wb").write(secrets.token_bytes(32))
 _p = os.path.join(_d, "p"); open(_p, "wb").write(secrets.token_bytes(32))
 cp.reset_engine()
-k = "node-" + secrets.token_hex(8)
+NODE = "node-" + secrets.token_hex(8)
 # Hybrid engine — StorageBudgetV1/CorpusWantV1 are bound-hybrid (Ed25519+ML-DSA-65)
 # verified-at-ingest, so a real driver needs both key halves present.
-engine = cp.Engine(DB_URL, k, local_key_id=k, local_key_path=_s,
-                   local_pqc_key_id=k + "-pqc", local_pqc_key_path=_p)
+eng = cp.Engine(DB_URL, NODE, local_key_id=NODE, local_key_path=_s,
+                local_pqc_key_id=NODE + "-pqc", local_pqc_key_path=_p)
+ed = eng.local_public_key_b64()
+pqc = eng.local_pqc_public_key_b64()
 
-SHAPE_TOKENS = ("storage_budget", "corpus_want", "stg_budget", "want_have")
-# Verb as a full `_`-delimited segment (persist is `put_*` / `verify_*` / …), so
-# the pre-0.9 scalar `set_storage_budget_bytes` is NOT matched — its segments are
-# {set, storage, budget, bytes}, none a shape verb (and "budget" contains "get"
-# only as a substring, which segment-matching correctly rejects).
-VERB_TOKENS = frozenset(("put", "verify", "build", "sign", "emit", "ingest", "get"))
 
-def shape_verb_hits(names):
-    hits = []
-    for n in names:
-        low = n.lower()
-        segments = set(low.split("_"))
-        if any(t in low for t in SHAPE_TOKENS) and (segments & VERB_TOKENS):
-            hits.append(n)
-    return sorted(hits)
+def raised(fn):
+    "True iff the builder rejected the payload with a LensQueryError (a real reject)."
+    try:
+        fn(); return False
+    except cp.LensQueryError:
+        return True
 
-namespaces = {
-    "ciris_persist.module": dir(cp),
-    "ciris_persist.Engine": dir(engine),
-    "ciris_edge.ciris_edge": dir(cei) if cei is not None else [],
-    "ciris_verify": dir(cv) if cv is not None else [],
+
+# ── StorageBudgetV1: round-trip, anti-rollback, validation (CC 6.1.5.2 B3) ──
+def sb(payload):
+    return eng.build_storage_budget_v1(json.dumps(payload))
+
+BASE = {"node_id": NODE, "epoch_id": "ep-1", "revision": 5,
+        "scopes": [{"cohort_scope": "community:aaa", "budget_bytes": 1000, "pin_reserve_bytes": 500},
+                   {"cohort_scope": "community:bbb", "budget_bytes": 2000, "pin_reserve_bytes": 100}],
+        "pinned_class": ["trace", "xtrace"]}
+w5 = sb(BASE)                                   # the reference revision
+w9 = sb(dict(BASE, revision=9))                 # same node, higher revision
+w3 = sb(dict(BASE, revision=3))                 # same node, lower revision (rollback)
+wx = sb(dict(BASE, node_id="other-node", revision=99))  # different node, higher rev
+
+sb_report = {
+    "verify_valid": eng.verify_storage_budget_v1(w5, ed, pqc),
+    "verify_swapped_pub": eng.verify_storage_budget_v1(w5, pqc, ed),   # must be False
+    "higher_supersedes": eng.storage_budget_supersedes(w9, w5),        # True
+    "lower_supersedes": eng.storage_budget_supersedes(w3, w5),         # False (anti-rollback)
+    "equal_supersedes": eng.storage_budget_supersedes(w5, w5),         # False
+    "cross_node_supersedes": eng.storage_budget_supersedes(wx, w5),    # False (diff node_id)
+    "reject_pin_gt_budget": raised(lambda: sb(dict(BASE,
+        scopes=[{"cohort_scope": "community:a", "budget_bytes": 100, "pin_reserve_bytes": 500}]))),
+    "reject_self_scope": raised(lambda: sb(dict(BASE,
+        scopes=[{"cohort_scope": "self", "budget_bytes": 100, "pin_reserve_bytes": 10}]))),
+    "reject_family_scope": raised(lambda: sb(dict(BASE,
+        scopes=[{"cohort_scope": "family", "budget_bytes": 100, "pin_reserve_bytes": 10}]))),
+    "reject_unsorted_scopes": raised(lambda: sb(dict(BASE,
+        scopes=[{"cohort_scope": "community:z", "budget_bytes": 100, "pin_reserve_bytes": 10},
+                {"cohort_scope": "community:a", "budget_bytes": 100, "pin_reserve_bytes": 10}]))),
+    "reject_dup_scopes": raised(lambda: sb(dict(BASE,
+        scopes=[{"cohort_scope": "community:a", "budget_bytes": 100, "pin_reserve_bytes": 10},
+                {"cohort_scope": "community:a", "budget_bytes": 100, "pin_reserve_bytes": 10}]))),
+    "reject_unsorted_pinned_class": raised(lambda: sb(dict(BASE, pinned_class=["zzz", "aaa"]))),
+    "reject_dup_pinned_class": raised(lambda: sb(dict(BASE, pinned_class=["aaa", "aaa"]))),
 }
-found = {ns: shape_verb_hits(names) for ns, names in namespaces.items()}
 
-report = {
-    "storage_budget_surface": sorted(
-        h for ns in found.values() for h in ns
-        if "storage_budget" in h.lower() or "stg_budget" in h.lower()),
-    "corpus_want_surface": sorted(
-        h for ns in found.values() for h in ns
-        if "corpus_want" in h.lower() or "want_have" in h.lower()),
-    "found_by_namespace": found,
-    # The pre-0.9 scalar budget that exists but does NOT satisfy CC 0.9.
-    "legacy_scalar_budget_present": bool(
-        hasattr(engine, "set_storage_budget_bytes") or hasattr(engine, "cache_budget_bytes")),
-    "stage": "done",
+# ── CorpusWantV1: round-trip + admission + validation (CC 6.1.5.2 B4) ──
+def cw(payload):
+    return eng.build_corpus_want_v1(json.dumps(payload))
+
+WBASE = {"node_id": NODE, "epoch_id": "ep-1", "cohort_scope": "community:aaa",
+         "size_cap_bytes": 1000, "remaining_budget_bytes": 5000,
+         "want": ["cid-aaa", "cid-bbb", "cid-ccc"]}
+cwire = cw(WBASE)
+cw_report = {
+    "verify_valid": eng.verify_corpus_want_v1(cwire, ed, pqc),
+    "verify_swapped_pub": eng.verify_corpus_want_v1(cwire, pqc, ed),   # False
+    "admits_wanted_undercap": eng.corpus_want_admits(cwire, "cid-aaa", 500),   # True
+    "admits_wanted_atcap": eng.corpus_want_admits(cwire, "cid-aaa", 1000),     # True (== cap)
+    "admits_wanted_overcap": eng.corpus_want_admits(cwire, "cid-aaa", 1001),   # False (> cap)
+    "admits_absent_cid": eng.corpus_want_admits(cwire, "cid-zzz", 10),         # False (not wanted)
+    "reject_self_scope": raised(lambda: cw(dict(WBASE, cohort_scope="self"))),
+    "reject_family_scope": raised(lambda: cw(dict(WBASE, cohort_scope="family"))),
+    "reject_unsorted_want": raised(lambda: cw(dict(WBASE, want=["z", "a"]))),
+    "reject_dup_want": raised(lambda: cw(dict(WBASE, want=["a", "a"]))),
 }
-print(json.dumps(report)); sys.stdout.flush()
+
+# ── pin-vs-revocation (CC 6.1.5.2 B6 / N5): revocation leg + pin-install probe ──
+# The revocation half — evict_fountain_content_hard_delete — is drivable: admit a
+# signed fountain manifest, confirm it is present, hard-delete it, confirm it is
+# gone. The pin half is NOT installable: enumerate any surface that would install
+# a StorageBudgetV1 as an eviction-governing pin (absent → the invariant can't be
+# staged; that leg xfails).
+pin_install_surface = [n for n in dir(eng) if n in (
+    "put_storage_budget_v1", "install_storage_budget",
+    "apply_storage_budget", "set_storage_budget_v1")]
+
+def _as_bytes(x):
+    if isinstance(x, (bytes, bytearray)):
+        return bytes(x)
+    if isinstance(x, str):
+        return base64.b64decode(x)
+    if isinstance(x, list):
+        return bytes(x)
+    raise TypeError(type(x))
+
+N, K, SYM, MV = 10, 4, 16, 3
+TOTAL = N + K
+cid, corpus = "py-nf-1", "trace"
+sym_hashes, symbols = [], []
+for i in range(TOTAL):
+    b = bytes((i * 31 + 7 + j) & 0xFF for j in range(SYM))
+    sym_hashes.append(hashlib.sha256(b).hexdigest())
+    symbols.append({"content_id": cid, "symbol_id": i, "retention_priority": i,
+                    "symbol_bytes": list(b)})
+canonical_value = {"content_id": cid, "corpus_kind": corpus, "manifest_version": 1,
+                   "n_source": N, "k_repair": K, "symbol_size": SYM,
+                   "original_content_length": N * SYM, "min_viable_symbols": MV,
+                   "symbol_hashes": sym_hashes,
+                   "envelope": {"content_id": cid, "pubkey_ed25519": ed, "pubkey_ml_dsa_65": pqc}}
+canon = json.dumps(canonical_value, sort_keys=True, separators=(",", ":")).encode()
+ed_sig = _as_bytes(eng.local_sign(canon))
+pqc_sig = _as_bytes(eng.local_pqc_sign(canon + ed_sig))
+manifest = dict(canonical_value)
+manifest.update({"signature": base64.b64encode(ed_sig).decode(),
+                 "signature_ml_dsa_65": base64.b64encode(pqc_sig).decode(),
+                 "pqc_key_id": eng.local_pqc_key_id()})
+eng.put_fountain_content(json.dumps(manifest), json.dumps(symbols))
+before = json.loads(eng.get_fountain_content(cid, corpus))
+eng.evict_fountain_content_hard_delete(cid, corpus)   # the revocation descent
+after = eng.get_fountain_content(cid, corpus)
+after = json.loads(after) if after else None
+revocation_report = {
+    "present_before": bool(before.get("present")),
+    "gone_after_hard_delete": (after is None) or (not after.get("present")),
+    "pin_install_surface": pin_install_surface,
+}
+
+print(json.dumps({"stage": "done", "storage_budget": sb_report,
+                  "corpus_want": cw_report, "revocation": revocation_report}))
+sys.stdout.flush()
 sys.exit(0)
 """
 
 
-def _probe_script(database_url: str) -> str:
-    return f"DB_URL = {database_url!r}\n" + _PROBE_BODY
+def _drive_script(database_url: str) -> str:
+    return f"DB_URL = {database_url!r}\n" + _DRIVE_BODY
 
 
 @pytest.fixture(scope="module")
 def contention():
-    result = run_python_script(_probe_script(get_database_url()))
+    result = run_python_script(_drive_script(get_database_url()), timeout=90)
     payload = result.parsed_stdout()
     if payload.get("_error") == "import":
-        pytest.fail(f"probe could not import the wheels: {payload.get('detail')}")
+        pytest.fail(f"driver could not import the wheels: {payload.get('detail')}")
     assert payload.get("stage") == "done", payload
     return payload
 
 
 @pytest.mark.cohabitation
 @pytest.mark.requires_persist
-@pytest.mark.xfail(
-    strict=True,
-    reason="CC 0.9 StorageBudgetV1 not on the Python wheel (persist 12.2.0): no "
-           "put_storage_budget_v1 / verify_storage_budget_v1 on ciris_persist "
-           "(module or Engine), ciris_edge, or ciris_verify, and no b'CIRIS-STG-BUDGET' "
-           "domain separator in any .so. The existing scalar set_storage_budget_bytes / "
-           "cache_budget_bytes is the pre-0.9 reactive-eviction budget, not the signed "
-           "per-cohort_scope shape. Flip to a real anti-rollback drive when persist ships it (CIRISPersist#356).",
-)
 def test_storage_budget_v1_signed_and_anti_rollback(contention):
-    """CC 6.1.5.2 B3: a signed `StorageBudgetV1` verifies and monotonic `revision` supersede holds.
+    """CC 6.1.5.2 B3: a signed `StorageBudgetV1` verifies and monotonic-`revision` anti-rollback holds.
 
-    Once the surface exists this MUST assert: a bound-hybrid `StorageBudgetV1`
-    whose preimage begins `b"CIRIS-STG-BUDGET"` verifies at ingest; a higher
-    `revision` from the same `node_id` supersedes; a lower `revision` is REJECTED
-    (anti-rollback); and a `self`/`family` scope entry or `pin_reserve_bytes >
-    budget_bytes` is rejected. Until the builder/verifier lands there is no shape
-    to sign, so this expected-fails.
+    A bound-hybrid `StorageBudgetV1` verifies at ingest (both signature halves)
+    and fails under a swapped pubkey; a higher `revision` from the same `node_id`
+    supersedes, a lower one is REJECTED (anti-rollback), an equal one does not
+    supersede, and a higher `revision` from a *different* `node_id` does not
+    supersede (single-owner self-declaration). The validation rules are enforced
+    at build: `pin_reserve_bytes > budget_bytes`, a `self`/`family` scope entry,
+    and unsorted/duplicated scope or `pinned_class` lists are all rejected.
     """
-    assert contention["storage_budget_surface"], (
-        "no StorageBudgetV1 build/verify surface found; scalar-budget-present="
-        f"{contention['legacy_scalar_budget_present']}, "
-        f"namespaces={contention['found_by_namespace']}")
+    sb = contention["storage_budget"]
+    # round-trip + tamper
+    assert sb["verify_valid"] is True, sb
+    assert sb["verify_swapped_pub"] is False, sb
+    # anti-rollback (B3)
+    assert sb["higher_supersedes"] is True, sb
+    assert sb["lower_supersedes"] is False, sb
+    assert sb["equal_supersedes"] is False, sb
+    assert sb["cross_node_supersedes"] is False, sb
+    # structural validation
+    assert sb["reject_pin_gt_budget"] is True, sb
+    assert sb["reject_self_scope"] is True, sb
+    assert sb["reject_family_scope"] is True, sb
+    assert sb["reject_unsorted_scopes"] is True, sb
+    assert sb["reject_dup_scopes"] is True, sb
+    assert sb["reject_unsorted_pinned_class"] is True, sb
+    assert sb["reject_dup_pinned_class"] is True, sb
 
 
 @pytest.mark.cohabitation
 @pytest.mark.requires_persist
-@pytest.mark.xfail(
-    strict=True,
-    reason="CC 0.9 CorpusWantV1 not on the Python wheel (persist 12.2.0): no "
-           "put_corpus_want_v1 / verify_corpus_want_v1 on ciris_persist, ciris_edge, "
-           "or ciris_verify, and no b'CIRIS-WANT-HAVE\\0' domain separator in any .so. "
-           "Flip to a real want/have round-trip when persist ships it (CIRISPersist#356).",
-)
 def test_corpus_want_v1_roundtrips(contention):
-    """CC 6.1.5.2 B4: a signed `CorpusWantV1` round-trips (build → verify).
+    """CC 6.1.5.2 B4: a signed `CorpusWantV1` round-trips and `size_cap`/CID admission holds.
 
-    Once the surface exists this MUST assert: a bound-hybrid `CorpusWantV1` whose
-    preimage begins `b"CIRIS-WANT-HAVE\\0"` carries `content_id` (CID) + `size_cap_bytes`
-    + `remaining_budget_bytes`, verifies, and rejects a `self`/`family` cohort_scope.
-    Until the builder lands there is no shape to round-trip.
+    A bound-hybrid `CorpusWantV1` verifies at ingest and fails under a swapped
+    pubkey; `corpus_want_admits` admits a wanted CID at or below `size_cap_bytes`
+    but REFUSES an over-cap object or an absent (not-wanted) CID
+    (wanted-then-pulled, never unsolicited-pushed). A `self`/`family`
+    `cohort_scope` and unsorted/duplicated `want` lists are rejected at build.
     """
-    assert contention["corpus_want_surface"], (
-        "no CorpusWantV1 build/verify surface found; "
-        f"namespaces={contention['found_by_namespace']}")
+    cw = contention["corpus_want"]
+    assert cw["verify_valid"] is True, cw
+    assert cw["verify_swapped_pub"] is False, cw
+    # wanted-then-pulled admission (B4)
+    assert cw["admits_wanted_undercap"] is True, cw
+    assert cw["admits_wanted_atcap"] is True, cw
+    assert cw["admits_wanted_overcap"] is False, cw
+    assert cw["admits_absent_cid"] is False, cw
+    # structural validation
+    assert cw["reject_self_scope"] is True, cw
+    assert cw["reject_family_scope"] is True, cw
+    assert cw["reject_unsorted_want"] is True, cw
+    assert cw["reject_dup_want"] is True, cw
 
 
 @pytest.mark.cohabitation
 @pytest.mark.requires_persist
 @pytest.mark.xfail(
     strict=True,
-    reason="CC 0.9 pin-never-defeats-revocation (B6/N5) is undrivable: it needs the "
-           "StorageBudgetV1 pin surface (absent — see test_storage_budget_v1_signed_and_anti_rollback) "
-           "composed with the existing evict_fountain_content_hard_delete revocation path. "
-           "Flip to a real pinned-then-revoked descent drive when StorageBudgetV1 ships (CIRISPersist#356).",
+    reason="CC 0.9 pin-never-defeats-revocation (B6/N5) is one leg short on persist "
+           "12.5.0: the §Q shapes are wire-negotiation objects only — there is NO "
+           "pin-install surface (no put_storage_budget_v1 / install_storage_budget; "
+           "build_storage_budget_v1 returns a signed wire object that does not govern "
+           "fountain eviction). The revocation half (evict_fountain_content_hard_delete) "
+           "IS drivable and works, but 'a pin holds content above the floor under "
+           "capacity pressure' cannot be STAGED, so 'the pin does not survive revocation' "
+           "cannot be exercised. Flip to a real pinned-then-revoked descent drive when a "
+           "pin-install surface that governs eviction ships (CIRISPersist#356 follow-up).",
 )
 def test_pin_never_defeats_revocation(contention):
     """CC 6.1.5.2 B6 / CC 6.1.5 N5: revocation forces descent below the floor regardless of pin.
 
-    Once the pin surface exists this MUST assert: content pinned via a satisfied
-    `StorageBudgetV1` + `consent:replication` grant is held above the floor under
-    capacity pressure, but an active `withdraws` / `consent:state:revoked` still
-    drives `evict_fountain_content_hard_delete` on it (pin holds against capacity,
-    never against revocation). Undrivable until the pin half (StorageBudgetV1) lands.
+    The revocation half is real: admitted fountain content is present, and
+    `evict_fountain_content_hard_delete` purges it (asserted below as a
+    precondition — it passes). The invariant itself needs the pin half too: a
+    surface that installs a satisfied `StorageBudgetV1` as an eviction-governing
+    pin, so the content can be shown held above the floor under *capacity* pressure
+    yet still purged by *revocation*. No such install surface exists on this floor,
+    so this leg xfails on the missing precondition.
     """
-    assert contention["storage_budget_surface"], (
-        "pin-vs-revocation invariant needs the StorageBudgetV1 pin surface, which is "
-        f"absent; namespaces={contention['found_by_namespace']}")
+    rev = contention["revocation"]
+    # revocation half is genuinely drivable and correct
+    assert rev["present_before"] is True, rev
+    assert rev["gone_after_hard_delete"] is True, rev
+    # ...but the pin half (an eviction-governing StorageBudgetV1 install) is absent,
+    # so the pin-never-defeats-revocation invariant cannot be staged. This
+    # assertion is the still-missing leg → xfail(strict).
+    assert rev["pin_install_surface"], (
+        "no pin-install surface that governs fountain eviction "
+        f"(build_storage_budget_v1 is wire-only); surface probe={rev['pin_install_surface']}")

@@ -32,11 +32,29 @@ drives one send per mode.
 
 edge 8 (CIRISConformance#53) ripped the inline-text surface: the receiver now
 subscribes via `subscribe_opaque(kind, cb)` and the sender publishes via
-`send_opaque_event(recipient, kind, payload)`. NOTE the opaque send carries no
-scope/holder selector (the old `send_inline_text_with_outcome` community_id /
-in_family_context args are gone), so the four holder modes collapse to one send
-shape — the scope selector needs re-exposing upstream before this becomes a real
-per-mode gate. Currently moot: this file is doubly blocked (see below).
+`send_opaque_event(recipient, kind, payload)`.
+
+STATUS ON THE CC 1.0-rc1 FLOOR (persist 12.5.0 / edge 8.7.2): the persist
+transport-bringup deadlock/SIGSEGV (CIRISPersist#320) is **FIXED** —
+`init_edge_runtime(enable_transport=True)` returns in ~ms, every node becomes
+ready, and a message published by one node **really is delivered** to the
+addressed recipient over the live Reticulum transport. So these are REAL
+end-to-end delivery gates now, one per sender→recipient route (self N1→N2,
+family N1→N3, community N1→N4, direct N3→N4).
+
+What is NOT yet a real gate is per-mode **holder-scoping**. edge 8's
+`send_opaque_event(recipient, kind, payload)` carries no scope/holder selector
+(the old `send_inline_text_with_outcome` community_id / in_family_context args
+are gone), and delivery is empirically **primed-peer, not holder-gated**: a
+message reaches an addressed peer that shares NO scope with the sender (verified
+standalone — no steward bind, no family, no community, no occurrence, yet it
+still delivers). So the four modes are indistinguishable as *holder* gates —
+each asserts live delivery to its addressed recipient, none asserts that
+delivery is *restricted* to genuine holders (non-holders rejected). Restoring
+the scope selector so per-mode holder-scoping becomes distinguishable needs
+CIRISEdge#265 (still OPEN). The steward/family/community fabric is still stood
+up (it exercises the persist holder-model wheel and must succeed), it just does
+not yet gate delivery.
 """
 
 from __future__ import annotations
@@ -114,11 +132,10 @@ if os.path.exists(CMD):
                 # edge 8 send_opaque_event(recipient, kind, payload) carries NO
                 # scope/holder selector — the community_id / in_family_context
                 # args that send_inline_text_with_outcome took are GONE, so all
-                # four modes collapse to the same durable send here. Holder
-                # scoping must be resolved edge-internally from the recipient's
-                # membership rows (or the scope selector needs re-exposing:
-                # upstream gap, see module note). Moot on this floor: the
-                # persist #320 deadlock means no node ever reaches this.
+                # four modes send the same durable shape and delivery is
+                # primed-peer, not holder-gated (CIRISEdge#265). The send still
+                # really delivers to the addressed recipient over live transport,
+                # which is what the per-route gates below assert.
                 edge.send_opaque_event(target, KIND, text.encode("utf-8"))
             except Exception as exc:
                 print("SEND ERR " + str(exc)[:80], file=sys.stderr)
@@ -222,13 +239,11 @@ def delivery_fabric(tmp_path_factory):
     # (concurrent first-migration races with "duplicate column"); the rest open
     # the already-migrated DB.
     launch("n2")
-    # 12s (was 40s): under the persist transport-bringup regression (CIRISPersist#320)
-    # n2 never becomes ready inside init_edge_runtime — a deadlock at persist 11.5.0
-    # that on the current persist 12.2.0 floor aborts with SIGSEGV instead — so fail
-    # FAST and let the per-test strict-xfail absorb it (see _TRANSPORT_DEADLOCK)
-    # rather than hanging the suite. When bring-up is fixed a node exiting early is
-    # again a hard signal.
-    n2_deadline = time.time() + 12
+    # persist transport bring-up (CIRISPersist#320) is FIXED on the CC 1.0-rc1
+    # floor — init_edge_runtime(enable_transport=True) returns in ~ms and n2
+    # becomes ready — so a node that never readies (or exits early) is again a
+    # HARD failure, not an xfail-absorbed deadlock.
+    n2_deadline = time.time() + 40
     while time.time() < n2_deadline and not os.path.exists(paths["n2.ready"]):
         if procs["n2"].poll() is not None:
             _, err = procs["n2"].communicate()
@@ -236,7 +251,7 @@ def delivery_fabric(tmp_path_factory):
         time.sleep(0.2)
     if not os.path.exists(paths["n2.ready"]):
         procs["n2"].kill()
-        return {"_transport_up": False}  # persist 11.5.0 deadlock — strict-xfail
+        pytest.fail("node n2 never became ready within 40s")
     for role in ("n1", "n3", "n4"):
         launch(role)
 
@@ -256,7 +271,7 @@ def delivery_fabric(tmp_path_factory):
     if len(roster) < 4:
         for p in procs.values():
             if p.poll() is None: p.kill()
-        return {"_transport_up": False}  # persist 11.5.0 deadlock — strict-xfail
+        pytest.fail(f"only {len(roster)}/4 fabric nodes became ready")
     open(paths["roster"], "w").write(json.dumps(roster))
 
     # Owner setup: three sequential owner processes (one live engine each), in
@@ -306,7 +321,6 @@ def delivery_fabric(tmp_path_factory):
         else:
             results[role] = {"role": role, "got": [], "_stderr": (err or "")[-400:]}
     results["_kid"] = kid
-    results["_transport_up"] = True
     return results
 
 
@@ -314,73 +328,70 @@ def _bodies(result_for_role):
     return {body for _sender, body in result_for_role.get("got", [])}
 
 
-# Real end-to-end transport delivery is DOUBLY blocked on the edge-8 floor:
+# REAL end-to-end transport delivery on the CC 1.0-rc1 floor (persist 12.5.0 /
+# edge 8.7.2). The persist transport bring-up deadlock/SIGSEGV (CIRISPersist#320)
+# is FIXED: init_edge_runtime(enable_transport=True) returns in ~ms, every fabric
+# node becomes ready, and each published message is delivered to the addressed
+# recipient over the live Reticulum transport. So each test below is a real
+# per-route delivery gate (green, no xfail).
 #
-# (1) persist transport bring-up regression (CIRISPersist#320): the same
-#     init_edge_runtime(enable_transport=True) path that first regressed at persist
-#     11.5.0 is STILL broken across the 11.5.0–12.2.0 floor. At 11.5.0 it deadlocked
-#     (edge held constant — edge 7.3.0 + persist 11.0.0 returns in ~0.004s, +11.5.0
-#     hangs — so persist is the culprit, not edge); on the current edge 8.6.1 +
-#     persist 12.2.0 floor the bring-up now ABORTS with SIGSEGV (rc=-11) inside
-#     init_edge_runtime before it returns (reproduced standalone: it never prints
-#     past "PRE init"). Either way the fabric node never becomes ready, so the
-#     fixture fast-fails and the strict-xfail absorbs it.
-# (2) edge 8 (CIRISConformance#53) removed the inline-text surface; the node body is
-#     migrated to subscribe_opaque / send_opaque_event, but the opaque send no longer
-#     carries a scope/holder selector, so the per-mode gate can't be real until that
-#     is re-exposed upstream. BOTH must resolve before these flip to green.
-#
-# Each delivery test guards on the _transport_up sentinel under strict-xfail.
-_TRANSPORT_DEADLOCK = (
-    "doubly blocked on the edge-8 floor: (1) init_edge_runtime(enable_transport=True) "
-    "is broken in transport bring-up across persist 11.5.0–12.2.0 (edge held constant: "
-    "11.0.0 works, 11.5.0+ does not) — a deadlock at 11.5.0 that on the current "
-    "edge 8.6.1 + persist 12.2.0 floor aborts with SIGSEGV (rc=-11) inside "
-    "init_edge_runtime, so no fabric node becomes ready (CIRISPersist#320); AND "
-    "(2) edge 8 removed the inline-text surface (CIRISConformance#53) and the opaque "
-    "send carries no scope/holder selector, so per-mode delivery can't be a real gate "
-    "until re-exposed. Both must resolve.")
+# NOT yet real: per-mode HOLDER-scoping. edge 8's send_opaque_event(recipient,
+# kind, payload) has no scope/holder selector, and delivery is empirically
+# primed-peer, NOT holder-gated — a message delivers to an addressed peer that
+# shares no scope with the sender at all (verified standalone: no steward bind /
+# family / community / occurrence, yet it still delivers). So the four modes are
+# indistinguishable as *holder* gates: each asserts live delivery to its
+# addressed recipient over the transport, none asserts that delivery is
+# *restricted* to genuine holders (a non-holder MUST NOT receive). Making per-mode
+# holder-scoping a distinguishable gate needs the scope selector re-exposed —
+# CIRISEdge#265 (still OPEN).
 
 
 @pytest.mark.cohabitation
 @pytest.mark.requires_persist
 @pytest.mark.requires_edge
-@pytest.mark.xfail(strict=True, reason=_TRANSPORT_DEADLOCK)
 def test_self_scope_delivery(delivery_fabric):
-    assert delivery_fabric.get("_transport_up"), _TRANSPORT_DEADLOCK
-    """A self-scope publish reaches a co-occurrence of the same identity (N1→N2)."""
+    """A self-route publish is delivered to the addressed recipient N1→N2.
+
+    Real live-transport delivery (CIRISPersist#320 fixed). NOT a holder gate:
+    delivery is primed-peer, not restricted to genuine self-occurrences
+    (CIRISEdge#265 — the opaque send carries no scope selector).
+    """
     assert "self-msg" in _bodies(delivery_fabric["n2"]), (
-        f"N2 did not receive the self-scope message: {delivery_fabric['n2']}")
+        f"N2 did not receive the self-route message: {delivery_fabric['n2']}")
 
 
 @pytest.mark.cohabitation
 @pytest.mark.requires_persist
 @pytest.mark.requires_edge
-@pytest.mark.xfail(strict=True, reason=_TRANSPORT_DEADLOCK)
 def test_family_tier_delivery(delivery_fabric):
-    assert delivery_fabric.get("_transport_up"), _TRANSPORT_DEADLOCK
-    """A family-tier publish reaches a fellow family member (N1→N3)."""
+    """A family-route publish is delivered to the addressed recipient N1→N3.
+
+    Real live-transport delivery; not holder-scoped (CIRISEdge#265).
+    """
     assert "family-msg" in _bodies(delivery_fabric["n3"]), (
-        f"N3 did not receive the family-tier message: {delivery_fabric['n3']}")
+        f"N3 did not receive the family-route message: {delivery_fabric['n3']}")
 
 
 @pytest.mark.cohabitation
 @pytest.mark.requires_persist
 @pytest.mark.requires_edge
-@pytest.mark.xfail(strict=True, reason=_TRANSPORT_DEADLOCK)
 def test_community_scope_delivery(delivery_fabric):
-    assert delivery_fabric.get("_transport_up"), _TRANSPORT_DEADLOCK
-    """A community-scope publish reaches a fellow community member (N1→N4)."""
+    """A community-route publish is delivered to the addressed recipient N1→N4.
+
+    Real live-transport delivery; not holder-scoped (CIRISEdge#265).
+    """
     assert "community-msg" in _bodies(delivery_fabric["n4"]), (
-        f"N4 did not receive the community-scope message: {delivery_fabric['n4']}")
+        f"N4 did not receive the community-route message: {delivery_fabric['n4']}")
 
 
 @pytest.mark.cohabitation
 @pytest.mark.requires_persist
 @pytest.mark.requires_edge
-@pytest.mark.xfail(strict=True, reason=_TRANSPORT_DEADLOCK)
 def test_direct_message_is_a_two_member_community(delivery_fabric):
-    assert delivery_fabric.get("_transport_up"), _TRANSPORT_DEADLOCK
-    """Direct messaging == a community of two: N3→N4 over the 2-owner community."""
+    """A direct-route publish (the 2-owner community) is delivered N3→N4.
+
+    Real live-transport delivery; not holder-scoped (CIRISEdge#265).
+    """
     assert "direct-msg" in _bodies(delivery_fabric["n4"]), (
         f"N4 did not receive the direct (community-of-2) message: {delivery_fabric['n4']}")
