@@ -34,3 +34,8 @@ cc_decimal_id	cc_claim_id	conformance_test_id(s)	freeze_gate_vector(s)
 6.1.5.2	CC-6.1.5.2-storage-contention-budget-want	tests/test_530_storage_contention.py::test_storage_budget_v1_signed_and_anti_rollback,tests/test_530_storage_contention.py::test_corpus_want_v1_roundtrips	StorageBudgetV1,CorpusWantV1
 # pin-never-defeats-revocation (B6/N5) is one leg short — no pin-install surface governs eviction (CIRISPersist#370, follow-up to the closed #356).
 6.1.5.2	CC-6.1.5.2-pin-never-defeats-revocation	tests/test_530_storage_contention.py::test_pin_never_defeats_revocation	StorageBudgetV1
+3.4.8	CC-3.4.8-detection-discriminator	tests/test_550_detection_discriminator.py::test_detection_leaves_refused_from_agent_key,tests/test_550_detection_discriminator.py::test_lenscore_detector_key_admitted_on_detection,tests/test_550_detection_discriminator.py::test_detector_role_is_identity_type_membership_not_roles_kwarg,tests/test_550_detection_discriminator.py::test_truth_grounding_cross_attestation_admitted	-
+# novel detection:{newkind}:* subkind not covered by a prefix-wildcard yet (CIRISPersist#379).
+3.4.8	CC-3.4.8-detection-wildcard-coverage	tests/test_550_detection_discriminator.py::test_novel_detection_subkind_wildcard_refused_from_agent_key	-
+# CC 3.2 single-owner invariant not on the persist FFI (owner_of resolver + owner_binding purpose + reject-2nd-owner gate); CIRISPersist#378.
+3.2	CC-3.2-single-owner-invariant	tests/test_551_single_owner.py::test_second_distinct_owner_binding_is_rejected,tests/test_551_single_owner.py::test_owner_of_resolves_to_single_owner	-

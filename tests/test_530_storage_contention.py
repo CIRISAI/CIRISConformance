@@ -26,7 +26,7 @@ descent below the noise floor regardless of pin state (CC 6.1.5 N5 / B6). A pin
 holds content above the floor against *capacity* pressure only, never against
 *revocation*.
 
-STATUS ON THE CC 1.0-rc1 FLOOR (persist 12.5.0 / edge 8.7.2 / verify 8.7.0): the
+STATUS ON THE CC 1.0-rc2 FLOOR (persist 13.0.1 / edge 9.1.0 / verify 8.7.0): the
 CC 0.9 shapes **now ship on the Engine** (CIRISPersist#356, CLOSED) as six
 bound-hybrid builder/verify/predicate methods —
 `build_storage_budget_v1` / `verify_storage_budget_v1` / `storage_budget_supersedes`
@@ -38,16 +38,19 @@ both signature halves + structural validity at ingest; the validation rules
 enforced at build time (raising `ciris_persist.LensQueryError`). So the first two
 gates are now **real behavioral drives** (round-trip, anti-rollback, admission).
 
-The pin-never-defeats-revocation leg (B6/N5) is **still one leg short**: the §Q
-shapes are wire-negotiation objects only — there is **no pin-install surface**
-(no `put_storage_budget_v1` / `install_storage_budget`; `build_storage_budget_v1`
-returns a signed wire object that does NOT govern fountain eviction). The
-revocation half IS drivable and works (`evict_fountain_content_hard_delete` purges
-admitted fountain content — confirmed in the driver), but "a pin holds content
-above the floor under capacity pressure" cannot be STAGED, so the invariant "the
-pin does not survive revocation" cannot be exercised. That leg stays
-`xfail(strict=True)` with a precise reason until a pin-install surface that
-governs eviction ships.
+The pin-never-defeats-revocation leg (B6/N5) is now a **real green drive** on
+persist 13.0.1 (CIRISPersist#370), which ships the missing pin-INSTALL surface:
+`install_storage_budget_v1(wire, ed_pub, ml_dsa_pub)` verifies the bound-hybrid
+signature at the gate, enforces §Q B3 anti-rollback, and persists a
+`StorageBudgetV1` that GOVERNS fountain eviction (its `pinned_class` /
+`pin_reserve_bytes` drive the B5 cache-before-pinned sweep); returning the
+accepted `revision`. `get_installed_storage_budget_json(node_id)` reads it back
+verbatim. The driver installs a budget pinning the `trace` corpus class, admits
+`trace` fountain content held under that pin, then revokes it
+(`evict_fountain_content_hard_delete`) and asserts the pin does **not** save it:
+the symbols are purged and the manifest descends to `EnvelopeOnly`, while the pin
+itself stays installed — revocation is **pin-blind** (§Q B6). A pin holds content
+above the floor against *capacity* pressure only, never against *revocation*.
 
 Spec: reference/CIRIS_Constitution/part_6_the_coherence_mathematics.md §6.1.5.2 (CC 0.9).
 """
@@ -159,15 +162,18 @@ cw_report = {
     "reject_dup_want": raised(lambda: cw(dict(WBASE, want=["a", "a"]))),
 }
 
-# ── pin-vs-revocation (CC 6.1.5.2 B6 / N5): revocation leg + pin-install probe ──
-# The revocation half — evict_fountain_content_hard_delete — is drivable: admit a
-# signed fountain manifest, confirm it is present, hard-delete it, confirm it is
-# gone. The pin half is NOT installable: enumerate any surface that would install
-# a StorageBudgetV1 as an eviction-governing pin (absent → the invariant can't be
-# staged; that leg xfails).
-pin_install_surface = [n for n in dir(eng) if n in (
-    "put_storage_budget_v1", "install_storage_budget",
-    "apply_storage_budget", "set_storage_budget_v1")]
+# ── pin-vs-revocation (CC 6.1.5.2 B6 / N5): install a pin, then revoke past it ──
+# persist 13 (CIRISPersist#370) ships the pin-INSTALL surface:
+#   install_storage_budget_v1(wire, ed_pub, ml_dsa_pub) verifies the bound-hybrid
+#     signature at the gate, enforces §Q B3 anti-rollback, then persists a
+#     StorageBudgetV1 that GOVERNS eviction (its pinned_class / pin_reserve drive
+#     the B5 CACHE-BEFORE-PINNED sweep), returning the accepted revision;
+#   get_installed_storage_budget_json(node_id) reads it back VERBATIM (re-verifiable).
+# Install a budget that PINS the `trace` corpus class, admit trace fountain
+# content, confirm it is held under the pin, then revoke it
+# (evict_fountain_content_hard_delete) and assert the pin does NOT save it: N5/B6 —
+# revocation is pin-blind and forces descent below the floor (symbols purged, the
+# manifest left EnvelopeOnly) regardless of the pin, which itself stays installed.
 
 def _as_bytes(x):
     if isinstance(x, (bytes, bytearray)):
@@ -178,9 +184,40 @@ def _as_bytes(x):
         return bytes(x)
     raise TypeError(type(x))
 
+def install_raises(fn):
+    "True iff install rejected the payload with a ValueError (anti-rollback etc.)."
+    try:
+        fn(); return False
+    except ValueError:
+        return True
+
+cid, corpus = "py-nf-1", "trace"
+
+# Install an eviction-governing budget whose pinned_class covers `trace` (the
+# corpus_kind of the content admitted below), with headroom so it is not evicted
+# by capacity pressure — only revocation can force it out.
+PIN_BUDGET = {"node_id": NODE, "epoch_id": "ep-1", "revision": 5,
+              "scopes": [{"cohort_scope": "community:aaa", "budget_bytes": 100000,
+                          "pin_reserve_bytes": 50000}],
+              "pinned_class": ["trace", "xtrace"]}
+pin_wire = eng.build_storage_budget_v1(json.dumps(PIN_BUDGET))
+install_revision = eng.install_storage_budget_v1(pin_wire, ed, pqc)
+installed_wire = eng.get_installed_storage_budget_json(NODE)
+pin_report = {
+    "install_revision": install_revision,
+    "installed_present": installed_wire is not None,
+    "installed_reverifies": bool(installed_wire)
+        and eng.verify_storage_budget_v1(installed_wire, ed, pqc),
+    # §Q B3 anti-rollback holds at the INSTALL gate: a lower revision is rejected.
+    "install_rollback_rejected": install_raises(lambda: eng.install_storage_budget_v1(
+        eng.build_storage_budget_v1(json.dumps(dict(PIN_BUDGET, revision=3))), ed, pqc)),
+    # a swapped-pubkey install MUST fail signature verification at the gate.
+    "install_bad_sig_rejected": install_raises(
+        lambda: eng.install_storage_budget_v1(pin_wire, pqc, ed)),
+}
+
 N, K, SYM, MV = 10, 4, 16, 3
 TOTAL = N + K
-cid, corpus = "py-nf-1", "trace"
 sym_hashes, symbols = [], []
 for i in range(TOTAL):
     b = bytes((i * 31 + 7 + j) & 0xFF for j in range(SYM))
@@ -207,11 +244,15 @@ after = json.loads(after) if after else None
 revocation_report = {
     "present_before": bool(before.get("present")),
     "gone_after_hard_delete": (after is None) or (not after.get("present")),
-    "pin_install_surface": pin_install_surface,
+    # the pin is still installed — it just does NOT save the content (pin-blind
+    # revocation, §Q B6); the content descends to EnvelopeOnly regardless.
+    "pin_survives_revocation": eng.get_installed_storage_budget_json(NODE) is not None,
+    "state_after": (after or {}).get("state"),
 }
 
 print(json.dumps({"stage": "done", "storage_budget": sb_report,
-                  "corpus_want": cw_report, "revocation": revocation_report}))
+                  "corpus_want": cw_report, "pin": pin_report,
+                  "revocation": revocation_report}))
 sys.stdout.flush()
 sys.exit(0)
 """
@@ -291,36 +332,36 @@ def test_corpus_want_v1_roundtrips(contention):
 
 @pytest.mark.cohabitation
 @pytest.mark.requires_persist
-@pytest.mark.xfail(
-    strict=True,
-    reason="CC 0.9 pin-never-defeats-revocation (B6/N5) is one leg short on persist "
-           "12.5.0: the §Q shapes are wire-negotiation objects only — there is NO "
-           "pin-install surface (no put_storage_budget_v1 / install_storage_budget; "
-           "build_storage_budget_v1 returns a signed wire object that does not govern "
-           "fountain eviction). The revocation half (evict_fountain_content_hard_delete) "
-           "IS drivable and works, but 'a pin holds content above the floor under "
-           "capacity pressure' cannot be STAGED, so 'the pin does not survive revocation' "
-           "cannot be exercised. Flip to a real pinned-then-revoked descent drive when a "
-           "pin-install surface that governs eviction ships (CIRISPersist#356 follow-up).",
-)
 def test_pin_never_defeats_revocation(contention):
     """CC 6.1.5.2 B6 / CC 6.1.5 N5: revocation forces descent below the floor regardless of pin.
 
-    The revocation half is real: admitted fountain content is present, and
-    `evict_fountain_content_hard_delete` purges it (asserted below as a
-    precondition — it passes). The invariant itself needs the pin half too: a
-    surface that installs a satisfied `StorageBudgetV1` as an eviction-governing
-    pin, so the content can be shown held above the floor under *capacity* pressure
-    yet still purged by *revocation*. No such install surface exists on this floor,
-    so this leg xfails on the missing precondition.
+    Now a real end-to-end drive on persist 13 (CIRISPersist#370): an
+    eviction-governing `StorageBudgetV1` pinning the `trace` corpus class is
+    installed (`install_storage_budget_v1` — bound-hybrid verified at the gate,
+    §Q B3 anti-rollback enforced, re-readable verbatim via
+    `get_installed_storage_budget_json`); `trace` fountain content is admitted and
+    held under that pin. Then the content is revoked
+    (`evict_fountain_content_hard_delete`) and the pin does **NOT** save it: the
+    symbols are purged and the manifest descends to `EnvelopeOnly`, while the pin
+    itself stays installed — revocation is **pin-blind** and forces immediate
+    descent below the noise floor regardless of pin state. §Q is the positive
+    inverse of N5 and is bounded by it: a pin holds content above the floor
+    against *capacity* pressure only, never against *revocation*.
     """
+    pin = contention["pin"]
     rev = contention["revocation"]
-    # revocation half is genuinely drivable and correct
+    # the pin was really INSTALLED as an eviction-governing budget, verified at the
+    # gate, and anti-rollback / bad-signature installs are rejected (B3 / CC 6.1.3).
+    assert pin["installed_present"] is True, pin
+    assert pin["installed_reverifies"] is True, pin
+    assert pin["install_revision"] == 5, pin
+    assert pin["install_rollback_rejected"] is True, pin
+    assert pin["install_bad_sig_rejected"] is True, pin
+    # content is held under the pin, then revocation purges it anyway (N5/B6)...
     assert rev["present_before"] is True, rev
     assert rev["gone_after_hard_delete"] is True, rev
-    # ...but the pin half (an eviction-governing StorageBudgetV1 install) is absent,
-    # so the pin-never-defeats-revocation invariant cannot be staged. This
-    # assertion is the still-missing leg → xfail(strict).
-    assert rev["pin_install_surface"], (
-        "no pin-install surface that governs fountain eviction "
-        f"(build_storage_budget_v1 is wire-only); surface probe={rev['pin_install_surface']}")
+    # ...descending to EnvelopeOnly (symbols purged below the floor)...
+    assert rev["state_after"] == "envelope_only", rev
+    # ...while the pin itself is untouched — revocation is pin-blind, not a
+    # budget teardown: the pin survives, the pinned content does not.
+    assert rev["pin_survives_revocation"] is True, rev

@@ -55,10 +55,16 @@ test_270's appoint/remove flow over the `federation_module` fixture:
    empty-roster community is admitted-and-kept rather than refused on the apply
    step is exactly the missing enforcement captured by the xfail below.)
 
-The undrivable piece — the §4.5.4 *enforcement-layer gate itself* (an
-admission/federation-apply step that REFUSES a moderator-less community at the
-write boundary, distinct from the `is_named_moderator` primitive it consumes) —
-is xfail(strict) at the bottom with the precise surface that is missing.
+The §4.5.4 *enforcement-layer gate itself* — the federation-apply step that
+REFUSES a moderator-less community, distinct from the `is_named_moderator`
+primitive it consumes — now ships on persist 13 (CIRISPersist#369) as
+`check_no_moderator_federate_json(community_id)`: the exact verdict
+`admission::check_no_moderator_federate_apply` takes on every apply step, keyed
+on `community_id`. A live-moderator community is ADMITTED, a known moderator-less
+community is REFUSED fail-secure with `federation_community_no_moderator`
+(§11.11 rule 3), and an unknown community fails-open. That is now a real green
+gate at the bottom. (The §4.5.13 reverse-quorum no-moderator RECOVERY vote is
+time/governance with no candidacy/tally/window byte-surface — out of scope.)
 """
 
 from __future__ import annotations
@@ -94,6 +100,15 @@ try:
     report["moderated_action_with_holder"] = "admitted"
 except Exception as exc:
     report["moderated_action_with_holder"] = str(exc)[:80]
+
+# (1b) The §4.5.4 federation-APPLY-step gate itself (CIRISPersist#369): the
+# verdict `admission::check_no_moderator_federate_apply` takes on every apply
+# step, keyed on community_id. A community with a live moderate-holder is
+# ADMITTED (community_known); an unknown community is out of scope (fail-open).
+report["apply_verdict_with_moderator"] = json.loads(
+    engine.check_no_moderator_federate_json(founder))
+report["apply_verdict_unknown"] = json.loads(
+    engine.check_no_moderator_federate_json("community-not-locally-known"))
 
 # (2) Appoint a delegate moderator, then remove it — the loss the apply-step gate keys on.
 appt = engine.add_moderator(founder, MOD_KID, "moderate")
@@ -141,6 +156,10 @@ try:
     report["empty_moderators"] = json.loads(engine.moderators_of_json(founder, "moderate"))
     report["empty_duty_holders"] = json.loads(
         engine.duty_holders_for_community_json(founder, "moderate"))
+    # The §4.5.4 apply-step gate REFUSES this known-but-moderator-less community
+    # fail-secure (§11.11 rule 3), distinct from the resolution primitive above.
+    report["apply_verdict_empty_roster"] = json.loads(
+        engine.check_no_moderator_federate_json(founder))
 except Exception as exc:
     report["empty_community_admit"] = str(exc)[:80]
 
@@ -241,52 +260,53 @@ def test_empty_roster_community_resolves_no_moderator(existence):
         f"an empty-roster community resolved non-empty duty-holders: {a}")
 
 
-# ── Undrivable: the §4.5.4 enforcement-layer gate + §4.5.13 reverse-quorum ───
+# ── The §4.5.4 enforcement-layer gate itself — real green on persist 13 ──────
 @pytest.mark.requires_persist
-@pytest.mark.xfail(strict=True, reason=(
-    "CC 4.5.4 federation-APPLY-step gate + CC 4.5.13 reverse-quorum vote are not "
-    "byte-gated on persist 11.0.0. The admission HALF of §4.5.4 is partly real "
-    "(put_community_json refuses a stewardless founder — gated green above), but "
-    "the APPLY-step half is not: the substrate exposes only the RESOLUTION "
-    "primitive (is_named_moderator_json / moderators_of_json / "
-    "duty_holders_for_community_json), NOT the gate that CONSUMES it on every "
-    "federation step — there is no admission::named_moderator_holders / "
-    "'federate at moderated capability' refusal call, and a community can reach "
-    "the empty-moderator absence state (empty roster — gated green above) "
-    "admitted-and-kept with no apply-step re-check that fails it secure. The "
-    "§4.5.13 48h no-moderator recovery / 24h candidacy / live-majority fallback "
-    "vote is time/governance, with no candidacy/tally/window surface. File "
-    "upstream (CIRISPersist) for a drivable moderator-existence federation-apply "
-    "gate before flipping this to a real green gate. Tracked: CIRISPersist#238."))
-def test_moderator_existence_federation_apply_gate_enforced():
-    """CC 4.5.4: a federation apply step over a moderator-less community is REFUSED.
+def test_moderator_existence_federation_apply_gate_enforced(existence):
+    """CC 4.5.4: the federation-APPLY-step gate REFUSES a moderator-less community.
 
-    Probes for a substrate enforcement surface (distinct from the resolution
-    primitive): an admission / federation-apply call that fails-secure on a
-    community with no resolvable `moderate`-holder. None is exposed on persist
-    11.0.0 — strict-xfail until one ships.
+    The §4.5.4 enforcement-layer gate — distinct from the `is_named_moderator`
+    RESOLUTION primitive it consumes — now ships on persist 13
+    (CIRISPersist#369). `check_no_moderator_federate_json(community_id)` returns
+    the exact verdict `admission::check_no_moderator_federate_apply` takes on
+    every federation apply step (wired into every backend's `put_attestation`),
+    surfaced as JSON so the gate can be staged without a full federation flow:
+
+      • a community with a live `moderate`-holder ⇒ ADMITTED (`community_known`);
+      • a community that is locally known but has NO resolvable moderator (the
+        empty-roster absence state) ⇒ REFUSED fail-secure with
+        `federation_community_no_moderator` (§11.11 rule 3) — the apply-step
+        re-check that a community which *loses* its moderator cannot continue at
+        moderated capability;
+      • a community not locally known ⇒ out of scope, fail-open (ADMITTED,
+        `community_known == false`).
+
+    This closes the previously-undrivable half of §4.5.4: the admission half is
+    gated by `test_stewardless_community_refused_at_admission`; this is the
+    apply-step half. (The §4.5.13 reverse-quorum no-moderator RECOVERY vote —
+    48h window / 24h candidacy / live-majority fallback — remains time/governance
+    with no candidacy/tally/window byte-surface, and is out of scope here.)
     """
-    import os
-    import secrets
-    import tempfile
+    p = existence["present"]
+    a = existence["absent"]
+    assert p["stage"] == "done", p
+    assert a["stage"] == "done", a
 
-    import ciris_persist as cp  # noqa: F401 (imported inside the xfail body)
+    # (i) a live moderate-holder resolves ⇒ the apply step is ADMITTED.
+    with_mod = p["apply_verdict_with_moderator"]
+    assert with_mod == {"admitted": True, "community_known": True}, (
+        f"apply-step gate refused a community with a live moderator: {with_mod}")
 
-    cp.reset_engine()
-    d = tempfile.mkdtemp()
-    s = os.path.join(d, "s")
-    open(s, "wb").write(secrets.token_bytes(32))
-    p = os.path.join(d, "p")
-    open(p, "wb").write(secrets.token_bytes(32))
-    k = "node-" + secrets.token_hex(8)
-    engine = cp.Engine("sqlite::memory:", k, local_key_id=k, local_key_path=s,
-                       local_pqc_key_id=k + "-pqc", local_pqc_key_path=p)
-    # A drivable enforcement gate would expose a method refusing a moderator-less
-    # community at admission / apply time. Assert it exists — fails (xfail) until it does.
-    gate_surfaces = [m for m in dir(engine)
-                     if "moderator" in m.lower()
-                     and ("admit" in m.lower() or "apply" in m.lower()
-                          or "federate" in m.lower() or "existence" in m.lower())]
-    assert gate_surfaces, (
-        "no moderator-existence admission/federation-apply enforcement surface on "
-        "the engine — only the resolution primitive is exposed")
+    # Fail-open for a community not locally known (out of scope of this node).
+    unknown = p["apply_verdict_unknown"]
+    assert unknown["admitted"] is True, unknown
+    assert unknown["community_known"] is False, unknown
+
+    # (ii) a KNOWN moderator-less community is REFUSED fail-secure on the apply
+    # step — the enforcement the resolution primitive alone did not provide.
+    empty = a["apply_verdict_empty_roster"]
+    assert empty["admitted"] is False, (
+        f"apply-step gate admitted a moderator-less community: {empty}")
+    assert empty["community_known"] is True, empty
+    assert empty["reason"] == "federation_community_no_moderator", (
+        f"moderator-less community refused with an unexpected reason token: {empty}")

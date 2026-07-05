@@ -7,7 +7,7 @@ repo is self-contained, and so a reader can see *what* is being conformed
 to alongside the tests that check it.
 
 The authoritative standard the suite conforms against is the **CIRIS
-Constitution** (`CC 0.6`) — the **superalignment standard** for the CIRIS
+Constitution** (`CC 1.0-rc2`) — the **superalignment standard** for the CIRIS
 ecosystem. CIRISConformance tests the substrate's compliance with it; the
 CIRISAgent suite + safety batteries test the agent's; together they are the
 system's constitutional-compliance claim. **The Constitution superseded CEG** —
@@ -25,7 +25,7 @@ numbers in these documents.
 
 | File | Vendored from | Source commit |
 |---|---|---|
-| [`CIRIS_Constitution/`](CIRIS_Constitution/) — **the CIRIS Constitution `CC 1.0-rc1`, the superalignment standard** (parts 1–8 + [`WIRE_VOCABULARY.md`](CIRIS_Constitution/WIRE_VOCABULARY.md) manifest + `CHANGELOG.md`; superseded + absorbed CEG) | **`CIRISConstitution/`** (the Constitution now has its **own repo**, extracted from `CIRISRegistry/FSD/`) | Constitution @ `5b27edd` |
+| [`CIRIS_Constitution/`](CIRIS_Constitution/) — **the CIRIS Constitution `CC 1.0-rc2`, the superalignment standard** (parts 1–8 + [`WIRE_VOCABULARY.md`](CIRIS_Constitution/WIRE_VOCABULARY.md) manifest + `CHANGELOG.md`; superseded + absorbed CEG) | **`CIRISConstitution/`** (the Constitution now has its **own repo**, extracted from `CIRISRegistry/FSD/`) | Constitution @ `6d11713` |
 | [`CEWP.md`](CEWP.md) — the CIRIS Epistemic Web Platform FSD ("soup") | `CIRISNodeCore/FSD/CEWP.md` | NodeCore @ `dfd158e` |
 | [`FEDERATION_SCALING_MODEL.md`](FEDERATION_SCALING_MODEL.md) — what carrying the internet costs at v1 | `CIRISNodeCore/FSD/FEDERATION_SCALING_MODEL.md` | NodeCore @ `dfd158e` |
 | [`scale_model.rs`](scale_model.rs) — the scaling "toy" **v0.6** (`cargo run --example scale_model`; adds the `fav_findings()` adversarial-cost module vs Verify Fed TM v1.1) | `CIRISNodeCore/examples/scale_model.rs` | NodeCore @ `dfd158e` |
@@ -33,7 +33,7 @@ numbers in these documents.
 | [`synthesis/Corridor_Dynamics.tex`](synthesis/) — the flagship synthesis paper, *Corridor Dynamics in Coordinated Systems* (v2; reasoning-shape / ρ / k_eff corridor / trace commons) | `coherence-ratchet/papers/Corridor Dynamics.tex` | coherence-ratchet @ `ffcd62a` |
 | [`synthesis/research_status_entry.md`](synthesis/research_status_entry.md) — the ciris.ai/research-status catalog entry (DOI + summary) | `coherence-ratchet/copy/web/` | coherence-ratchet @ `ffcd62a` |
 
-Snapshot date: 2026-07-04 (re-vendored at `CC 1.0-rc1` — the 1.0-readiness gap register G-A…G-G: G-A live-quorum roster-capture (CC 4.2.6, `accord_contest`/`accord_restore` domains + scaling removal-gate), G-B `(R,ε)` noise-floor reframing + the dominance gate for non-dominated composites, G-C Order-Maximisation Veto → mandatory WBD deferral, + the EU AI Act (Reg 2024/1689) statutory mapping; conformed by the persist 12.5 / verify 8.7 / edge 8.7.2 / server 0.5.78 floor). Prior: 2026-07-03 (`CC 0.9` — 0.7 hash-pinned wire vocabulary, 0.8 coherence-math into Part VI, 0.9 storage-contention CC 6.1.5.2); 2026-06-27 (`CC 0.6`, still at `CIRISRegistry/FSD/`); 2026-06-26 (`CC 0.5.1`); 2026-06-26 (`CC 0.4`, CEG superseded); 2026-05-31 (scaling toy v0.6).
+Snapshot date: 2026-07-04 (re-vendored at `CC 1.0-rc2` — the 1.0-readiness gap register G-A…G-G: G-A live-quorum roster-capture (CC 4.2.6, `accord_contest`/`accord_restore` domains + scaling removal-gate), G-B `(R,ε)` noise-floor reframing + the dominance gate for non-dominated composites, G-C Order-Maximisation Veto → mandatory WBD deferral, + the EU AI Act (Reg 2024/1689) statutory mapping; conformed by the persist 12.5 / verify 8.7 / edge 8.7.2 / server 0.5.78 floor). Prior: 2026-07-03 (`CC 0.9` — 0.7 hash-pinned wire vocabulary, 0.8 coherence-math into Part VI, 0.9 storage-contention CC 6.1.5.2); 2026-06-27 (`CC 0.6`, still at `CIRISRegistry/FSD/`); 2026-06-26 (`CC 0.5.1`); 2026-06-26 (`CC 0.4`, CEG superseded); 2026-05-31 (scaling toy v0.6).
 
 ## Prior art & state-of-the-art comparison
 
