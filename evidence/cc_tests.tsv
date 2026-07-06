@@ -6,12 +6,12 @@
 cc_decimal_id	cc_claim_id	conformance_test_id(s)	freeze_gate_vector(s)	status
 2.6.4	CC-2.6.4-wire-vocabulary-two-tier	tests/test_520_wire_vocabulary.py	WIRE_VOCABULARY.md	green
 2.6.7	CC-2.6.7-subject-key-ids-lowercase-hex	tests/test_240_reserved_prefix_admission.py::test_subject_key_ids_must_be_lowercase_hex	-	green
-3.2	CC-3.2-minor-stewardship-node-revocation-fails-secure	tests/test_361_minor_stewardship_liveness.py::test_node_binding_revocation_fails_secure,tests/test_361_minor_stewardship_liveness.py::test_minor_guardianship_binding_is_forbidden_wholesale	-	green
-3.2	CC-3.2-minor-stewardship-steward-less-minor-fails-secure	tests/test_361_minor_stewardship_liveness.py::test_steward_less_minor_fails_secure	-	xfail
+3.2	CC-3.2-minor-stewardship-node-revocation-fails-secure	tests/test_361_minor_stewardship_liveness.py::test_node_binding_revocation_fails_secure,tests/test_361_minor_stewardship_liveness.py::test_minor_guardianship_binding_is_admitted	-	green
+3.2	CC-3.2-minor-stewardship-steward-less-minor-fails-secure	tests/test_361_minor_stewardship_liveness.py::test_steward_less_minor_fails_secure	-	green
 3.2	CC-3.2-single-owner-admission-gate	tests/test_551_single_owner.py::test_second_distinct_owner_binding_is_rejected	-	xfail
 3.2	CC-3.2-single-owner-resolver	tests/test_551_single_owner.py::test_owner_of_resolves_to_single_owner	-	green
-3.2	CC-3.2-steward-binding-admission	tests/test_360_steward_binding_admission.py::test_node_steward_binding_is_admitted_and_resolves,tests/test_360_steward_binding_admission.py::test_adult_target_user_binding_is_rejected,tests/test_360_steward_binding_admission.py::test_adult_target_steward_bind_is_rejected	-	green
-3.2	CC-3.2-steward-binding-conditional-minor-admit	tests/test_360_steward_binding_admission.py::test_minor_target_user_binding_is_admitted_only_because_minor	-	xfail
+3.2	CC-3.2-steward-binding-admission	tests/test_360_steward_binding_admission.py::test_node_steward_binding_is_admitted_and_resolves,tests/test_360_steward_binding_admission.py::test_adult_target_user_binding_is_rejected,tests/test_360_steward_binding_admission.py::test_adult_target_steward_bind_is_rejected,tests/test_360_steward_binding_admission.py::test_unverified_age_target_is_rejected,tests/test_360_steward_binding_admission.py::test_witness_attestation_graduates_age_bands	-	green
+3.2	CC-3.2-steward-binding-conditional-minor-admit	tests/test_360_steward_binding_admission.py::test_minor_target_user_binding_is_admitted_only_because_minor	-	green
 3.4.2	CC-3.4.2-cohort-membership-change-quorum	tests/test_264_cohort_membership_quorum.py	-	green
 3.4.7	CC-3.4.7-reserved-prefix-admission	tests/test_240_reserved_prefix_admission.py::test_reserved_prefixes_refused_from_agent_key,tests/test_240_reserved_prefix_admission.py::test_non_member_cannot_write_family_scope	-	green
 3.4.8	CC-3.4.8-detection-discriminator	tests/test_550_detection_discriminator.py::test_detection_leaves_refused_from_agent_key,tests/test_550_detection_discriminator.py::test_lenscore_detector_key_admitted_on_detection,tests/test_550_detection_discriminator.py::test_detector_role_is_identity_type_membership_not_roles_kwarg,tests/test_550_detection_discriminator.py::test_truth_grounding_cross_attestation_admitted	-	green

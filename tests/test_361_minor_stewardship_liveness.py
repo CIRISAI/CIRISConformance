@@ -13,31 +13,23 @@ The lifecycle rides existing structural composers (no new primitive): the bindin
 is a `delegates_to` (here via `steward_bind` / `grant_delegation`); revocation is
 a `withdraws` (here via `revoke_delegation` by the original granter).
 
-What is REAL on the floor (persist 12.5.0), asserted as live gates:
+What is REAL on the floor (persist 13.2.0), asserted as live gates — the
+proven-adult → proven-minor model (CIRISPersist#367, shipped at persist 13.0):
 
 - **node/agent fail-secure (control)** — a steward-bound agent resolves
   `is_steward_bound` true; after the adult granter `revoke_delegation`s the
   binding, `is_steward_bound` flips to **false** and `steward_bindings_of` empties.
-  This is the exact fail-secure posture CC 3.2 says a steward-less minor must
-  share, proven on the surface that DOES expose it.
-- **the minor-guardianship binding is forbidden wholesale** — a user-target
-  `steward_bind` onto a minor rejects with
-  `federation_user_target_steward_binding_forbidden`, identical to an adult
-  target. The legal §3.2 conditional minor-admit is not exposed over the FFI.
-
-What is NOT yet enforced / drivable (probed on persist 12.5.0), `xfail(strict=True)`:
-
-- **the minor-specific fail-secure** — undrivable, because the adult→minor
-  binding cannot even be CREATED over the Engine. persist 12.5.0 forbids ALL
-  user-target steward bindings wholesale (adult AND minor alike), so there is no
-  live adult→minor `delegates_to` to withdraw and no minor-liveness transition to
-  observe. Only the blanket forbid is exposed, never the conditional
-  minor-guardianship admit (the §3.2 `admit_user_steward_binding` minor case).
-  The "minor MUST NOT operate without a live adult steward" guarantee is therefore
-  not machine-checkable for a `user` target. Gap to file upstream CIRISPersist:
-  expose the conditional minor-guardianship admit plus a steward-less-minor
-  liveness predicate gated on the I1 age band (`age_assurance:*`, CC 3.3.12) — so
-  a withdrawn minor binding fails secure like a node/agent's does.
+- **the minor-guardianship binding IS creatable** — once the guardian S is a
+  proven adult and the ward M is a proven minor (graduated via the #368
+  witness-attests-subject path), the adult→minor `steward_bind` is ADMITTED and
+  resolves `is_steward_bound(M)` true. (On persist 12.5.0 this was forbidden
+  wholesale; that block was a stale precondition, not a spec gap.)
+- **the minor-specific fail-secure IS observable** — after the adult granter
+  withdraws the live adult→minor binding (`revoke_delegation`), `is_steward_bound`
+  on the minor flips to **false** and `steward_bindings_of` empties: the
+  steward-less minor "MUST NOT operate" posture, machine-checked on the `user`
+  target exactly as on a node/agent. Was `xfail(strict)` on persist 12.5.0 (the
+  binding could not be created to withdraw); now a real green gate.
 """
 
 from __future__ import annotations
@@ -55,10 +47,11 @@ try:
 except ImportError as exc:
     print(json.dumps({"_error": "import", "detail": str(exc)})); sys.exit(2)
 
-# Shared substrate so every reconstructed engine sees the same keys. The harness
-# injects INJECTED_URL to honor the chosen backend (full sqlite+postgres parity):
-# postgres is shared across subprocesses; the sqlite default needs an ON-DISK file
-# (`:memory:` gives each Engine a private DB — no cross-engine visibility).
+# Shared substrate so every reconstructed engine sees the same keys/attestations
+# (the witness's age attestations about the subjects must be visible to the
+# guardian's engine). The harness injects INJECTED_URL to honor the chosen backend
+# (full sqlite+postgres parity): postgres is shared across subprocesses; the sqlite
+# default needs an ON-DISK file (`:memory:` gives each Engine a private DB).
 if INJECTED_URL.startswith("postgres"):
     DB_URL = INJECTED_URL
 else:
@@ -84,28 +77,53 @@ class Ident:
 
 
 for surface in ("steward_bind", "revoke_delegation", "is_steward_bound_json",
-                "steward_bindings_of_json"):
+                "steward_bindings_of_json", "emit_attestation", "age_band_json"):
     probe = Ident("probe", "agent", "probe")
     if not hasattr(probe.engine(), surface):
         print(json.dumps({"_error": "absent", "surface": surface})); sys.exit(2)
 
-S = Ident("steward", "user", "adult-steward")   # the adult-user guardian (signer)
-M = Ident("minor", "user", "minor-ward")         # the minor user ward
+W = Ident("witness", "witness", "age-witness")   # attests subjects' age bands (#368)
+S = Ident("steward", "user", "adult-steward")    # the adult-user guardian (signer)
+M = Ident("minor", "user", "minor-ward")         # the proven-minor user ward
 N = Ident("node", "agent", "node-ref")           # node/agent control
 
 report = {"S": S.kid, "M": M.kid, "N": N.kid}
 
-# ── Minor: attempt to bind to the adult steward ──
-# On persist 12.5.0 a user-target steward_bind is forbidden WHOLESALE
-# (federation_user_target_steward_binding_forbidden), so the binding can't even be
-# created over the FFI. Wrap it so the body completes and capture the outcome; the
-# minor-specific liveness assertion is undrivable as a result (see the xfail).
+# ── #368 witness-attests-subject: graduate the ages FIRST ──
+# The witness emits age_assurance:provider:* attestations naming each subject's
+# attested_key_id: S → adult, M → minor. This is the precondition the CC 3.2
+# admit rule requires — a proven-adult guardian binding a proven-minor ward.
+def _attest(subject_kid, atype):
+    return W.engine().emit_attestation(json.dumps({
+        "attestation_type": atype, "attestation_envelope": {},
+        "attested_key_id": subject_kid}))
+
+_attest(S.kid, "age_assurance:provider:adult:v1")
+_attest(M.kid, "age_assurance:provider:16_17:v1")
+e = W.engine()
+report["band_S"] = e.age_band_json(S.kid)
+report["band_M"] = e.age_band_json(M.kid)
+
+# ── Minor: create the live adult→minor guardianship binding ──
+# Proven-adult S → proven-minor M is ADMITTED (CIRISPersist#367, persist 13.0).
 try:
     appt_m = S.engine().steward_bind(M.kid, ["infra:transport"])
     report["minor_bind"] = {"outcome": "admitted", "id": appt_m}
 except Exception as exc:
     appt_m = None
-    report["minor_bind"] = {"outcome": "rejected", "token": str(exc)[:160]}
+    report["minor_bind"] = {"outcome": "rejected", "token": str(exc)[:200]}
+
+# Confirm the minor is steward-bound while the binding is live.
+if appt_m is not None:
+    e = S.engine()
+    report["minor_bound_is_steward_bound"] = e.is_steward_bound_json(M.kid)
+    report["minor_bound_bindings_of"] = json.loads(e.steward_bindings_of_json(M.kid))
+
+    # ── Withdraw the binding: the steward-less-minor fail-secure transition ──
+    S.engine().revoke_delegation(appt_m, M.kid)
+    e = S.engine()
+    report["minor_revoked_is_steward_bound"] = e.is_steward_bound_json(M.kid)
+    report["minor_revoked_bindings_of"] = json.loads(e.steward_bindings_of_json(M.kid))
 
 # ── Control: node/agent fail-secure — bind then withdraw ──
 appt_n = S.engine().steward_bind(N.kid, ["infra:transport"])
@@ -148,51 +166,46 @@ def test_node_binding_revocation_fails_secure(liveness):
         f"a withdrawn node binding still lists a steward: {r}")
 
 
-# ── Control: the minor-guardianship binding cannot even be created over FFI ──
+# ── The minor-guardianship binding IS creatable (proven-adult → proven-minor) ──
 @pytest.mark.requires_persist
-def test_minor_guardianship_binding_is_forbidden_wholesale(liveness):
-    """On persist 12.5.0 a user-target steward_bind onto a minor is forbidden wholesale.
+def test_minor_guardianship_binding_is_admitted(liveness):
+    """On persist 13.2.0 a proven-adult → proven-minor steward_bind is ADMITTED.
 
-    The CC 3.2 minor-guardianship `delegates_to(adult-user → minor-user)` is the
-    LEGAL user-target case, yet persist 12.5.0 rejects it with the same blanket
-    `federation_user_target_steward_binding_forbidden` it applies to an adult
-    target — the conditional minor-admit is not exposed over the Engine FFI. This
-    documents (as a real, green observation) why the minor-liveness assertion below
-    is undrivable: the binding whose withdrawal we'd test cannot be created.
+    Once the guardian S is a proven adult and the ward M is a proven minor
+    (graduated via the #368 witness-attests-subject path), the CC 3.2
+    minor-guardianship `delegates_to(adult-user → minor-user)` is admitted and
+    resolves `is_steward_bound(M)` true — the live binding whose withdrawal the
+    fail-secure test below observes. (Was forbidden wholesale on persist 12.5.0.)
     """
     r = liveness
-    assert r["minor_bind"]["outcome"] == "rejected", (
-        f"a user-target minor steward_bind was admitted — persist 12.5.0 is "
-        f"expected to forbid user-target bindings wholesale: {r['minor_bind']}")
-    assert "user_target_steward_binding_forbidden" in r["minor_bind"]["token"], (
-        f"unexpected rejection token for a minor user-target steward_bind: "
-        f"{r['minor_bind']}")
+    assert r["band_S"] == '"adult"', f"guardian S did not graduate to adult: {r['band_S']}"
+    assert r["band_M"] == '"minor"', f"ward M did not graduate to minor: {r['band_M']}"
+    assert r["minor_bind"]["outcome"] == "admitted", (
+        f"a proven-adult → proven-minor steward_bind was refused — the CC 3.2 "
+        f"conditional minor-guardianship admit is not enforced: {r['minor_bind']}")
+    assert r["minor_bound_is_steward_bound"] == "true", (
+        f"the admitted adult→minor binding does not resolve is_steward_bound: {r}")
+    assert r["S"] in r["minor_bound_bindings_of"], (
+        f"adult guardian absent from the minor's steward_bindings_of: {r}")
 
 
-# ── CC 3.2 minor fail-secure — undrivable: the binding can't even be created ──
+# ── CC 3.2 minor fail-secure — the steward-less-minor transition IS observable ──
 @pytest.mark.requires_persist
-@pytest.mark.xfail(strict=True, reason=(
-    "CC 3.2 minor-stewardship liveness is undrivable over persist 12.5.0: the "
-    "minor-guardianship binding cannot even be CREATED — a user-target steward_bind "
-    "onto a minor rejects with federation_user_target_steward_binding_forbidden "
-    "(forbidden wholesale, the same as an adult target). With no admissible "
-    "adult→minor binding to withdraw, the steward-less-minor fail-secure posture "
-    "(a withdrawn minor binding must flip is_steward_bound to false like a node's) "
-    "is not machine-checkable. File upstream CIRISPersist: expose the conditional "
-    "minor-guardianship admit (§3.2 admit_user_steward_binding minor case) plus a "
-    "steward-less-minor liveness predicate gated on the I1 age band — only the "
-    "wholesale forbid is exposed, not the positive minor path."))
 def test_steward_less_minor_fails_secure(liveness):
     """CC 3.2: a minor whose adult steward is withdrawn MUST be steward-less.
 
-    Undrivable on persist 12.5.0: the adult→minor binding cannot be created (the
-    user-target binding is forbidden wholesale), so there is no live binding to
-    withdraw and no minor-liveness transition to observe. Encoded as the missing
-    signal the substrate does not provide; flips to a real gate when persist
-    exposes the conditional minor-guardianship admit + age-band-gated liveness.
+    Probed real on persist 13.2.0: with a live proven-adult → proven-minor binding
+    in place (`is_steward_bound(M) == true`), the adult granter withdraws it via
+    `revoke_delegation`. `is_steward_bound(M)` then flips to **false** and
+    `steward_bindings_of(M)` empties — the steward-less-minor fail-secure posture
+    ("a minor MUST NOT operate without a live adult steward"), machine-checked on
+    the `user` target exactly as on the node/agent control. Was `xfail(strict)` on
+    persist 12.5.0 (the adult→minor binding could not be created to withdraw); now
+    a real green gate (CIRISPersist#367, shipped at persist 13.0).
     """
     r = liveness
-    assert r.get("minor_revoked_is_steward_bound") == "false", (
-        f"the minor steward-less fail-secure transition is not observable — the "
-        f"adult→minor binding could not be created (forbidden wholesale), so its "
-        f"withdrawal cannot be tested on persist 12.5.0: {r['minor_bind']}")
+    assert r["minor_revoked_is_steward_bound"] == "false", (
+        f"a minor's adult steward-binding was withdrawn yet is_steward_bound still "
+        f"resolves true — the steward-less-minor fail-secure transition is broken: {r}")
+    assert r["minor_revoked_bindings_of"] == [], (
+        f"a withdrawn minor binding still lists a steward: {r}")
