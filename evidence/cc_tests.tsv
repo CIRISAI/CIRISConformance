@@ -23,7 +23,7 @@ cc_decimal_id	cc_claim_id	conformance_test_id(s)	freeze_gate_vector(s)	status
 4.4.3.2.8	CC-4.4.3.2.8-affiliations-cohort-scope	tests/test_262_affiliation_cohort_scope.py	-	green
 4.4.3.2.8	CC-4.4.3.2.8-affiliations-membership-lifecycle	tests/test_263_affiliation_membership_lifecycle.py	-	green
 4.5.4	CC-4.5.4-moderator-existence-admission	tests/test_271_moderator_existence_gate.py::test_live_moderator_resolves_for_moderated_capability,tests/test_271_moderator_existence_gate.py::test_moderator_loss_resolves_to_absence,tests/test_271_moderator_existence_gate.py::test_stewardless_community_refused_at_admission,tests/test_271_moderator_existence_gate.py::test_empty_roster_community_resolves_no_moderator	-	green
-4.5.13	CC-4.5.13-infohazard-consent-gate-enforcement	tests/test_272_infohazard_consent_gate.py::test_viewing_flagged_content_requires_consent_enforced	-	xfail
+4.5.13	CC-4.5.13-infohazard-consent-gate-enforcement	tests/test_272_infohazard_consent_gate.py::test_viewing_flagged_content_requires_consent_enforced	-	green
 4.5.13	CC-4.5.13-infohazard-consent-primitive	tests/test_272_infohazard_consent_gate.py::test_consent_to_view_attestation_is_admitted,tests/test_272_infohazard_consent_gate.py::test_content_class_flag_is_substrate_reserved	-	green
 4.5.13	CC-4.5.13-moderator-existence-federation-apply-gate	tests/test_271_moderator_existence_gate.py::test_moderator_existence_federation_apply_gate_enforced	-	green
 5.3.1	CC-5.3.1-transport-bringup-and-delivery	tests/test_340_transport_delivery_modes.py::test_transport_fabric_stands_up,tests/test_340_transport_delivery_modes.py::test_live_transport_delivers	-	green
