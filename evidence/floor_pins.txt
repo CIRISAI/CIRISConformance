@@ -6,7 +6,7 @@
 # is reproducible. Bumping the floor here (+ regenerating) is a deliberate
 # registry update — see evidence/README.md.
 #
-# CC 1.0-rc2 floor — the CIRISServer v0.5.80 mesh-seed triple.
-ciris-persist==13.0.1
-ciris-verify==8.7.0
-ciris-edge==9.1.0
+# CC 1.0-rc2 floor — the CIRISServer v0.5.82 triple (co-scrub + delegation fixes).
+ciris-persist==13.2.0
+ciris-verify==8.9.0
+ciris-edge==9.1.2

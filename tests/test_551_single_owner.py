@@ -185,7 +185,9 @@ def test_general_delegation_remains_multiparent(owners):
 # ── CC 3.2 single-owner admission — not exposed on the FFI ──
 @pytest.mark.requires_persist
 @pytest.mark.xfail(strict=True, reason=(
-    "CC 3.2 single-owner ADMISSION gate not exposed on persist 13.0.1: "
+    "CC 3.2 single-owner ADMISSION gate still not enforced on persist 13.2.0 — the "
+    "purpose-filtered `owner_of_json` RESOLVER shipped (test_owner_of_resolves_to_"
+    "single_owner is now green), but the admission half has NOT: "
     "grant_delegation(delegate_key_id, scopes, sub_delegation) / steward_bind take "
     "no delegation_purpose/owner_binding arg, so the CC 2.4.1.2 owner-binding "
     "purpose cannot be marked on the real delegation path; emit_attestation_self "
@@ -212,18 +214,8 @@ def test_second_distinct_owner_binding_is_rejected(owners):
         f"{r['owner_binding_second_distinct']}")
 
 
-# ── CC 3.2 single-owner resolution — not exposed on the FFI ──
+# ── CC 3.2 single-owner resolution — REAL green as of persist 13.2.0 (owner_of_json) ──
 @pytest.mark.requires_persist
-@pytest.mark.xfail(strict=True, reason=(
-    "CC 3.2 purpose-filtered owner_of RESOLVER not exposed on persist 13.0.1: the "
-    "Engine has no owner_of / owner_of_json / owners_of. The only inbound readers "
-    "(delegations_to_json, steward_bindings_of_json) CONFLATE all delegation "
-    "purposes and return BOTH owners (cardinality 2 after two owner-bindings) — "
-    "exactly the anti-pattern §3.2 forbids for ownership resolution ('a reader that "
-    "returns every live delegates_to regardless of purpose MUST NOT be used to "
-    "resolve ownership'). Flips to a real green gate when persist exposes a "
-    "purpose-filtered owner_of(K) that resolves to at most one owner. Tracked: "
-    "CIRISPersist#378."))
 def test_owner_of_resolves_to_single_owner(owners):
     """CC 3.2: purpose-filtered `owner_of(K)` resolves to at most one owner.
 

@@ -243,15 +243,6 @@ def test_truth_grounding_cross_attestation_admitted(admission):
 
 
 @pytest.mark.requires_persist
-@pytest.mark.xfail(strict=True, reason=(
-    "CC 3.4.8 prefix-WILDCARD not yet enforced on persist 13.0.1: only the two "
-    "ENUMERATED leaves (detection:correlated_action:*, detection:distributive:"
-    "access:*) are in default_reserved_prefix_rules(); a NOVEL subkind "
-    "detection:{newkind}:* from an agent key is wrongly ADMITTED. §3.4.8 is "
-    "explicit the wildcard 'is not a claim that the gate already ships' and tracks "
-    "it at CIRISPersist#379. Flips to a real green gate the moment #365 lands the "
-    "detection:* prefix-wildcard reservation so novel subkinds are covered by "
-    "construction."))
 def test_novel_detection_subkind_wildcard_refused_from_agent_key(admission):
     """CC 3.4.8: a NOVEL `detection:{newkind}:*` from an agent key MUST be refused.
 
