@@ -182,20 +182,8 @@ def test_general_delegation_remains_multiparent(owners):
         f"multi-parent grammar must be unchanged by single-owner: {r['general_deleg_u2']}")
 
 
-# ── CC 3.2 single-owner admission — not exposed on the FFI ──
+# ── CC 3.2 single-owner admission — REAL green as of persist 13.4.1 (CIRISPersist#378) ──
 @pytest.mark.requires_persist
-@pytest.mark.xfail(strict=True, reason=(
-    "CC 3.2 single-owner ADMISSION gate still not enforced on persist 13.2.0 — the "
-    "purpose-filtered `owner_of_json` RESOLVER shipped (test_owner_of_resolves_to_"
-    "single_owner is now green), but the admission half has NOT: "
-    "grant_delegation(delegate_key_id, scopes, sub_delegation) / steward_bind take "
-    "no delegation_purpose/owner_binding arg, so the CC 2.4.1.2 owner-binding "
-    "purpose cannot be marked on the real delegation path; emit_attestation_self "
-    "accepts a raw delegates_to carrying delegation_purpose:owner_binding but the "
-    "substrate does not enforce single-owner on it — a SECOND, distinct-owner "
-    "binding on the same node is ADMITTED. Flips to a real green gate when persist "
-    "exposes the owner-binding purpose + its single-owner admission gate "
-    "(reject-second-distinct-owner-at-bind-time). Tracked: CIRISPersist#378."))
 def test_second_distinct_owner_binding_is_rejected(owners):
     """CC 3.2: a second, distinct-owner owner-binding on the same node MUST be rejected.
 
