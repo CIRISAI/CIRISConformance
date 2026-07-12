@@ -5,6 +5,7 @@
 # Consumers (e.g. the Constitution's check_claims.py) MUST skip '#'-prefixed lines; the next line is the header.
 cc_decimal_id	cc_claim_id	conformance_test_id(s)	freeze_gate_vector(s)	status
 2.1	CC-2.1-1plus4-frozen	tests/test_560_1plus4_freeze.py	JCS_1PLUS4	green
+2.6.1.4	CC-2.6.1.4-worked-canonicalization-attack	tests/test_575_worked_canonicalization.py	-	green
 2.6.4	CC-2.6.4-wire-vocabulary-two-tier	tests/test_520_wire_vocabulary.py	WIRE_VOCABULARY.md	green
 2.6.7	CC-2.6.7-subject-key-ids-lowercase-hex	tests/test_240_reserved_prefix_admission.py::test_subject_key_ids_must_be_lowercase_hex	-	green
 3.2	CC-3.2-minor-stewardship-node-revocation-fails-secure	tests/test_361_minor_stewardship_liveness.py::test_node_binding_revocation_fails_secure,tests/test_361_minor_stewardship_liveness.py::test_minor_guardianship_binding_is_admitted	-	green
@@ -17,8 +18,10 @@ cc_decimal_id	cc_claim_id	conformance_test_id(s)	freeze_gate_vector(s)	status
 3.4.7	CC-3.4.7-reserved-prefix-admission	tests/test_240_reserved_prefix_admission.py::test_reserved_prefixes_refused_from_agent_key,tests/test_240_reserved_prefix_admission.py::test_non_member_cannot_write_family_scope	-	green
 3.4.8	CC-3.4.8-detection-discriminator	tests/test_550_detection_discriminator.py::test_detection_leaves_refused_from_agent_key,tests/test_550_detection_discriminator.py::test_lenscore_detector_key_admitted_on_detection,tests/test_550_detection_discriminator.py::test_detector_role_is_identity_type_membership_not_roles_kwarg,tests/test_550_detection_discriminator.py::test_truth_grounding_cross_attestation_admitted	-	green
 3.4.8	CC-3.4.8-detection-wildcard-coverage	tests/test_550_detection_discriminator.py::test_novel_detection_subkind_wildcard_refused_from_agent_key	-	green
+3.4.9	CC-3.4.9-co-stewarded-multi-steward	tests/test_573_co_stewardship.py	-	green
 3.4.11	CC-3.4.11-age-assurance-reservation	tests/test_350_age_assurance_reservation.py::test_agent_refused_on_age_assurance_prefix,tests/test_350_age_assurance_reservation.py::test_agent_admitted_on_age_self_declared_band,tests/test_350_age_assurance_reservation.py::test_witness_key_admitted_on_age_assurance	-	green
 3.4.11	CC-3.4.11-age-self-declared-band-not-level	tests/test_350_age_assurance_reservation.py::test_age_self_declared_rejects_level_token	-	green
+3.4.12	CC-3.4.12-adult-incapacity-capacity-gate	tests/test_572_capacity_incapacity_gate.py	-	green
 3.4.13	CC-3.4.13-age-band-cross-subject-witness-graduation	tests/test_351_age_band_ratchet.py::test_cross_subject_witness_graduation	-	green
 3.4.13	CC-3.4.13-age-band-one-way-ratchet	tests/test_351_age_band_ratchet.py::test_age_band_pre_declaration_is_unknown,tests/test_351_age_band_ratchet.py::test_self_declared_minor_resolves_minor,tests/test_351_age_band_ratchet.py::test_self_declared_adult_cannot_graduate_a_minor,tests/test_351_age_band_ratchet.py::test_witness_assurance_outranks_self	-	green
 4.4.3.2.8	CC-4.4.3.2.8-affiliations-cohort-scope	tests/test_262_affiliation_cohort_scope.py	-	green
@@ -29,6 +32,7 @@ cc_decimal_id	cc_claim_id	conformance_test_id(s)	freeze_gate_vector(s)	status
 4.5.13	CC-4.5.13-moderator-existence-federation-apply-gate	tests/test_271_moderator_existence_gate.py::test_moderator_existence_federation_apply_gate_enforced	-	green
 5.2	CC-5.2-structural-invisibility	tests/test_570_structural_invisibility.py	-	green
 5.3.1	CC-5.3.1-transport-bringup-and-delivery	tests/test_340_transport_delivery_modes.py::test_transport_fabric_stands_up,tests/test_340_transport_delivery_modes.py::test_live_transport_delivers	-	green
+5.3.2.2	CC-5.3.2.2-revocation-promotion	tests/test_574_revocation_promotion.py	-	green
 5.4.1	CC-5.4.1-scope-privacy-record-id-vectors	tests/test_500_scope_privacy_vectors.py::test_record_id_golden_vector,tests/test_500_scope_privacy_vectors.py::test_record_id_is_deterministic,tests/test_500_scope_privacy_vectors.py::test_record_id_record_type_int_is_pinned,tests/test_500_scope_privacy_vectors.py::test_record_id_distinct_scopes_unlinkable,tests/test_500_scope_privacy_vectors.py::test_record_id_unknown_type_rejected	record_id/community,record_id/federation,record_id/self	green
 5.4.2	CC-5.4.2-scope-privacy-symbol-key-witness-cover	tests/test_500_scope_privacy_vectors.py::test_exporter_subkeys_shape_and_separation,tests/test_500_scope_privacy_vectors.py::test_symbol_key_diversification,tests/test_500_scope_privacy_vectors.py::test_symbol_key_index_is_big_endian_sensitive,tests/test_500_scope_privacy_vectors.py::test_witness_cover_leaf_diversification	symbol_key,witness_cover_leaf	green
 5.4.3	CC-5.4.3-content-fragmentation	tests/test_571_scope_privacy_fragmentation.py	-	green
