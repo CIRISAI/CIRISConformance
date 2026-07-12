@@ -42,3 +42,9 @@ cc_decimal_id	cc_claim_id	conformance_test_id(s)	freeze_gate_vector(s)
 3.2	CC-3.2-single-owner-resolver	tests/test_551_single_owner.py::test_owner_of_resolves_to_single_owner	-
 # reject-2nd-distinct-owner ADMISSION gate not enforced (owner_of_json resolver shipped, admission half didn't) — CIRISPersist#378.
 3.2	CC-3.2-single-owner-admission-gate	tests/test_551_single_owner.py::test_second_distinct_owner_binding_is_rejected	-
+# ── CC 1.0-final evidence sweep: 5 claims driven green on the persist 15.1.0 / verify 9.0.0 / edge 10.1.0 floor (were staged, test:CIRISConformance#59/#57 umbrella pointers). ──
+2.1	CC-2.1-1plus4-frozen	tests/test_560_1plus4_freeze.py	JCS_1PLUS4
+6.1.3	CC-6.1.3-canonicalization-boundary	tests/test_561_canonicalization_boundary.py	AggregationMetaV1
+6.1.4	CC-6.1.4-freeze-57-vectors	tests/test_562_freeze57_vectors.py	AggregationMetaV1,WholenessWitness
+5.2	CC-5.2-structural-invisibility	tests/test_570_structural_invisibility.py	-
+5.4.3	CC-5.4.3-content-fragmentation	tests/test_571_scope_privacy_fragmentation.py	-
