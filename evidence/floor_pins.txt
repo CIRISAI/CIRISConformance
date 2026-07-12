@@ -6,7 +6,8 @@
 # is reproducible. Bumping the floor here (+ regenerating) is a deliberate
 # registry update — see evidence/README.md.
 #
-# CC 1.0-rc2 floor — the CIRISServer v0.5.102 triple-major.
+# CC 1.0-rc2 floor — the CIRISServer v0.5.106 trace-delivery wheel
+# (edge 9.10.0 → 10.1.0 major; persist v15.1.0 / verify v9.0.0 held).
 ciris-persist==15.1.0
 ciris-verify==9.0.0
-ciris-edge==9.10.0
+ciris-edge==10.1.0
