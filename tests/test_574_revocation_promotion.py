@@ -13,7 +13,7 @@ settled-local. The substrate drives it to federation-tier promotion; promotion
 "computes the hybrid signature and flips the row federation-visible … It is
 **idempotent** (promoting a `federation` row returns it unchanged)" (§5.3.2.4.2).
 
-What is REAL on the floor (persist 15.1.0), driven end-to-end here:
+What is REAL on the floor (persist 16.1.1), driven end-to-end here:
 
 - **Local-tier write of a subject-side consent revocation.** A
   `consent:state:revoked` attestation carrying a subject in `subject_key_ids` (the
@@ -26,19 +26,26 @@ What is REAL on the floor (persist 15.1.0), driven end-to-end here:
 - **Idempotency.** A second `attestation_promote` of the same id returns `False` —
   an already-federation row is returned unchanged (§5.3.2.4.2). The `True → False`
   transition IS the observable tier flip local→federation.
+- **The 24-hour SLA overdue detector — NOW REAL (persist 16.1.x, closes
+  CIRISPersist#434 which this harness filed).** The
+  `hard_case:consent_revocation_promotion_overdue` observability the substrate MUST
+  raise when a subject-side revocation sits local-tier past the promotion window
+  (§5.3.2.2 / §5.3.2.4 "observability for modeling") is exposed as
+  `Engine.list_consent_revocation_promotion_overdue_json(sla_seconds)`. Driven here:
+  an un-promoted subject-side `consent:state:revoked` is flagged overdue at
+  `sla_seconds=0` (rests-local terminal state, forbidden by §5.3.2.2), and after
+  `attestation_promote` the overdue list no longer contains it — the detector
+  tracks exactly the "must not rest local" invariant.
 
-**What is NOT asserted here — a SEPARATE persist gap.** The 24-hour SLA overdue
-detector — the `hard_case:consent_revocation_promotion_overdue` emission the
-substrate MUST raise when a subject-side revocation sits local-tier past the
-window (§5.3.2.2 / §5.3.2.4 "observability for modeling") — is **not exposed** on
-the floor (no overdue/hard_case surface on the Engine). That SLA leg is a distinct
-CIRISPersist gap and is NOT asserted by this test; this file drives only the
-promotion mechanism, which is genuinely green.
+  (Historical note: this detector was previously **absent** from the Engine FFI —
+  earlier revisions of this file disclaimed it as an open CIRISPersist gap. persist
+  16.1.x ships it; the gap is closed and the leg below is genuinely green.)
 
 Real surface: `Engine.attestation_insert_local(input_json)` (LocalAttestationInput
 — requires a full CC 2.1 `attestation_envelope`), `Engine.attestation_promote(
-attestation_id)`. The engine is constructed with a PQC identity so promotion's
-hybrid sign succeeds.
+attestation_id)`, `Engine.list_consent_revocation_promotion_overdue_json(
+sla_seconds)`. The engine is constructed with a PQC identity so promotion's hybrid
+sign succeeds.
 """
 
 from __future__ import annotations
@@ -130,6 +137,39 @@ _aid = r["insert_local"].get("value")
 _attempt("promote_1", lambda: A.engine().attestation_promote(_aid))
 _attempt("promote_2", lambda: A.engine().attestation_promote(_aid))
 
+# ── 24-hour SLA overdue detector (persist 16.1.x, CIRISPersist#434) ──
+# A SEPARATE, deliberately un-promoted subject-side revocation. At sla_seconds=0 it
+# is instantly overdue (it "rests local", the §5.3.2.2-forbidden terminal state);
+# after promotion the detector no longer lists it. `_aid` above is already
+# federation-tier by now (promote_1), so it cannot pollute this observation.
+_od_input = {
+    "attesting_key_id": A.kid,
+    "attestation_type": "consent:state:revoked",
+    "attested_key_id": A.kid,
+    "dimension": "consent:state:revoked",
+    "witness_relation": "self",
+    "subject_key_ids": [Sub.kid],
+    "attestation_envelope": {
+        "attesting_key_id": A.kid, "attested_key_id": A.kid,
+        "dimension": "consent:state:revoked", "score": 1.0,
+        "asserted_at": "2026-05-28T14:00:00.000Z", "witness_relation": "self",
+        "subject_key_ids": [Sub.kid],
+    },
+}
+_attempt("od_insert", lambda: A.engine().attestation_insert_local(json.dumps(_od_input)))
+_od_aid = r["od_insert"].get("value")
+
+
+def _overdue_ids():
+    raw = A.engine().list_consent_revocation_promotion_overdue_json(0)
+    rows = json.loads(raw) if isinstance(raw, str) else raw
+    return [x["attestation_id"] for x in rows]
+
+
+_attempt("overdue_before_promote", lambda: _od_aid in _overdue_ids())
+_attempt("od_promote", lambda: A.engine().attestation_promote(_od_aid))
+_attempt("overdue_after_promote", lambda: _od_aid in _overdue_ids())
+
 r["stage"] = "done"
 report(r)
 """
@@ -183,3 +223,45 @@ def test_promotion_is_idempotent(promotion):
     assert r["promote_2"]["value"] is False, (
         f"re-promoting an already-federation row was not idempotent (expected "
         f"False/unchanged): {r['promote_2']}")
+
+
+@pytest.mark.requires_persist
+def test_unpromoted_revocation_is_flagged_overdue(promotion):
+    """CC 5.3.2.2 / §5.3.2.4 observability: a subject-side consent revocation that
+    rests local-tier is flagged overdue by the SLA detector.
+
+    `list_consent_revocation_promotion_overdue_json(sla_seconds=0)` lists the
+    un-promoted `consent:state:revoked` — the "rests local" terminal state §5.3.2.2
+    forbids. This is the detector (CIRISPersist#434, filed by this harness) that
+    earlier persist floors did not expose; it is real as of persist 16.1.x.
+    """
+    r = promotion
+    assert r["od_insert"]["outcome"] == "ok", (
+        f"could not write the un-promoted subject-side revocation to drive the "
+        f"overdue detector: {r['od_insert']}")
+    assert r["overdue_before_promote"]["outcome"] == "ok", (
+        f"the overdue detector errored — surface not exposed? "
+        f"{r['overdue_before_promote']}")
+    assert r["overdue_before_promote"]["value"] is True, (
+        f"an un-promoted subject-side consent revocation was NOT flagged overdue at "
+        f"sla_seconds=0 — the §5.3.2.2 'must not rest local' invariant is unobserved: "
+        f"{r['overdue_before_promote']}")
+
+
+@pytest.mark.requires_persist
+def test_promotion_clears_the_overdue_flag(promotion):
+    """CC 5.3.2.2: promotion is a conformant terminal state, so a promoted revocation
+    is no longer overdue.
+
+    After `attestation_promote` drives the revocation local→federation, the same
+    `list_consent_revocation_promotion_overdue_json(0)` no longer lists it — the
+    detector tracks exactly the un-promoted set, and promotion resolves the SLA.
+    """
+    r = promotion
+    assert r["od_promote"]["outcome"] == "ok" and r["od_promote"]["value"] is True, (
+        f"promoting the overdue revocation did not return True: {r['od_promote']}")
+    assert r["overdue_after_promote"]["outcome"] == "ok", (
+        f"the overdue re-check errored: {r['overdue_after_promote']}")
+    assert r["overdue_after_promote"]["value"] is False, (
+        f"a PROMOTED (federation-tier) revocation was still flagged overdue — the "
+        f"detector does not clear on promotion: {r['overdue_after_promote']}")

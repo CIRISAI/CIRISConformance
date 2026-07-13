@@ -57,3 +57,11 @@ cc_decimal_id	cc_claim_id	conformance_test_id(s)	freeze_gate_vector(s)
 # The multiplicity gate is the ONLY thing that catches 900 near-duplicates folded as distinct members at equal
 # mass: they carry an HONEST n_eff==1000 and the dominance gate alone ADMITS them. v3 rejects: aggregation_meta_multiplicity.
 6.1.2.1.2	CC-6.1.2.1.2-neff-dominance-and-multiplicity-gate	tests/test_542_dominance_gate.py,tests/test_541_ejection_routing.py::test_r9_near_duplicate_multiplicity_rejected	AggregationMetaV1
+# ── CC 1.0-final sweep round 3: 5 claims driven green from the CIRISServer 0.5.108 evidence-pack correction
+# (server audited its impl: map "53% wrong" and DISCLAIMED these; most carry a test:CIRISConformance#59 pointer, so
+# the conformance lane establishes them). Probed drivable on persist 16.1.1 / verify 10.1.1 / edge 11.1.2. ──
+2.1.1	CC-2.1.1-forward-compatibility	tests/test_576_forward_compat.py	-
+2.6.1.2	CC-2.6.1.2-per-field	tests/test_577_per_field_catalog.py	-
+3.1.2.1	CC-3.1.2.1-provenance	tests/test_578_locale_provenance.py	-
+5.3.2.4.1	CC-5.3.2.4.1-authority-local	tests/test_579_local_tier_authority.py	-
+4.5.8.1	CC-4.5.8.1-cohabitation	tests/test_580_role_set_cohabitation.py	-
