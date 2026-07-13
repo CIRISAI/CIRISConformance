@@ -53,3 +53,7 @@ cc_decimal_id	cc_claim_id	conformance_test_id(s)	freeze_gate_vector(s)
 3.4.9	CC-3.4.9-co-stewarded-multi-steward	tests/test_573_co_stewardship.py	-
 5.3.2.2	CC-5.3.2.2-revocation-promotion	tests/test_574_revocation_promotion.py	-
 2.6.1.4	CC-2.6.1.4-worked-canonicalization-attack	tests/test_575_worked_canonicalization.py	-
+# ── CC 6.1.2.1.2 R9 residual CLOSED (CIRISConformance#71 / CIRISVerify#191 / CIRISEdge#328 / CIRISPersist#435).
+# The multiplicity gate is the ONLY thing that catches 900 near-duplicates folded as distinct members at equal
+# mass: they carry an HONEST n_eff==1000 and the dominance gate alone ADMITS them. v3 rejects: aggregation_meta_multiplicity.
+6.1.2.1.2	CC-6.1.2.1.2-neff-dominance-and-multiplicity-gate	tests/test_542_dominance_gate.py,tests/test_541_ejection_routing.py::test_r9_near_duplicate_multiplicity_rejected	AggregationMetaV1

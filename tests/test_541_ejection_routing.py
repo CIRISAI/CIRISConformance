@@ -43,17 +43,29 @@ wrong — the source `AggregationMetaV1::verify_for_admission` runs
     lexicographically BEFORE hashing, duplicate the last node on odd counts,
     empty-set sentinel `SHA256(b"WW-v1-empty")` (verify `holonomic/wholeness_witness.rs`
     `compute_merkle_root`, reused verbatim by `member_commitment`);
-  • the agg-meta signing preimage is BINARY (verify `holonomic/aggregation.rs:73`):
-    `b"AGG-META-v1\\0\\0\\0\\0\\0" ‖ u32_be(version) ‖ lp(content_id) ‖ lp(corpus_kind)
-    ‖ u32_be(tier) ‖ lp(aggregation_algorithm_id) ‖ u32_be(source_count) ‖
-    member_commitment[32] ‖ lp(noise_floor_descriptor) ‖ u32_be(n_eff)`,
-    `lp(x)=u32_be(len)‖utf8(x)`. §19.7.1.2 (CC 6.1.2 G-B, CIRISVerify#167): verify
-    8.7.0 **version-bumped `AggregationMetaV1` to v2** — the struct gained a signed
-    `pub n_eff: u32` (the Kish effective-source count `(Σmᵢ)²/Σmᵢ²`) appended to the
-    preimage, and admission now runs a **dominance gate**. A v1 tier (no signed
-    n_eff) is ALWAYS rejected `aggregation_meta_dominated`; a v2 tier is admitted
-    only when `2·n_eff ≥ source_count` (n_eff ≥ ⌈N/2⌉, the noise-floor ratio 0.5).
-    A balanced fold signs `n_eff == source_count`;
+  • the agg-meta signing preimage is BINARY (verify `holonomic/aggregation.rs`), and as
+    of **`AggregationMetaV1` v3** (§19.7.1.3, CIRISVerify#191 / CIRISEdge#328) it appends
+    `u32_be(max_source_multiplicity) ‖ mass_commitment[32]` to the v2 layout. Admission on
+    persist ≥16 runs **BOTH** gates:
+      – **dominance** (v2, unchanged): `2·n_eff ≥ source_count` — the Kish effective-source
+        count `(Σmᵢ)²/Σmᵢ²`; a balanced fold signs `n_eff == source_count`.
+      – **multiplicity** (v3, NEW): `max_source_multiplicity · n_min ≤ source_count`, with
+        `n_min` corpus-pinned persist-side (default 2). Rejects `aggregation_meta_multiplicity`.
+    A pre-v3 tier **fail-closes** — the CIRISVerify#191 flag-day, no deprecation window.
+
+    **This file does NOT hand-roll the v3 preimage** (CIRISConformance#76). `mass_commitment`
+    is a Merkle over `(member_id, mass_to_fixed(mass))` at a pinned 1e6 scale — rebuilding a
+    SIGNED field in Python is exactly how you silently fork it. We call edge's producer
+    (`content_multiplicity` → `assemble_tier_meta_v3`) and sign the canonical
+    `signing_preimage` it hands back. The WW-Merkle `member_commitment` is still recomputed
+    here, but ONLY as a cross-impl oracle (python == edge); the bytes we sign are edge's.
+
+    Member payloads are independent high-entropy content: the v3 producer measures content
+    SIMILARITY, so identical/structured payloads would form one near-duplicate cluster and
+    be rejected. `test_r9_near_duplicate_multiplicity_rejected` drives that case on purpose —
+    the CC 6.1.2.1.2 **R9 residual**: 900 near-duplicates under distinct ids at equal mass
+    carry an HONEST `n_eff == 1000` and the dominance gate alone ADMITS them; only the
+    multiplicity gate closes it;
   • signed bound-hybrid: `ed = local_sign(preimage)`, `pqc = local_pqc_sign(preimage ‖ ed)`,
     aggregator pubkeys resolved off the composite manifest envelope.
 
@@ -93,6 +105,11 @@ def report_error(stage, detail):
 
 try:
     import ciris_persist as cp
+    # CIRISEdge#328 v3 PRODUCER. The v3 signing preimage and `mass_commitment`
+    # (a Merkle over (member_id, mass_to_fixed(mass)) at a pinned 1e6 scale) are
+    # SIGNED fields — re-deriving them in Python is exactly how you silently fork
+    # a signed field, so we take them from edge rather than rebuilding them.
+    from ciris_edge.ciris_edge import content_multiplicity, assemble_tier_meta_v3
 except ImportError as exc:
     report_error("import", exc)
 
@@ -135,22 +152,17 @@ def member_commitment(content_ids):
     return level[0]
 
 
-# §19.7.1 binary signing preimage (verify holonomic/aggregation.rs:73 +
-# preimage.rs Preimage builder: u32-BE ints, u32-BE length-prefixed strings,
-# fixed 32-byte member_commitment raw).
-DOMAIN_AGG_META = b"AGG-META-v1\0\0\0\0\0"
-assert len(DOMAIN_AGG_META) == 16
-def _u32(n):
-    return struct.pack(">I", n)
-def _lp(b):
-    if isinstance(b, str):
-        b = b.encode("utf-8")
-    return _u32(len(b)) + b
-def agg_meta_preimage(version, content_id, corpus_kind, tier, algo, source_count, mc32, nfd, n_eff):
-    # §19.7.1.2 (verify 8.7.0): AggregationMetaV1 v2 appends u32_be(n_eff) — the
-    # signed Kish effective-source count — after the noise_floor_descriptor.
-    return (DOMAIN_AGG_META + _u32(version) + _lp(content_id) + _lp(corpus_kind)
-            + _u32(tier) + _lp(algo) + _u32(source_count) + mc32 + _lp(nfd) + _u32(n_eff))
+# NOTE: this file used to HAND-ROLL the §19.7.1 v2 signing preimage here and sign
+# `version = 2`. On persist ≥16 that fail-closes with `aggregation_meta_multiplicity`
+# — the CIRISVerify#191 flag-day working as designed (no deprecation window). The v3
+# preimage appends `u32_be(max_source_multiplicity) ‖ mass_commitment[32]`, and
+# `mass_commitment` is a Merkle over (member_id, mass_to_fixed(mass)) at a pinned 1e6
+# scale. We do NOT rebuild any of that: `assemble_tier_meta_v3` hands us the canonical
+# `signing_preimage` and we sign exactly those bytes (CIRISConformance#76).
+#
+# The member_commitment Merkle IS still recomputed below — but only as a CROSS-IMPL
+# ORACLE (python recompute == edge's bytes), never as the thing we submit. That is a
+# conformance check, not a fork: the bytes we sign always come from edge.
 
 
 # ── engine (bound-hybrid: agg-meta + composite manifest are both PQC-mandatory) ──
@@ -184,10 +196,17 @@ def sign_manifest(value):
     return m
 
 
-def build_content(cid, corpus):
+def build_content(cid, corpus, payload=None):
+    # payload: the member's CONTENT bytes. It matters now — the §19.7.1.3 producer
+    # measures content SIMILARITY across members, and the old fixed byte-pattern gave
+    # every source an IDENTICAL payload → one near-duplicate cluster of 3 →
+    # max_source_multiplicity == 3 → `aggregation_meta_multiplicity` (3·n_min > 3).
+    # Real members are independent high-entropy content, so each source gets its own.
+    if payload is None:
+        payload = secrets.token_bytes(TOTAL * SYMBOL)
     symbols, hashes = [], []
     for i in range(TOTAL):
-        b = bytes((i * 31 + 7 + j) & 0xFF for j in range(SYMBOL))
+        b = payload[i * SYMBOL:(i + 1) * SYMBOL].ljust(SYMBOL, b"\0")
         hashes.append(hashlib.sha256(b).hexdigest())
         symbols.append({"content_id": cid, "symbol_id": i,
                         "retention_priority": i, "symbol_bytes": list(b)})
@@ -205,64 +224,73 @@ def fstate(cid, corpus):
 
 
 # ── admit 3 source fountain contents (the descent fan-in) ──
+# Independent high-entropy payloads: real members are not near-duplicates, so the
+# §19.7.1.3 producer measures max_source_multiplicity == 1 and the fold admits.
 SOURCES = [(f"src-a-{NS}", "trace"), (f"src-b-{NS}", "trace"), (f"src-c-{NS}", "trace")]
+SRC_PAYLOADS = [secrets.token_bytes(TOTAL * SYMBOL) for _ in SOURCES]
 try:
-    for cid, corpus in SOURCES:
-        man, syms = build_content(cid, corpus)
+    for (cid, corpus), payload in zip(SOURCES, SRC_PAYLOADS):
+        man, syms = build_content(cid, corpus, payload)
         eng.put_fountain_content(json.dumps(man), json.dumps(syms))
 except Exception as exc:
     report_error("source_admit", exc)
 
 member_ids = [cid for cid, _ in SOURCES]
-mc32 = member_commitment(member_ids)
-MC_HEX = mc32.hex()
 
-# ── build + admit the signed composite via put_aggregated_tier ──
+# ── build + admit the signed composite via put_aggregated_tier (v3) ──
 AGG_CID = f"agg-root-{NS}"
 AGG_LEVEL = 1
 AGG_CORPUS = "aggregate:trace"            # aggregate_corpus_kind("trace")
-V_VERSION, V_TIER, V_ALGO, V_NFD = 2, 1, "raptorq-pyramid-v1", "mean+stddev"
-# §19.7.1.2 dominance gate: a balanced fold signs n_eff == source_count (uniform
-# masses → Kish n_eff == N), which clears the noise-floor ratio (2·n_eff ≥ N).
-V_N_EFF = len(member_ids)
+V_TIER, V_ALGO, V_NFD = 1, "raptorq-pyramid-v1", "mean+stddev"
 
 
-def build_agg_json(agg_cid, member_commitment_hex, mc_bytes, *,
-                   sig_content_id=None, blank_pqc=False):
-    # A persist AggregationMetaV1 JSON with a real 19.7.1 bound-hybrid agg-meta
-    # signature over the verify-core preimage. sig_content_id overrides the
-    # signed/wire content_id (used to forge a mismatch); blank_pqc drops the
+def build_agg_json(agg_cid, mem_ids, payloads, *, sig_content_id=None, blank_pqc=False):
+    # §19.7.1.3 v3: MEASURE at fold time (edge is the only point holding the member
+    # payloads), ASSEMBLE the v3 meta, SIGN edge's canonical `signing_preimage`, ADMIT.
+    # sig_content_id forges a signed/wire content_id mismatch; blank_pqc drops the
     # ML-DSA-65 half (the classical-only hard-cut signal).
-    content_id = sig_content_id if sig_content_id is not None else agg_cid
-    pre = agg_meta_preimage(V_VERSION, content_id, AGG_CORPUS, V_TIER, V_ALGO,
-                            len(member_ids), mc_bytes, V_NFD, V_N_EFF)
+    m = content_multiplicity(payloads, AGG_CORPUS)
+    signed_cid = sig_content_id if sig_content_id is not None else agg_cid
+    meta = assemble_tier_meta_v3(signed_cid, AGG_CORPUS, V_TIER, V_ALGO, mem_ids,
+                                 m["member_masses"], m["max_source_multiplicity"], V_NFD)
+    pre = meta["signing_preimage"]                      # edge's bytes — never rebuilt
     ed_sig = as_bytes(eng.local_sign(pre))
     pqc_sig = b"" if blank_pqc else as_bytes(eng.local_pqc_sign(pre + ed_sig))
-    return {
+    mc_hex = meta["member_commitment"].hex()
+    agg = {
         "aggregate_content_id": agg_cid,
         "source_corpus_kind": "trace",
         "aggregation_level": AGG_LEVEL,
-        "fan_in": len(member_ids),
-        "member_commitment": member_commitment_hex,
+        "fan_in": len(mem_ids),
+        "member_commitment": mc_hex,
         "aggregation_meta": base64.b64encode(b"opaque-19.7-wire-payload").decode(),
         "verification": {
-            "version": V_VERSION,
-            "content_id": content_id,
+            "version": meta["version"],                              # 3
+            "content_id": signed_cid,
             "corpus_kind": AGG_CORPUS,
-            "tier": V_TIER,
+            "tier": meta["tier"],
             "aggregation_algorithm_id": V_ALGO,
-            "source_count": len(member_ids),
-            "n_eff": V_N_EFF,
-            "member_commitment_hex": member_commitment_hex,
+            "source_count": meta["source_count"],
+            "n_eff": meta["n_eff"],
+            "max_source_multiplicity": meta["max_source_multiplicity"],   # NEW (v3)
+            "member_commitment_hex": mc_hex,
+            "mass_commitment_hex": meta["mass_commitment"].hex(),         # NEW (v3)
             "noise_floor_descriptor": V_NFD,
             "sig_ed25519_b64": base64.b64encode(ed_sig).decode(),
             "sig_ml_dsa_65_b64": ("" if blank_pqc else base64.b64encode(pqc_sig).decode()),
         },
     }
+    return agg, meta
 
+
+agg, AGG_META = build_agg_json(AGG_CID, member_ids, SRC_PAYLOADS)
+mc32 = AGG_META["member_commitment"]
+MC_HEX = mc32.hex()
+# CROSS-IMPL ORACLE: our documented WW-Merkle recompute must equal edge's signed
+# member_commitment. We SUBMIT edge's bytes; this only proves they agree.
+MC_PY_MATCHES_EDGE = (member_commitment(member_ids) == mc32)
 
 comp_man, comp_syms = build_content(AGG_CID, AGG_CORPUS)
-agg = build_agg_json(AGG_CID, MC_HEX, mc32)
 try:
     eng.put_aggregated_tier(json.dumps(comp_man), json.dumps(comp_syms),
                             json.dumps(agg), 1234567890)
@@ -292,8 +320,11 @@ report = {
     "agg_record": {k: rec[k] for k in
                    ("aggregate_content_id", "aggregation_level", "fan_in", "member_commitment")},
     "member_commitment_hex": MC_HEX,
-    "agg_meta_version": V_VERSION,
-    "n_eff_signed": V_N_EFF,
+    "agg_meta_version": AGG_META["version"],                       # 3
+    "n_eff_signed": AGG_META["n_eff"],
+    "max_source_multiplicity": AGG_META["max_source_multiplicity"],
+    "mass_commitment_present": len(AGG_META["mass_commitment"]) == 32,
+    "member_commitment_py_matches_edge": bool(MC_PY_MATCHES_EDGE),
     "n_sources": len(SOURCES),
     "symbols_per_source": TOTAL,
     "consent_encoding": "string:active|withdrawn|unknown",
@@ -351,7 +382,7 @@ cm2, cs2 = build_content(AGG2, AGG_CORPUS)
 # Build a fully-valid signed agg for AGG2, then TAMPER a signed field
 # (noise_floor_descriptor) WITHOUT re-signing → the reconstructed preimage no
 # longer matches the ed/pqc signatures → verify_aggregation_meta fails.
-bad = build_agg_json(AGG2, MC_HEX, mc32)
+bad, _ = build_agg_json(AGG2, member_ids, SRC_PAYLOADS)
 bad["verification"]["noise_floor_descriptor"] = "TAMPERED"
 try:
     eng.put_aggregated_tier(json.dumps(cm2), json.dumps(cs2), json.dumps(bad), 1)
@@ -363,13 +394,45 @@ except Exception as exc:
 # (N3) classical-only agg-meta (empty ML-DSA-65 half) → PQC-mandatory reject.
 AGG3 = f"agg-classical-{NS}"
 cm3, cs3 = build_content(AGG3, AGG_CORPUS)
-co = build_agg_json(AGG3, MC_HEX, mc32, blank_pqc=True)
+co, _ = build_agg_json(AGG3, member_ids, SRC_PAYLOADS, blank_pqc=True)
 try:
     eng.put_aggregated_tier(json.dumps(cm3), json.dumps(cs3), json.dumps(co), 1)
     report["neg_classical_only"] = {"rejected": False}
 except Exception as exc:
     report["neg_classical_only"] = {"rejected": True, "token": str(exc),
                                     "nothing_written": eng.get_aggregation(AGG3) is None}
+
+# (N4) THE R9 RESIDUAL (CC 6.1.2.1.2 / CIRISVerify#191 / CIRISConformance#71).
+# 900 near-duplicate contents folded as 900 DISTINCT members at equal mass, plus 100
+# genuinely-distinct members. The masses are honest and uniform, so the fold signs an
+# HONEST n_eff == 1000 and the dominance gate ADMITS it (2·1000 ≥ 1000) — mass-dominance
+# cannot see multiplicity collapse below member granularity. The v3 multiplicity gate is
+# what catches it: max_source_multiplicity == 900, and 900·n_min(2) > 1000 → REJECTED
+# `aggregation_meta_multiplicity`. This is the case the entire cut exists to close, and
+# the one case where the dominance gate alone honestly admits.
+AGG_R9 = f"agg-r9-{NS}"
+_base = secrets.token_bytes(TOTAL * SYMBOL)
+_near = [bytes([_base[0] ^ (i & 0xFF)]) + _base[1:] for i in range(900)]  # near-dups, distinct bytes
+_dist = [secrets.token_bytes(TOTAL * SYMBOL) for _ in range(100)]
+r9_payloads = _near + _dist
+r9_ids = [f"r9-{i}-{NS}" for i in range(1000)]
+r9_agg, r9_meta = build_agg_json(AGG_R9, r9_ids, r9_payloads)
+cmr, csr = build_content(AGG_R9, AGG_CORPUS)
+r9 = {
+    "n_eff_signed": r9_meta["n_eff"],                                  # honest ≈1000
+    "max_source_multiplicity": r9_meta["max_source_multiplicity"],     # ≈900
+    "source_count": r9_meta["source_count"],                           # 1000
+    # the dominance gate ALONE would admit this fold — that is the whole point
+    "dominance_gate_alone_would_admit": 2 * r9_meta["n_eff"] >= r9_meta["source_count"],
+}
+try:
+    eng.put_aggregated_tier(json.dumps(cmr), json.dumps(csr), json.dumps(r9_agg), 1)
+    r9["rejected"] = False
+except Exception as exc:
+    r9["rejected"] = True
+    r9["token"] = str(exc)
+    r9["nothing_written"] = eng.get_aggregation(AGG_R9) is None
+report["neg_r9_multiplicity"] = r9
 
 print(json.dumps(report)); sys.stdout.flush()
 sys.exit(0)
@@ -404,22 +467,30 @@ def test_signed_aggregation_meta_admitted(drive):
 
     This is the hard prerequisite: `put_aggregated_tier` runs
     `AggregationMetaV1::verify_for_admission` → `verify_aggregation_meta` over the
-    §19.7.1 binary preimage (WholenessWitness member_commitment + AGG-META-v1
-    domain), so a Python-built composite that admits proves the whole preimage +
-    Merkle reconstruction is reproducible from the spec text alone.
+    §19.7.1 binary preimage, and on persist ≥16 BOTH `passes_dominance_gate` AND
+    `passes_multiplicity_gate` must clear (a pre-v3 tier fail-closes with
+    `aggregation_meta_multiplicity` — the CIRISVerify#191 flag-day, no deprecation
+    window). The composite is assembled by edge's §19.7.1.3 producer and signed over
+    edge's canonical `signing_preimage` — we never rebuild the signed bytes.
     """
     assert drive["signed_composite_admitted"] is True
     rec = drive["agg_record"]
     assert rec["aggregate_content_id"].startswith("agg-root-")
     assert rec["aggregation_level"] == 1
     assert rec["fan_in"] == drive["n_sources"] == 3
-    # The stored navigation commitment is the WholenessWitness Merkle we computed.
     assert rec["member_commitment"] == drive["member_commitment_hex"]
     assert len(drive["member_commitment_hex"]) == 64  # 32-byte root, hex
-    # §19.7.1.2: the admitted composite is a v2 AggregationMetaV1 carrying a signed
-    # n_eff == source_count (a balanced fold) — clears the dominance gate.
-    assert drive["agg_meta_version"] == 2
+    # §19.7.1.3: the admitted composite is a v3 AggregationMetaV1.
+    assert drive["agg_meta_version"] == 3, "must sign v3 — v2 fail-closes on persist ≥16"
+    # dominance: a balanced fold signs n_eff == source_count (2·n_eff ≥ N).
     assert drive["n_eff_signed"] == drive["n_sources"] == 3
+    # multiplicity: independent high-entropy members are not near-duplicates, so the
+    # largest similarity cluster is a single member (1·n_min(2) ≤ 3 → admits).
+    assert drive["max_source_multiplicity"] == 1
+    assert drive["mass_commitment_present"] is True   # the 32-byte v3 Merkle is carried
+    # CROSS-IMPL ORACLE: our documented WW-Merkle recompute equals edge's SIGNED
+    # member_commitment. We submit edge's bytes; this proves the two impls agree.
+    assert drive["member_commitment_py_matches_edge"] is True
 
 
 # ─── The §19.7.3 verdict routing (behavioral) ─────────────────────────
@@ -523,3 +594,46 @@ def test_classical_only_agg_meta_rejected(drive):
     assert neg["rejected"] is True, neg
     assert "aggregation_meta_hybrid_required" in neg["token"], neg
     assert neg["nothing_written"] is True, neg
+
+
+@pytest.mark.fabric
+@pytest.mark.requires_persist
+def test_r9_near_duplicate_multiplicity_rejected(drive):
+    """CC 6.1.2.1.2 R9 — the residual the whole v3 cut exists to close.
+
+    900 near-duplicate contents folded as 900 **distinct members at equal mass**, plus
+    100 genuinely-distinct members (N=1000). The masses are *honest*: uniform mass over
+    1000 distinct member ids yields a truthful Kish `n_eff == 1000`, so the **dominance
+    gate alone ADMITS this fold** (`2·n_eff ≥ source_count`). That is CC 6.1.2.1.2's
+    stated honest limit — "mass-dominance is not content-similarity": multiplicity
+    collapse *below member granularity* is invisible to any mass-based count, and the
+    aggregator is not even lying.
+
+    The v3 **multiplicity gate** is what closes it: the §19.7.1.3 producer measures
+    `max_source_multiplicity == 900` (the largest content-similarity cluster) and persist
+    rejects with the stable token `aggregation_meta_multiplicity`, because
+    `max_source_multiplicity · n_min ≤ source_count` fails (900·2 > 1000).
+
+    This asserts BOTH halves — that the old gate would have let it through, and that the
+    new one does not — so it stays honest if either gate ever changes. (CIRISConformance#71,
+    CIRISVerify#191, CIRISEdge#328, CIRISPersist#435.)
+    """
+    r9 = drive["neg_r9_multiplicity"]
+    # The fold is honest and the OLD gate would have admitted it — the R9 bet.
+    assert r9["source_count"] == 1000, r9
+    assert r9["n_eff_signed"] >= 900, (
+        f"the near-duplicate fold must carry an HONEST high n_eff (uniform masses over "
+        f"1000 distinct members) — that is what makes it invisible to the dominance "
+        f"gate: {r9}")
+    assert r9["dominance_gate_alone_would_admit"] is True, (
+        f"if the dominance gate alone no longer admits this fold, the R9 residual has "
+        f"changed shape and this fixture is no longer testing it: {r9}")
+    # The NEW multiplicity gate closes it.
+    assert r9["max_source_multiplicity"] >= 900, (
+        f"the content-similarity producer must see the 900-member near-duplicate "
+        f"cluster: {r9}")
+    assert r9["rejected"] is True, (
+        f"the 900-near-duplicate fold was ADMITTED — the CC 6.1.2.1.2 multiplicity gate "
+        f"is not enforced and the R9 residual is OPEN: {r9}")
+    assert "aggregation_meta_multiplicity" in r9["token"], r9
+    assert r9["nothing_written"] is True, r9

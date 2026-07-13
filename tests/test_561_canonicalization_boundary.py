@@ -18,12 +18,21 @@ aggregation-admission surface `Engine.put_aggregated_tier(...)`, which runs
 source fountains + a composite, then attempts to admit the SAME logical
 `AggregationMetaV1` two ways:
 
-  • signed over the correct CC 6.1.3 **binary** preimage
-    (`b"AGG-META-v1\0\0\0\0\0"` ‖ length-prefixed fields ‖ raw 32-byte
-    member_commitment ‖ `u32_be(n_eff)`) → **ADMITTED**;
+  • signed over the correct CC 6.1.3 **binary** preimage — as of `AggregationMetaV1`
+    **v3** (CIRISVerify#191 / CIRISEdge#328) that is `b"AGG-META-v1\0\0\0\0\0"` ‖
+    length-prefixed fields ‖ raw 32-byte member_commitment ‖ `u32_be(n_eff)` ‖
+    `u32_be(max_source_multiplicity)` ‖ raw 32-byte `mass_commitment` → **ADMITTED**;
   • signed over the **JCS canonicalization** of the very same verification object
     (`ciris_verify.jcs_canonicalize(...)`, a sorted JSON object, first byte `{`)
     → **REJECTED** `aggregation_meta_hybrid_required`, nothing written.
+
+The binary leg does NOT hand-roll those bytes: it calls edge's §19.7.1.3 producer
+(`content_multiplicity` → `assemble_tier_meta_v3`) and signs the canonical
+`signing_preimage` it returns, so the "binary discipline" being proven is the
+*producer's own* canonical serialization, not a Python re-derivation of it. (A v2
+preimage no longer admits at all — persist ≥16 fail-closes it
+`aggregation_meta_multiplicity` — so the admit leg must be a real v3 fold.) The JCS
+leg then feeds that same v3 verification object through JCS and signs *that*.
 
 The two preimages are proven byte-distinct at their first byte: the binary
 preimage begins with the exact 16-byte domain separator, the JCS preimage begins
@@ -65,6 +74,11 @@ def report(obj):
 try:
     import ciris_persist as cp
     import ciris_verify as cv
+    # CIRISEdge#328 v3 producer — the canonical CC 6.1.3 binary preimage. The whole
+    # point of this gate is WHICH canonicalization the wheels sign, so the "binary"
+    # leg signs the producer's own `signing_preimage` bytes rather than a Python
+    # rebuild of them; the JCS leg then re-canonicalizes the same object the wrong way.
+    from ciris_edge.ciris_edge import content_multiplicity, assemble_tier_meta_v3
 except ImportError as exc:
     report({"_error": "import", "detail": str(exc)})
 
@@ -93,6 +107,7 @@ def sha256(*parts):
 
 
 # §19.1 WholenessWitness Merkle, reused verbatim by §19.7.1.1 member_commitment.
+# Kept ONLY as a cross-impl oracle (python == edge); the bytes we sign are edge's.
 def member_commitment(content_ids):
     leaves = sorted(cid.encode("utf-8") for cid in content_ids)
     level = [sha256(b) for b in leaves]
@@ -106,20 +121,11 @@ def member_commitment(content_ids):
     return level[0]
 
 
-# CC 6.1.3 binary signing preimage — v2 appends u32_be(n_eff).
+# The CC 6.1.2.1 pinned 16-byte domain separator the CC 6.1.3 binary preimage opens
+# with. We assert edge's `signing_preimage` STARTS with it — we do not rebuild the
+# preimage (a signed field rebuilt in Python is a signed field silently forked).
 DOMAIN_AGG_META = b"AGG-META-v1\0\0\0\0\0"
 assert len(DOMAIN_AGG_META) == 16
-def _u32(n):
-    return struct.pack(">I", n)
-def _lp(b):
-    if isinstance(b, str):
-        b = b.encode("utf-8")
-    return _u32(len(b)) + b
-def agg_meta_preimage(version, content_id, corpus_kind, tier, algo, source_count,
-                      mc32, nfd, n_eff):
-    return (DOMAIN_AGG_META + _u32(version) + _lp(content_id) + _lp(corpus_kind)
-            + _u32(tier) + _lp(algo) + _u32(source_count) + mc32 + _lp(nfd)
-            + _u32(n_eff))
 
 
 try:
@@ -142,7 +148,7 @@ NS = secrets.token_hex(6)
 SYMBOL, N_SOURCE, K_REPAIR, MIN_VIABLE = 16, 10, 4, 3
 TOTAL = N_SOURCE + K_REPAIR
 AGG_CORPUS = "aggregate:trace"
-V_VERSION, V_TIER, V_ALGO, V_NFD, V_N_EFF = 2, 1, "raptorq-pyramid-v1", "mean+stddev", 3
+V_TIER, V_ALGO, V_NFD = 1, "raptorq-pyramid-v1", "mean+stddev"
 
 
 def sign_manifest(value):
@@ -156,10 +162,17 @@ def sign_manifest(value):
     return m
 
 
-def build_content(cid, corpus):
+def build_content(cid, corpus, payload=None):
+    # Independent high-entropy payloads: the §19.7.1.3 producer measures content
+    # SIMILARITY across members, so the old fixed byte-pattern (identical for every
+    # source) would form ONE near-duplicate cluster of 3 and fail-close the fold
+    # `aggregation_meta_multiplicity` before the canonicalization boundary is even
+    # reached. Real members are independent content.
+    if payload is None:
+        payload = secrets.token_bytes(TOTAL * SYMBOL)
     symbols, hashes = [], []
     for i in range(TOTAL):
-        b = bytes((i * 31 + 7 + j) & 0xFF for j in range(SYMBOL))
+        b = payload[i * SYMBOL:(i + 1) * SYMBOL].ljust(SYMBOL, b"\0")
         hashes.append(hashlib.sha256(b).hexdigest())
         symbols.append({"content_id": cid, "symbol_id": i,
                         "retention_priority": i, "symbol_bytes": list(b)})
@@ -173,61 +186,83 @@ def build_content(cid, corpus):
 
 # ── admit 3 source fountains (the descent fan-in) ──
 SOURCES = [(f"src-{i}-{NS}", "trace") for i in range(3)]
-for cid, corpus in SOURCES:
-    man, syms = build_content(cid, corpus)
+SRC_PAYLOADS = [secrets.token_bytes(TOTAL * SYMBOL) for _ in SOURCES]
+for (cid, corpus), payload in zip(SOURCES, SRC_PAYLOADS):
+    man, syms = build_content(cid, corpus, payload)
     eng.put_fountain_content(json.dumps(man), json.dumps(syms))
 member_ids = [cid for cid, _ in SOURCES]
-mc32 = member_commitment(member_ids)
-MC_HEX = mc32.hex()
+
+# ── the honest v3 fold, straight from edge's §19.7.1.3 producer ──
+# `signing_preimage` is the canonical CC 6.1.3 binary discipline; `member_commitment`
+# / `mass_commitment` are SIGNED Merkle roots we take from edge rather than rebuild.
+MULT = content_multiplicity(SRC_PAYLOADS, AGG_CORPUS)
 
 
-def verification_object(cid):
+def edge_meta(cid):
+    return assemble_tier_meta_v3(cid, AGG_CORPUS, V_TIER, V_ALGO, member_ids,
+                                 MULT["member_masses"], MULT["max_source_multiplicity"],
+                                 V_NFD)
+
+
+def verification_object(meta):
     # The wire verification object, WITHOUT the two signature fields — this is what
-    # a (wrong) implementer would feed to JCS.
-    return {"version": V_VERSION, "content_id": cid, "corpus_kind": AGG_CORPUS,
-            "tier": V_TIER, "aggregation_algorithm_id": V_ALGO,
-            "source_count": len(member_ids), "n_eff": V_N_EFF,
-            "member_commitment_hex": MC_HEX, "noise_floor_descriptor": V_NFD}
+    # a (wrong) implementer would feed to JCS. Every field is edge's.
+    return {"version": meta["version"], "content_id": meta["content_id"],
+            "corpus_kind": AGG_CORPUS, "tier": meta["tier"],
+            "aggregation_algorithm_id": V_ALGO,
+            "source_count": meta["source_count"], "n_eff": meta["n_eff"],
+            "max_source_multiplicity": meta["max_source_multiplicity"],
+            "member_commitment_hex": meta["member_commitment"].hex(),
+            "mass_commitment_hex": meta["mass_commitment"].hex(),
+            "noise_floor_descriptor": V_NFD}
 
 
-def agg_wire(cid, ed_sig, pqc_sig):
-    ver = dict(verification_object(cid))
+def agg_wire(meta, ed_sig, pqc_sig):
+    ver = dict(verification_object(meta))
     ver["sig_ed25519_b64"] = base64.b64encode(ed_sig).decode()
     ver["sig_ml_dsa_65_b64"] = base64.b64encode(pqc_sig).decode()
-    return {"aggregate_content_id": cid, "source_corpus_kind": "trace",
-            "aggregation_level": 1, "fan_in": len(member_ids), "member_commitment": MC_HEX,
+    mc_hex = meta["member_commitment"].hex()
+    return {"aggregate_content_id": meta["content_id"], "source_corpus_kind": "trace",
+            "aggregation_level": 1, "fan_in": len(member_ids), "member_commitment": mc_hex,
             "aggregation_meta": base64.b64encode(b"opaque").decode(), "verification": ver}
 
 
-def try_admit(cid, preimage):
+def try_admit(meta, preimage):
+    cid = meta["content_id"]
     comp_man, comp_syms = build_content(cid, AGG_CORPUS)
     ed_sig = as_bytes(eng.local_sign(preimage))
     pqc_sig = as_bytes(eng.local_pqc_sign(preimage + ed_sig))
     try:
         eng.put_aggregated_tier(json.dumps(comp_man), json.dumps(comp_syms),
-                                json.dumps(agg_wire(cid, ed_sig, pqc_sig)), 1)
+                                json.dumps(agg_wire(meta, ed_sig, pqc_sig)), 1)
         return {"result": "admit", "observed": eng.get_aggregation(cid) is not None}
     except Exception as exc:
         return {"result": "reject", "token": str(exc),
                 "nothing_written": eng.get_aggregation(cid) is None}
 
 
-# (A) the correct CC 6.1.3 BINARY preimage → admit
-CID_BIN = f"agg-bin-{NS}"
-bin_pre = agg_meta_preimage(V_VERSION, CID_BIN, AGG_CORPUS, V_TIER, V_ALGO,
-                            len(member_ids), mc32, V_NFD, V_N_EFF)
-binary = try_admit(CID_BIN, bin_pre)
+# (A) the correct CC 6.1.3 BINARY preimage (edge's own canonical bytes) → admit
+BIN_META = edge_meta(f"agg-bin-{NS}")
+bin_pre = bytes(BIN_META["signing_preimage"])
+binary = try_admit(BIN_META, bin_pre)
 
 # (B) the SAME object canonicalized with JCS → reject (proves NOT JCS)
-CID_JCS = f"agg-jcs-{NS}"
-jcs_pre = as_bytes(cv.jcs_canonicalize(verification_object(CID_JCS)))
-jcs = try_admit(CID_JCS, jcs_pre)
+JCS_META = edge_meta(f"agg-jcs-{NS}")
+jcs_pre = as_bytes(cv.jcs_canonicalize(verification_object(JCS_META)))
+jcs = try_admit(JCS_META, jcs_pre)
 
 report({
     "stage": "done",
     "persist_version": getattr(cp, "__version__", "?"),
     "binary": binary,
     "jcs": jcs,
+    "agg_meta_version": BIN_META["version"],                     # 3
+    "max_source_multiplicity": BIN_META["max_source_multiplicity"],
+    "n_eff": BIN_META["n_eff"],
+    "source_count": BIN_META["source_count"],
+    # cross-impl oracle: the documented WW-Merkle recompute == edge's SIGNED root.
+    "member_commitment_py_matches_edge": (
+        member_commitment(member_ids) == BIN_META["member_commitment"]),
     "binary_preimage_first16": list(bin_pre[:16]),
     "binary_preimage_len": len(bin_pre),
     "jcs_preimage_first_byte": jcs_pre[0],
@@ -261,15 +296,27 @@ def test_binary_length_prefixed_preimage_is_admitted(boundary):
     """CC 6.1.3: an `AggregationMetaV1` signed over the binary, length-prefixed,
     domain-separated preimage is admitted — the CC 6.1 discipline verifies.
 
-    The preimage opens with the exact 16-byte `AGG-META-v1\\0\\0\\0\\0\\0` domain
-    separator (not a JSON object), and the bound-hybrid signature over it passes
-    `verify_aggregation_meta` at `put_aggregated_tier`.
+    The bytes signed here are edge's own canonical `signing_preimage` for an honest v3
+    fold (`assemble_tier_meta_v3`, `max_source_multiplicity == 1`), so this is the
+    producer's serialization, not a Python re-derivation of it. It opens with the exact
+    16-byte `AGG-META-v1\\0\\0\\0\\0\\0` domain separator (not a JSON object), and the
+    bound-hybrid signature over it passes `verify_aggregation_meta` at
+    `put_aggregated_tier`.
     """
     b = boundary["binary"]
     assert b["result"] == "admit", b
     assert b["observed"] is True, b
     assert bytes(boundary["binary_preimage_first16"]) == DOMSEP_AGG_META, boundary
     assert boundary["binary_preimage_first16"][0] != 0x7B, boundary  # not '{'
+    # the admitted tier is a real v3 fold that clears BOTH admission gates:
+    # dominance (2·n_eff ≥ source_count) and multiplicity (1·n_min(2) ≤ 3).
+    assert boundary["agg_meta_version"] == 3, boundary
+    assert boundary["source_count"] == 3, boundary
+    assert boundary["n_eff"] >= 2, boundary
+    assert boundary["max_source_multiplicity"] == 1, boundary
+    # cross-impl oracle: our documented WW-Merkle recompute equals edge's SIGNED
+    # member_commitment (we submit edge's bytes; this only proves the impls agree).
+    assert boundary["member_commitment_py_matches_edge"] is True, boundary
 
 
 @pytest.mark.requires_verify
@@ -278,9 +325,12 @@ def test_jcs_signed_preimage_is_rejected(boundary):
     """CC 6.1.3: the SAME object signed over its JCS canonicalization is rejected —
     the wheel does NOT use CC 2.6.1 JCS for a CC 6.1 preimage.
 
-    Signing `ciris_verify.jcs_canonicalize(verification_object)` (a sorted JSON
-    object, first byte `{`) yields a signature the substrate cannot reconstruct
-    against its binary preimage, so admission fails `aggregation_meta_hybrid_required`
+    The object is the *identical* honest v3 `AggregationMetaV1` the binary leg admits
+    (same members, same masses, same `max_source_multiplicity == 1`), so both admission
+    gates would pass on the merits — only the canonicalization differs. Signing
+    `ciris_verify.jcs_canonicalize(verification_object)` (a sorted JSON object, first
+    byte `{`) yields a signature the substrate cannot reconstruct against its binary
+    preimage, so admission fails on the OBSERVED token `aggregation_meta_hybrid_required`
     and nothing is written. This is the executable "never JCS" boundary.
     """
     j = boundary["jcs"]
