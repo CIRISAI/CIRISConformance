@@ -16,24 +16,39 @@ and no more. Crucially, cohabitation is NOT a self-claim backdoor: the constitut
 roles (`canonical`, `accord_holder`) cannot be self-conferred by listing them in the
 role set.
 
-What is REAL on the floor (persist 16.1.1), driven end-to-end here:
+What is REAL on the floor (persist 17.5.2), driven end-to-end here:
 
 - **`identity_type` is a stored role SET.** `register_self_federation_key(..., roles=
   ["agent", "substrate_persist"])` produces a `federation_keys` row whose `roles`
-  column is exactly `["agent", "substrate_persist"]` — a genuine multi-role key.
+  column reads back verbatim as `["agent", "substrate_persist"]` on BOTH backends — a
+  genuine multi-role key.
 - **Set membership is the emitter gate (CC 3.4.7.1).** The cohabiting
   `{agent, substrate_persist}` key MAY emit on a held role's surface (`observed:*`,
   via `emit_attestation_self`) but MUST NOT emit `accord:*` — it rejects with
   `federation_accord_dimension_requires_accord_holder` (the `accord_holder` role is
   not in its set). The right is per-held-role, not blanket.
-- **Cohabitation is not a self-claim backdoor.** Registering `identity_type=
-  'canonical'` directly is rejected (`canonical_role_not_accord_conferred`);
-  registering `identity_type='accord_holder'` without hardware evidence is rejected
-  (`federation_accord_holder_requires_attestation_evidence`). And a key that lists
-  `canonical` in its role SET is still NOT canonical: `is_canonical(kid)` is False
-  and it is absent from `list_canonical_servers()` — the conferred anchor, by
-  contrast, resolves True. The role set is a right-to-emit surface, never a
+- **Cohabitation is not a self-claim backdoor — closed on BOTH admission paths.** A
+  constitutional role is rejected whether it arrives as the scalar `identity_type` or
+  as a member of `roles=[...]`: `canonical` → `canonical_role_not_accord_conferred`,
+  `accord_holder` (without hardware evidence) →
+  `federation_accord_holder_requires_attestation_evidence`. Behind that gate, the
+  conferral control still holds: `is_canonical` resolves the accord-conferred anchor
+  True and a cohabiting key False. The role set is a right-to-emit surface, never a
   conferral surface for constitutional roles.
+
+**Two flag days flipped here (both filed by this harness, both shipped in persist
+17.x) — this test asserts the POST-fix behavior and fails closed if either regresses:**
+
+- **CIRISPersist#441** — the `roles=[...]` set path used to BYPASS the accord-conferral
+  gate the scalar path enforced. Through 16.1.1 the self-claim was ADMITTED and the
+  backdoor was closed only downstream (a self-listed role conferred nothing because
+  `is_canonical` reads conferral) — it held by the ACCIDENT that `roles` was
+  decorative, and would have become a live escalation the moment any gate started
+  evaluating the set as CC 3.4.7.1 says it should. Now rejected at admission.
+- **CIRISPersist#442** — `list_federation_keys` used to drop the `roles` array to `[]`
+  on postgres while sqlite returned it populated (the raw DB column held the set on
+  both; an FFI serialization-only parity bug). The readback is now a real cross-backend
+  assertion rather than a recorded diagnostic.
 
 Real surface: `Engine.register_self_federation_key(identity_type, identity_ref,
 valid_until, registration_envelope_json, roles)`,
@@ -102,19 +117,16 @@ def _attempt(label, fn):
 
 
 # ── identity_type is a role SET: a multi-role key is ADMITTED ──
-# register_self_federation_key(..., roles=[...]) accepts a set of roles on both
-# backends (returns a key_id). NOTE: the `roles` column read back via
-# list_federation_keys is a DIAGNOSTIC only — it is populated on sqlite but returns
-# [] on postgres via the FFI read path (the raw DB column holds the set correctly on
-# BOTH; only the postgres FFI serialization drops it — a persist backend-parity bug,
-# filed upstream). So the readback is recorded, never asserted for equality; the
-# set-membership SEMANTICS are asserted behaviorally below (backend-stable).
+# register_self_federation_key(..., roles=[...]) accepts a set of BENIGN roles and
+# the set reads back verbatim on BOTH backends (CIRISPersist#442 shipped in 17.x —
+# the postgres FFI read path used to drop the array to []; it no longer does, so the
+# readback is a real assertion here rather than a diagnostic).
 multi_kid, multi_eng = make("multi", "agent", "multi-role",
                             roles=["agent", "substrate_persist"])
 r["multi_admitted"] = bool(multi_kid) and isinstance(multi_kid, str)
 _page = json.loads(multi_eng().list_federation_keys(json.dumps({}), None, 100, multi_kid))
 _row = next(x for x in _page["items"] if x["key_id"] == multi_kid)
-r["role_set_readback"] = _row.get("roles")  # diagnostic, NOT asserted (pg FFI bug)
+r["role_set_readback"] = _row.get("roles")
 
 # ── Set-membership emitter gate (CC 3.4.7.1): right is per held role ──
 def _emit(kid, engine, dim):
@@ -131,15 +143,22 @@ _attempt("emit_unheld_role", lambda: _emit(multi_kid, multi_eng, "accord:invocat
 _attempt("selfclaim_canonical_scalar", lambda: make("sc", "canonical", "sc")[0])
 _attempt("selfclaim_accord_scalar", lambda: make("ah", "accord_holder", "ah")[0])
 
-# A key that LISTS canonical in its role set is admitted (the roles list itself is
-# not gated) but is STILL not canonical — the role is not conferred.
-rolecanon_kid, rolecanon_eng = make("rc", "agent", "role-canonical",
-                                    roles=["agent", "canonical"])
-r["rolecanon_is_canonical"] = rolecanon_eng().is_canonical(rolecanon_kid)
-_conferred = [x["key_id"] for x in json.loads(rolecanon_eng().list_canonical_servers())]
-r["rolecanon_absent_from_canonical_set"] = rolecanon_kid not in _conferred
+# THE FLAG DAY (CIRISPersist#441, shipped in persist 17.x): listing a constitutional
+# role in the role SET is now REJECTED AT ADMISSION, identically to the scalar path.
+# Through persist 16.1.1 this registration was ADMITTED and the backdoor was closed
+# only downstream (`is_canonical` reads conferral, so the self-listed role conferred
+# nothing) — i.e. it held by the ACCIDENT that `roles` was decorative. The gate now
+# closes it BY CONSTRUCTION, which is what this harness filed #441 to get.
+_attempt("selfclaim_canonical_roleset",
+         lambda: make("rc", "agent", "role-canonical", roles=["agent", "canonical"])[0])
+_attempt("selfclaim_accord_roleset",
+         lambda: make("ah2", "agent", "role-accord", roles=["agent", "accord_holder"])[0])
+
+# The conferral control: the accord-conferred anchor still resolves is_canonical True,
+# and the benign cohabiting key does not.
+_conferred = [x["key_id"] for x in json.loads(multi_eng().list_canonical_servers())]
 r["conferred_anchor_is_canonical"] = (
-    bool(_conferred) and rolecanon_eng().is_canonical(_conferred[0]))
+    bool(_conferred) and multi_eng().is_canonical(_conferred[0]))
 r["multi_is_canonical"] = multi_eng().is_canonical(multi_kid)
 
 r["stage"] = "done"
@@ -165,19 +184,21 @@ def test_multi_role_key_is_admitted(roleset):
     substrate admits a key carrying more than one role.
 
     `register_self_federation_key(..., roles=["agent", "substrate_persist"])` is
-    accepted (returns a key_id) on both backends — the single-key role cohabitation
-    that CC 4.5.8 introduces.
+    accepted (returns a key_id) and the set reads back VERBATIM on both backends.
 
-    (The literal `roles` column readback is a persist backend-parity DIAGNOSTIC only:
-    populated on sqlite, dropped by the FFI read on postgres though the raw DB column
-    holds the set on both — a persist bug filed upstream. The set-membership
-    SEMANTICS are asserted behaviorally in the next test, which is green on both
-    backends.)
+    The readback is a real assertion as of persist 17.x: CIRISPersist#442 (filed by
+    this harness) fixed the FFI read path, which used to drop the array to `[]` on
+    postgres while sqlite returned it populated — the raw DB column always held the
+    set on both, so it was a serialization-only parity bug. Asserting it here pins
+    the parity closed.
     """
     assert roleset["multi_admitted"] is True, (
         f"a multi-role registration (roles=[agent, substrate_persist]) was not "
-        f"admitted: multi_admitted={roleset['multi_admitted']}, "
-        f"roles_readback={roleset.get('role_set_readback')!r}")
+        f"admitted: multi_admitted={roleset['multi_admitted']}")
+    assert roleset["role_set_readback"] == ["agent", "substrate_persist"], (
+        f"the role SET did not read back verbatim — identity_type is not being stored "
+        f"as a set (or the CIRISPersist#442 postgres FFI read-path regression is back): "
+        f"{roleset['role_set_readback']!r}")
 
 
 @pytest.mark.requires_persist
@@ -223,21 +244,42 @@ def test_constitutional_roles_cannot_be_self_claimed(roleset):
 
 
 @pytest.mark.requires_persist
-def test_listing_canonical_in_role_set_confers_nothing(roleset):
-    """CC 4.5.8.1: the role SET grants the right to emit, never conferral of a
-    constitutional role.
+def test_constitutional_role_in_the_role_SET_is_rejected_at_admission(roleset):
+    """CC 4.5.8.1: the role SET is not a self-claim backdoor — THE FLAG DAY.
 
-    A key that lists `canonical` in its role set is admitted (the roles list is not
-    itself gated) yet is NOT canonical: `is_canonical` is False and it is absent from
-    `list_canonical_servers()`. The accord-conferred anchor, by contrast, resolves
-    True — proving `is_canonical` reads conferral, not the self-listed role.
+    Listing a constitutional role (`canonical` / `accord_holder`) in `roles=[...]` is
+    REJECTED at admission on persist ≥17.x, with the SAME tokens the scalar
+    `identity_type` path raises. The two admission paths no longer disagree about
+    which roles a key may self-assert.
+
+    This flipped with CIRISPersist#441, which this harness filed. Through persist
+    16.1.1 the set path was UNGATED: the registration was admitted and the backdoor
+    was closed only downstream (`is_canonical` reads conferral, so a self-listed role
+    conferred nothing). That held by the ACCIDENT that `roles` was decorative — the
+    moment any gate started evaluating the set (which CC 3.4.7.1 says gates SHOULD do,
+    by `X ∈ identity_type`), it would have become a live escalation. It is now closed
+    by construction.
     """
-    assert roleset["rolecanon_is_canonical"] is False, (
-        "a key that merely LISTS 'canonical' in its role set resolved is_canonical() "
-        "True — the role set is being read as a conferral surface, which CC 4.5.8.1 "
-        "forbids")
-    assert roleset["rolecanon_absent_from_canonical_set"] is True, (
-        "a self-listed 'canonical' role key appeared in list_canonical_servers()")
+    for label, token in (("selfclaim_canonical_roleset", "canonical_role_not_accord_conferred"),
+                         ("selfclaim_accord_roleset", "attestation_evidence")):
+        got = roleset[label]
+        assert got["outcome"] == "err", (
+            f"a constitutional role was self-claimed via the roles=[...] SET path and "
+            f"ADMITTED — the CC 4.5.8.1 self-claim backdoor is open (CIRISPersist#441 "
+            f"regressed): {label}={got}")
+        assert token in got["token"], (
+            f"{label} was rejected, but not by the conferral gate the scalar path "
+            f"uses — the two admission paths disagree: {got['token']}")
+
+
+@pytest.mark.requires_persist
+def test_is_canonical_reads_conferral_not_self_listing(roleset):
+    """CC 4.5.8.1: `is_canonical` resolves ACCORD CONFERRAL, never a self-listed role.
+
+    The defense-in-depth control behind the admission gate above: the accord-conferred
+    anchor resolves True, while the benign `{agent, substrate_persist}` cohabiting key
+    — which holds no canonical role — resolves False.
+    """
     assert roleset["conferred_anchor_is_canonical"] is True, (
         "the accord-conferred canonical anchor did not resolve is_canonical() True — "
         "the control that proves conferral (not self-listing) is what counts")

@@ -16,6 +16,26 @@ the old CEG wire-grammar spec is absorbed into the Constitution (the grammar is
 clauses live in `part_N`. The vendored `CEG/` tree is kept only for historical
 section-number cross-references.
 
+> **Naming convention (pinned).** **`CC` always means the CIRIS *Constitution*** —
+> never this repo. `CIRISConstitution` and `CIRISConformance` both initialize to
+> "CC" and sit adjacent in nearly every sentence about evidence, so the
+> abbreviation is reserved for exactly one of them:
+>
+> | write | to mean |
+> |---|---|
+> | `CC 6.1.2.1.2`, `CC 1.0-final` | a **Constitution** clause / version |
+> | `cc_decimal_id`, `cc_claim_id`, `cc_tests.tsv`, `cc_impl.tsv` | keyed by a **Constitution** claim |
+> | [`docs/CC_CONFORMANCE.md`](../docs/CC_CONFORMANCE.md) | our conformance **to the Constitution** |
+> | **CIRISConformance**, or "the harness" | **this repo** — always spelled out, never `CC` |
+>
+> The [`evidence/`](../evidence/) schema is the canonical illustration: both sides
+> appear in a single row, distinguished by prefix —
+> `cc_decimal_id · cc_claim_id · conformance_test_id(s) · freeze_gate_vector(s) · status`
+> — where `cc_*` is the Constitution's claim and `conformance_*` is our test that
+> establishes it. Read a bare `CC` in any sibling repo's changelog the same way
+> (e.g. CIRISServer's "CC conformance tier" = *the Constitution's* `test:` tier,
+> the one resolving against our manifest — parallel to its own `impl:` tier).
+
 These are **snapshots**, not the source of truth. The source of truth is
 the originating repo; update the snapshot (and note the new commit below)
 when the upstream spec moves. The conformance tests cite the section

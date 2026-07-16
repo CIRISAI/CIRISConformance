@@ -6,9 +6,10 @@
 # is reproducible. Bumping the floor here (+ regenerating) is a deliberate
 # registry update — see evidence/README.md.
 #
-# CC 1.0-rc2 floor — the CC 6.1.2.1.2 R9 cut: AggregationMetaV1 v2 → v3
-# (CIRISVerify#191 wire / CIRISEdge#328 producer / CIRISPersist#435 admission).
-# A pre-v3 aggregated tier now FAIL-CLOSES with aggregation_meta_multiplicity.
-ciris-persist==16.1.1
-ciris-verify==10.1.1
-ciris-edge==11.1.2
+# CC 1.0-rc2 floor — the CIRISServer v0.5.122 / CIRISEdge v13.1.2 coherent triple.
+# Carries the R9 cut (AggregationMetaV1 v3: a pre-v3 tier FAIL-CLOSES with
+# aggregation_meta_multiplicity) PLUS persist 17.x closing the CC 4.5.8.1 role-set
+# self-claim backdoor (CIRISPersist#441) and the postgres roles-readback parity bug (#442).
+ciris-persist==17.5.2
+ciris-verify==10.3.0
+ciris-edge==13.1.2
