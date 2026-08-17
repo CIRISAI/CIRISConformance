@@ -108,15 +108,24 @@ rationale:
     (v13.3.1), so the wheel and the compiled-in crate are the same code for
     the first time in several cycles.
   ciris-persist: >-
-    17.8.0 → v32.3.0. FIFTEEN majors. Moves to the git-tag channel. Known
-    drift the harness must absorb, surfaced by running the suite against the
-    head: Engine.set_perceptual_hash_matcher is gone, and
-    Engine.cohort_add_member gained a required `admit_spec_json` argument.
+    17.8.0 → v32.3.0. FIFTEEN majors. Moves to the git-tag channel. Three
+    drifts the harness absorbed: `cohort_add_member`/`cohort_swap_member`
+    gained a required `admit_spec_json` (CIRISPersist#654 — roster growth was
+    reachable from PyO3 with NO authority check, and the roster is both
+    numerator and denominator of the family quorum); `attestation_promote`
+    gained `cohort_scope` (#519 — a promotion now carries its placement, and
+    #589/AV-45 refuses a third-party-naming row at `family`/`community`); and
+    the v2 key-grant wrap token was respelled to underscores while v1 kept
+    hyphens (reported as CIRISPersist#715).
   ciris-edge: >-
     13.8.0 → v17.4.1. MAJOR 13→17. Moves to the git-tag channel. Note this is
     the tag CIRISServer pins, NOT edge's repo head (v17.5.0) — the set is
     what the integrator carries, and a member ahead of the integrator is not
-    yet in the coherent set.
+    yet in the coherent set. Behavioural drift: the Reticulum transport now
+    REQUIRES a hybrid federation signer (CIRISEdge#458 / #393 item 2) — an
+    Ed25519-only node cannot mint the hybrid-signed SignedTransportDestination,
+    so peers would drop its frames unattributed at the E3 gate. Edge refuses
+    the boot rather than letting that surface as silence on the wire.
 
 # Python interpreter version under test. Every member declares
 # `requires-python = ">=3.10"`; the abi3-py310 build (one wheel for all
@@ -132,8 +141,9 @@ python_versions:
 # issue closes, remove from this list AND remove the xfail marker —
 # strict=True will then flag any silent regression.
 known_failures:
-  - issue: "CIRISConformance#87"
-    summary: >-
+  - id: "CIRISConformance#87"
+    url: "https://github.com/CIRISAI/CIRISConformance/issues/87"
+    title: >-
       The witness-reserved prefixes (`age_assurance:`, `capacity_assurance:`)
       gained a `required_delegation_scope` of `infra:attest_assurance`, and the
       check is not a delegation the emitter can arrange for itself: persist's
@@ -142,7 +152,7 @@ known_failures:
       trusts. The harness has no trust-root ceremony, so every witness emit is
       refused with `federation_reserved_prefix_emitter_mismatch`. Closing it is
       new fixture infrastructure (a genesis root + conferral), not a pin bump.
-    tests:
+    affects:
       - tests/test_350_age_assurance_reservation.py::test_witness_key_admitted_on_age_assurance
       - tests/test_351_age_band_ratchet.py::test_witness_assurance_outranks_self
       - tests/test_351_age_band_ratchet.py::test_cross_subject_witness_graduation
