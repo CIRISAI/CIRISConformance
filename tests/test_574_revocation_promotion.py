@@ -134,8 +134,25 @@ _attempt("insert_local", lambda: A.engine().attestation_insert_local(json.dumps(
 
 _aid = r["insert_local"].get("value")
 # ── Promotion local → federation (True), then idempotent re-promote (False) ──
-_attempt("promote_1", lambda: A.engine().attestation_promote(_aid))
-_attempt("promote_2", lambda: A.engine().attestation_promote(_aid))
+# persist v21.5.0 (CIRISPersist#519) — a promotion now CARRIES its placement:
+# `attestation_promote(id, cohort_scope)`. A tier flip without a coherent
+# federation-visible scope is rejected, and `self` is rejected specifically,
+# because "promote to federation tier, visible to nobody" is not a state.
+# The placement lands WITH the tier flip rather than as a pre-stamp, so a
+# refused promotion leaves no mutated row behind (#589 / AV-9).
+#
+# `federation`, NOT `community`, and the difference is the point. This row
+# NAMES A THIRD PARTY — `subject_key_ids` carries the revoking subject, which
+# is the whole shape of a subject-side revocation. `check_promotion_cohort_
+# standing` (CIRISPersist#589, AV-45) refuses exactly that for the TARGETED
+# cohorts: to place a row at `family`/`community` it must name no party but its
+# own producer, or it is an unverifiable claim about someone else's cohort
+# arriving through the one door AV-45 cannot stand at. The broad belonging
+# tiers (`affiliations`/`species`/`biosphere`/`federation`) have no cohort to
+# have standing in, so they are the correct home for a row like this — and
+# `federation` is what CC 5.3.2.2 means by promotion anyway.
+_attempt("promote_1", lambda: A.engine().attestation_promote(_aid, "federation"))
+_attempt("promote_2", lambda: A.engine().attestation_promote(_aid, "federation"))
 
 # ── 24-hour SLA overdue detector (persist 16.1.x, CIRISPersist#434) ──
 # A SEPARATE, deliberately un-promoted subject-side revocation. At sla_seconds=0 it
@@ -167,7 +184,7 @@ def _overdue_ids():
 
 
 _attempt("overdue_before_promote", lambda: _od_aid in _overdue_ids())
-_attempt("od_promote", lambda: A.engine().attestation_promote(_od_aid))
+_attempt("od_promote", lambda: A.engine().attestation_promote(_od_aid, "federation"))
 _attempt("overdue_after_promote", lambda: _od_aid in _overdue_ids())
 
 r["stage"] = "done"

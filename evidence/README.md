@@ -19,7 +19,7 @@ The Constitution's `check_claims.py` pins this repo by commit and resolves every
 | [`claim_map.tsv`](claim_map.tsv) | hand-maintained (editorial) | the CC-claim ↔ test association (no status) |
 | [`gen_cc_tests.py`](gen_cc_tests.py) | — | the generator (merges the two, writes `cc_tests.tsv`) |
 | [`_status_plugin.py`](_status_plugin.py) | — | the pytest plugin that reads each node's live outcome |
-| [`floor_pins.txt`](floor_pins.txt) | bump on a floor move | the exact ciris-* triple the registry is derived against |
+| [`floor_pins.txt`](floor_pins.txt) | bump on a floor move | the exact ciris-* coherent set the registry is derived against |
 
 ### `cc_tests.tsv` columns
 
@@ -64,7 +64,8 @@ committed TSV — which the CI guard catches.
 ## Regenerate
 
 ```sh
-# from the repo root, inside the CC-floor venv (persist/verify/edge per floor_pins.txt)
+# from the repo root, inside the CC-floor venv (the set in floor_pins.txt:
+# server + verify from PyPI, persist + edge built from their git tags)
 python evidence/gen_cc_tests.py
 ```
 
@@ -89,6 +90,14 @@ vector name** in this repo. Those identifiers are a **public API**:
 
 ## Bumping the floor
 
-When the floor moves (e.g. CC 1.0-rc1), update `floor_pins.txt` to the new
-ciris-* triple and regenerate. Status flips are expected and reviewable in the
-`cc_tests.tsv` diff.
+When the floor moves, update `floor_pins.txt` to the new ciris-* coherent set
+and regenerate. Status flips are expected and reviewable in the `cc_tests.tsv`
+diff.
+
+The set spans two channels and both must move together. `ciris-server` and
+`ciris-verify` are PyPI pins; `ciris-persist` and `ciris-edge` are git tags that
+pip builds from source, because they stopped publishing desktop wheels in July
+2026. Read the coherent set off CIRISServer `main`'s `Cargo.toml` — the
+integrator's tags ARE the contract. Regenerating therefore costs a cargo build
+of the substrate, which is why the CI job, not a laptop, is the reference
+environment for a floor bump.

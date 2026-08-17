@@ -61,27 +61,49 @@ def roster():
 report["family_key_id"] = kid
 report["initial"] = roster()
 
+# UNSIGNED add — REJECTED (persist v31.0.0, CIRISPersist#654). Roster growth
+# used to be reachable from PyO3 with no authority check at all, and the roster
+# is both numerator and denominator of the family quorum, so a free seat changes
+# who can charter a trust root. An empty AdmitSpec decodes fine and then fails
+# closed at admission: an absent signer/signature never verifies.
+_carol = roster_member(CAROL, NOW)
+try:
+    engine.cohort_add_member("family", kid, json.dumps(_carol), "{}")
+    report["unsigned_add"] = {"rejected": False}
+except Exception as exc:  # noqa: BLE001 — the substrate's decision is the result
+    report["unsigned_add"] = {"rejected": True, "error": str(exc)}
+report["after_unsigned_add"] = roster()
+
 # add — genuine add then idempotent re-add
 report["add_carol"] = engine.cohort_add_member(
-    "family", kid, json.dumps({"key_id": CAROL, "joined_at": NOW}))
+    "family", kid, json.dumps(_carol), admit_spec("family", kid, _carol))
 report["after_add"] = roster()
+# The re-add carries NO authority: persist short-circuits an already-rostered
+# member to False before the authorship gate ("nothing to authorize"), so a
+# no-op genuinely needs none. Passing a signature here would assert a preimage
+# persist never computes.
 report["readd_carol"] = engine.cohort_add_member(
-    "family", kid, json.dumps({"key_id": CAROL, "joined_at": NOW}))
+    "family", kid, json.dumps(_carol), "{}")
 
 # remove — immediate revoke drops bob
 engine.cohort_revoke_member(
-    "family", kid, BOB, json.dumps({"effective_at": NOW, "reason": "removed"}))
+    "family", kid, BOB,
+    revoke_spec("family", kid, BOB, NOW, reason="removed"))
 report["after_revoke_bob"] = roster()
 
 # remove — future-dated revoke leaves carol active until 2099
 engine.cohort_revoke_member(
-    "family", kid, CAROL, json.dumps({"effective_at": FUTURE}))
+    "family", kid, CAROL, revoke_spec("family", kid, CAROL, FUTURE))
 report["after_future_revoke_carol"] = roster()
 
-# swap — atomically revoke alice, add dave
+# swap — atomically revoke alice, add dave. swap_member is revoke-then-add and
+# the revocation leaves `members[]` intact, so the admission preimage is the
+# roster as it stands now plus dave.
+_dave = roster_member(DAVE, NOW)
 report["swap_alice_dave"] = engine.cohort_swap_member(
-    "family", kid, ALICE, json.dumps({"key_id": DAVE, "joined_at": NOW}),
-    json.dumps({"effective_at": NOW, "reason": "swap"}))
+    "family", kid, ALICE, json.dumps(_dave),
+    revoke_spec("family", kid, ALICE, NOW, reason="swap"),
+    admit_spec("family", kid, _dave))
 report["after_swap"] = roster()
 
 # reverse read — dave is now an active member; bob (revoked) is not.
@@ -109,6 +131,29 @@ def cohort_lifecycle(federation_module):
         ALICE=alice, BOB=bob, CAROL=carol, DAVE=dave,
         NOW=_NOW, FUTURE=_FUTURE,
     )
+
+
+@pytest.mark.requires_persist
+def test_unsigned_roster_growth_is_rejected(cohort_lifecycle):
+    """An addition carrying no authority signature must fail closed.
+
+    CIRISPersist#654 (persist v31.0.0). Until that cut `cohort_add_member` was
+    reachable from PyO3 with no authority check at all, so a caller could grow
+    a family roster nobody had signed — and `family_quorum_over` counts that
+    roster as both numerator and denominator, so a free seat changes who can
+    charter a trust root and what threshold they must clear. This is the gate
+    that closed it; it fails closed on an empty `AdmitSpec` because an absent
+    signer and signature can never verify.
+    """
+    r = cohort_lifecycle
+    assert r["stage"] == "done", r
+    assert r["unsigned_add"]["rejected"] is True, (
+        "an unsigned roster addition was ADMITTED — the CIRISPersist#654 "
+        f"authorship gate is not holding: {r['unsigned_add']}")
+    # And it left no trace: the roster is untouched by the refused add.
+    assert r["after_unsigned_add"] == r["initial"], (
+        "the refused add still mutated the roster — the gate must run BEFORE "
+        f"any DB work: {r}")
 
 
 @pytest.mark.requires_persist

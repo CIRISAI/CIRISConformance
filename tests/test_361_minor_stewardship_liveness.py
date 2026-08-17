@@ -36,7 +36,8 @@ from __future__ import annotations
 
 import pytest
 
-from conftest import get_database_url, run_python_script
+from conftest import (get_database_url, run_python_script,
+                      xfail_if_unconferred_assurance_scope)
 
 pytestmark = pytest.mark.fabric
 
@@ -144,7 +145,14 @@ print(json.dumps(report)); sys.stdout.flush(); os._exit(0)
 @pytest.fixture(scope="module")
 def liveness():
     script = f"INJECTED_URL = {get_database_url()!r}\n" + _BODY
-    payload = run_python_script(script).parsed_stdout()
+    result = run_python_script(script)
+    # The scenario attests an age band, which is a witness-reserved prefix.
+    # Since persist v32.3.0 that also requires a CONFERRED
+    # `infra:attest_assurance` capability, which the harness cannot yet mint —
+    # the node dies before printing its report, so this must be caught here
+    # rather than by an xfail marker on each test (CIRISConformance#87).
+    xfail_if_unconferred_assurance_scope(result)
+    payload = result.parsed_stdout()
     if payload.get("_error") == "absent":
         pytest.fail(f"persist steward surface missing: {payload.get('surface')}")
     assert payload.get("stage") == "done", payload

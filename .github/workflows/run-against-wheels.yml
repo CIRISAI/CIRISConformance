@@ -213,39 +213,38 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
 
+      # Resolution lives in `tools/install_pins.py`, NOT inline here. This step
+      # used to carry its own copy of the matrix→pip-args logic; the copy read
+      # `matrix['stack']` only, so when the matrix grew the git-tag `substrate`
+      # channel it would have kept installing the PyPI half and gone green
+      # having never installed the substrate the cell claims to test. One
+      # implementation, covered by tests/test_912_install_pins_tool.py.
+      #
+      # Substrate members build from source (cargo), so this step is the long
+      # pole in a cell — that is the cost of persist/edge leaving PyPI.
+      - name: check the substrate tags still resolve to their recorded shas
+        working-directory: conformance
+        run: python tools/install_pins.py --verify-refs
+
+      - name: cache pip (incl. wheels built from the substrate git shas)
+        # The substrate members install from git and build with cargo. pip
+        # caches those built wheels because the matrix pins immutable shas;
+        # without this every cell recompiles them from scratch.
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('conformance/matrices/current.yaml') }}
+          restore-keys: |
+            pip-${{ runner.os }}-${{ runner.arch }}-
+
       - name: install pinned siblings from matrices/current.yaml
         working-directory: conformance
         env:
           PIN_OVERRIDES: ${{ inputs.pin-overrides }}
         run: |
-          python -c "
-          import yaml, subprocess, sys, json, os
-          matrix = yaml.safe_load(open('matrices/current.yaml'))
-          pins = matrix['stack']
-          under_test = '${{ inputs.under-test-package }}'.replace('-', '_')
-          try:
-              overrides = json.loads(os.environ.get('PIN_OVERRIDES') or '{}')
-          except json.JSONDecodeError as e:
-              sys.exit(f'pin-overrides is not valid JSON: {e}')
-          if not isinstance(overrides, dict):
-              sys.exit(f'pin-overrides must decode to a JSON object, got {type(overrides).__name__}')
-          install_args = []
-          for pkg, ver in pins.items():
-              if pkg.replace('-', '_') == under_test:
-                  continue
-              if pkg in overrides:
-                  install_args.append(overrides[pkg])
-              else:
-                  install_args.append(f'{pkg}=={ver}')
-          if overrides:
-              applied = {k: v for k, v in overrides.items() if k.replace('-', '_') != under_test}
-              ignored_for_under_test = set(overrides) - set(applied)
-              print(f'pin-overrides applied: {applied}')
-              if ignored_for_under_test:
-                  print(f'pin-overrides ignored (under-test wins): {sorted(ignored_for_under_test)}')
-          print(f'Installing siblings: {install_args}')
-          subprocess.check_call([sys.executable, '-m', 'pip', 'install', *install_args])
-          "
+          python tools/install_pins.py \
+            --under-test "${{ inputs.under-test-package }}" \
+            --overrides "$PIN_OVERRIDES"
 
       - name: download under-test wheel artifact
         uses: actions/download-artifact@v4

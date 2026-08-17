@@ -160,6 +160,8 @@ def gate():
 
 
 @pytest.mark.requires_persist
+@pytest.mark.xfail(strict=True, reason=
+    "CIRISConformance#87: `age_assurance:`/`capacity_assurance:` now also require `infra:attest_assurance` CONFERRED from a trust root this node trusts (persist v32.3.0). The harness has no trust-root ceremony, so the witness emit is refused with federation_reserved_prefix_emitter_mismatch.")
 def test_capacity_graduates_per_domain_and_presumes_capacity(gate):
     """CC 3.4.12: a witness's per-domain incapacity attestation graduates
     `capacity_state_json`; an untouched domain stays `"unknown"` (presumption of

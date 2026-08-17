@@ -65,13 +65,22 @@ def probe(label, fn):
     except Exception as exc:  # noqa: BLE001 — record the substrate's decision verbatim
         report[label] = {"admitted": False, "error": str(exc)}
 
-# Control: `community` is an admitted scope (idempotent re-add of the founder).
+# Both adds are idempotent re-adds of the founder, who is already on the roster.
+# persist short-circuits that to False BEFORE the CIRISPersist#654 authorship
+# gate ("already on the roster — no-op, nothing to authorize"), so the empty
+# AdmitSpec is the honest argument: there is no grown record to sign over, and
+# fabricating one would assert a preimage persist never computes. What is under
+# test here is the cohort-SCOPE discriminator, not the authority gate — that is
+# test_260's subject.
+_founder_member = roster_member(founder, NOW, role="founder")
+
+# Control: `community` is an admitted scope.
 probe("community_add", lambda: engine.cohort_add_member(
-    "community", founder, json.dumps({"key_id": founder, "joined_at": NOW})))
+    "community", founder, json.dumps(_founder_member), "{}"))
 
 # Under test: `affiliations` must be admitted symmetrically.
 probe("affiliations_add", lambda: engine.cohort_add_member(
-    "affiliations", founder, json.dumps({"key_id": founder, "joined_at": NOW})))
+    "affiliations", founder, json.dumps(_founder_member), "{}"))
 probe("affiliations_active_read",
       lambda: engine.cohort_active_members_json("affiliations", founder))
 probe("affiliations_groups_read",

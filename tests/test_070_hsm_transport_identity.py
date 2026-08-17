@@ -89,11 +89,23 @@ if WITH_LOCAL_SIGNER:
     seed_path = os.path.join(workdir, "local.seed")
     with open(seed_path, "wb") as fh:
         fh.write(b"\x11" * 32)
+    # edge v17 (CIRISEdge#458, #393 item 2) refuses to bring up the Reticulum
+    # transport on an Ed25519-only signer: without the ML-DSA-65 half it cannot
+    # mint the hybrid-signed SignedTransportDestination, so peers would drop
+    # its frames UNATTRIBUTED at the E3 gate. The 32-byte transport identity
+    # this test is about is still the Ed25519 pubkey — the PQC half is
+    # provisioning, not the subject, so it is added without changing what is
+    # asserted below.
+    pqc_path = os.path.join(workdir, "local.pqc.seed")
+    with open(pqc_path, "wb") as fh:
+        fh.write(b"\x22" * 32)
     engine = cp.Engine(
         DB_URL,
         "conformance-key",
         local_key_id="conformance-key",
         local_key_path=seed_path,
+        local_pqc_key_id="conformance-key-pqc",
+        local_pqc_key_path=pqc_path,
     )
 else:
     # No LocalSigner configured -> local_signer_capsule() raises

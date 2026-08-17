@@ -271,6 +271,8 @@ def test_agent_admitted_on_age_self_declared_band(admission):
 
 
 @pytest.mark.requires_persist
+@pytest.mark.xfail(strict=True, reason=
+    "CIRISConformance#87: `age_assurance:`/`capacity_assurance:` now also require `infra:attest_assurance` CONFERRED from a trust root this node trusts (persist v32.3.0). The harness has no trust-root ceremony, so the witness emit is refused with federation_reserved_prefix_emitter_mismatch.")
 def test_witness_key_admitted_on_age_assurance(admission):
     """CC 3.4.11 (persist 13) reservation is symmetric: witness self-emit REFUSED, witness cross-attest ADMITTED.
 

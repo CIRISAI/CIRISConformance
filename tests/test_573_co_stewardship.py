@@ -162,6 +162,8 @@ def test_two_distinct_stewards_both_admitted(costeward):
 
 
 @pytest.mark.requires_persist
+@pytest.mark.xfail(strict=True, reason=
+    "CIRISConformance#87: `age_assurance:`/`capacity_assurance:` now also require `infra:attest_assurance` CONFERRED from a trust root this node trusts (persist v32.3.0). The harness has no trust-root ceremony, so the witness emit is refused with federation_reserved_prefix_emitter_mismatch.")
 def test_steward_bindings_resolve_to_both_stewards(costeward):
     """CC 3.4.9: the node's steward-bindings resolve to BOTH stewards (cardinality 2).
 
@@ -181,6 +183,8 @@ def test_steward_bindings_resolve_to_both_stewards(costeward):
 
 
 @pytest.mark.requires_persist
+@pytest.mark.xfail(strict=True, reason=
+    "CIRISConformance#87: `age_assurance:`/`capacity_assurance:` now also require `infra:attest_assurance` CONFERRED from a trust root this node trusts (persist v32.3.0). The harness has no trust-root ceremony, so the witness emit is refused with federation_reserved_prefix_emitter_mismatch.")
 def test_node_never_orphaned_while_one_steward_remains(costeward):
     """CC 3.4.9: revoking one steward's binding leaves the node still steward-bound.
 

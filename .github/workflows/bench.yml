@@ -30,7 +30,15 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
 
-      - name: install harness + pinned ciris-* wheels
+      - name: cache pip (incl. wheels built from the substrate git shas)
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-bench-${{ runner.os }}-py${{ matrix.python }}-${{ hashFiles('matrices/current.yaml') }}
+          restore-keys: |
+            pip-bench-${{ runner.os }}-py${{ matrix.python }}-
+
+      - name: install harness + the pinned coherent set
         # Retries only on a PyPI/CDN propagation race (a just-published pin not
         # yet on this runner's edge); fails fast on a real conflict. This step
         # was the reddest cell in the harness before the retry — a same-minute

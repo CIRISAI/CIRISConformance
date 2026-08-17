@@ -19,6 +19,11 @@ Normalization (pytest 9.x report model, verified against the CC floor venv):
       * ``call`` skipped, ``wasxfail`` set               (explicit xfail marker, expected fail)
       * ``call`` failed, any other longrepr              (genuine failure — a gate the floor
         does not yet pass, e.g. a fixture tripping a newly-enforced gate pending rework)
+      * ``setup`` skipped, ``wasxfail`` set              (IMPERATIVE ``pytest.xfail()`` raised
+        inside a fixture — conftest's ``xfail_if_*`` guards. A marker cannot reach a failure
+        that happens before the body runs, so a fixture that trips a known-and-filed upstream
+        gate declares it this way instead. Same meaning as the marker case: expected not to
+        pass on this floor.)
       * ``setup``/``teardown`` failed                    (fixture error — the drive could not
         establish the claim)
 
@@ -73,7 +78,21 @@ def pytest_runtest_logreport(report):  # noqa: D401 - pytest hook
                 first = (longrepr.splitlines() or [""])[0][:200]
                 _record(nid, "xfail", f"genuine-failure: {first}")
     elif report.when == "setup":
-        if report.outcome == "skipped" and wasxfail is None:
+        if report.outcome == "skipped" and wasxfail is not None:
+            # An imperative `pytest.xfail()` raised inside a FIXTURE — the
+            # `xfail_if_*` guards in conftest. This branch used to be missing
+            # entirely, so such a node was recorded nowhere and the generator
+            # then aborted with "references '<nodeid>' which the suite did not
+            # run — a stale test id (rename?)", pointing at the claim map when
+            # the map was correct and the test had in fact run.
+            #
+            # The hole was always there: `xfail_if_pg_edge_runtime_crash`
+            # predates this and takes the same path, but only fires on postgres
+            # while the evidence job runs sqlite-only, so nothing reached it.
+            # An expected-failure declared from a fixture means exactly what one
+            # declared by marker means — the claim is not green on this floor.
+            _record(nid, "xfail", "xfail-fixture")
+        elif report.outcome == "skipped" and wasxfail is None:
             _STATE["errors"].append(
                 [nid, "setup-skipped (environment gate) — the floor venv must run this for real"]
             )

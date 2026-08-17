@@ -186,6 +186,8 @@ def test_detection_leaves_refused_from_agent_key(admission):
 
 
 @pytest.mark.requires_persist
+@pytest.mark.xfail(strict=True, reason=
+    "CIRISConformance#87: `age_assurance:`/`capacity_assurance:` now also require `infra:attest_assurance` CONFERRED from a trust root this node trusts (persist v32.3.0). The harness has no trust-root ceremony, so the witness emit is refused with federation_reserved_prefix_emitter_mismatch.")
 def test_lenscore_detector_key_admitted_on_detection(admission):
     """CC 3.4.8: a key holding `lenscore_detector` in `identity_type` IS admitted on detection:*.
 

@@ -93,8 +93,9 @@ report["consent_view_infohazard"] = emit(
     {"attestation_type": "consent:state:granted",
      "attestation_envelope": {"scope": "view", "content_class": "infohazard"}})
 
-# (2) The content_class:* flag the gate composes over is a substrate-reserved
-#     prefix — an agent/viewer key cannot mint it (CC 3.3.12 / CC 3.4-style).
+# (2) The content_class:* flag the gate composes over is OPEN to every attester
+#     (CC 3.4.14 R1) and must be attested under a key whose identity_type
+#     contains `agent` (R2). The emitting key here is an agent key.
 report["content_class_infohazard_from_agent"] = emit(
     {"attestation_type": "content_class:infohazard", "attestation_envelope": {}})
 report["content_class_reported_from_agent"] = emit(
@@ -143,24 +144,41 @@ def test_consent_to_view_attestation_is_admitted(consent):
 
 
 @pytest.mark.requires_persist
-def test_content_class_flag_is_substrate_reserved(consent):
-    """CC 3.3.12 / CC 4.5.13: an agent/viewer cannot mint the `content_class:*` flag.
+def test_content_class_marking_is_open_to_every_attester(consent):
+    """CC 3.4.14 R1: `content_class:*` marking is universal, not substrate-reserved.
 
-    The producer-declared content-class flag the consent gate composes over is a
-    substrate-reserved prefix — a registered agent key is refused at
-    `content_class:infohazard` / `content_class:reported`
-    (`federation_reserved_prefix_emitter_mismatch`). A viewer therefore cannot
-    self-declare (or self-clear) the flag; it is admission-controlled, like the
-    other reserved substrate-truth prefixes.
+    **This assertion is the inverse of what it was through the rc2 floor**, and
+    the flip is a correction, not a relaxation — CIRISPersist#571 removed the
+    reservation and states the reasoning: CC 3.3.12 opens its table with *"All
+    four families are open vocabulary"* and names NO emitter role for
+    `content_class:`; the one family it does reserve (`age_assurance:`) it marks
+    witness-reserved in as many words and backs with a machine-readable
+    `reserved_rule`, which `content_class:` never carried. Persist's CEG-sourced
+    gate demanded an emitter role the Constitution does not, which CC 3.1.7 R2
+    names as refusing traffic the Constitution leaves open.
+
+    `content_class:` was the sharp end of that: CC 3.4.14 R1 makes
+    `content_class:generated` / `content_class:generated_modified` MANDATORY on
+    any Contribution carrying generated content, so gating the family to
+    `substrate_persist` refused exactly the row the disclosure path needs — the
+    path CC 3.4.14 makes normative for EU AI Act Art. 50(2) (applicable
+    2026-08-02). An agent that cannot mark its output as generated cannot
+    disclose, and the substrate was the thing stopping it.
+
+    R2 is what carries the authenticity that the reservation used to: the
+    marking must be attested under a key whose `identity_type` contains `agent`,
+    which is the key emitting here. The read side stays discriminating —
+    `lookup_trusted_publisher_chain` still reads `content_rating:` rows through
+    `trusted_publisher` keys only — so this is an open write door and a filtered
+    read door, which is the shape CC describes.
     """
     for field in ("content_class_infohazard_from_agent",
                   "content_class_reported_from_agent"):
         outcome = consent[field]
-        assert outcome != "accepted", (
-            f"an agent key minted a {field} content_class flag — the CC 3.3.12 "
-            f"content_class reservation is not enforced: {outcome}")
-        assert "reserved_prefix" in outcome or "mismatch" in outcome, (
-            f"{field} refused with an unexpected reason: {outcome}")
+        assert outcome == "accepted", (
+            f"an agent key was REFUSED minting {field} — CC 3.4.14 R1 makes "
+            f"class marking universal, and refusing it blocks the Art. 50(2) "
+            f"disclosure path at the substrate (CIRISPersist#571): {outcome}")
 
 
 # The CC 4.5.13 interstitial ENFORCEMENT — the "may viewer V reveal flagged
