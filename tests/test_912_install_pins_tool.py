@@ -219,6 +219,48 @@ def test_sha_must_be_a_full_commit_id(tool, tmp_path, sha, label):
         assert tool.load_substrate(str(m))["ciris-persist"].endswith(sha)
 
 
+def test_coherent_set_covers_every_member_with_its_channel(tool, matrix_file):
+    """The published contract downstream readers consume instead of our YAML.
+
+    CIRISGrace's readiness gates read the floor. Its first parser was
+    `^\\s{2}(ciris-[a-z-]+):\\s+"([0-9]...)"` over `matrices/current.yaml`,
+    which matched every member while the matrix was one flat `stack`. Against
+    the two-channel matrix that regex matches the PyPI half and silently drops
+    the git half — turning a currency FAIL into a PASS while never looking at
+    the two members carrying the most drift. Under-coverage that presents as a
+    pass is the worst outcome available, so the set is published as data.
+    """
+    s = tool.coherent_set(matrix_file)
+    assert s["schema"] == "ciris-coherent-set/v1"
+    # EVERY member, both channels — this is the assertion that catches a
+    # future channel split silently shrinking the set.
+    assert set(s["members"]) == {
+        "ciris-server", "ciris-verify", "ciris-persist", "ciris-edge"}
+    assert {m["channel"] for m in s["members"].values()} == {"pypi", "git"}
+    for name, m in s["members"].items():
+        if m["channel"] == "pypi":
+            assert m["version"][0].isdigit(), (name, m)
+        else:
+            # A git member must NOT be currency-checked against PyPI: persist
+            # and edge still have releases there, but they are abandoned and
+            # trail the real head by majors, so "latest on PyPI" is the wrong
+            # question. The contract names where to ask instead.
+            assert tool._SHA_RE.match(m["sha"]), (name, m)
+            assert m["tag"].startswith("v"), (name, m)
+            assert "CIRISServer" in m["currency_source"], (name, m)
+
+
+def test_coherent_set_matches_the_live_matrix(tool):
+    """The real matrix produces a complete set — not a silently partial one."""
+    root = Path(__file__).resolve().parent.parent
+    s = tool.coherent_set(str(root / "matrices" / "current.yaml"))
+    assert len(s["members"]) == len(s["install_args"]), (
+        "every member must contribute exactly one install argument — a member "
+        f"that resolves to nothing installs nothing: {s}")
+    assert s["constitution"].get("commit"), (
+        "the coherent set must pin the Constitution commit (FSD #86 §4 Class 3)")
+
+
 def test_live_matrix_substrate_is_fully_specified(tool):
     """The real matrix carries repo + tag + full sha for every git member."""
     root = Path(__file__).resolve().parent.parent

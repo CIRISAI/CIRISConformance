@@ -134,6 +134,52 @@ def load_substrate(matrix_path: str) -> dict[str, str]:
     return specs
 
 
+def coherent_set(matrix_path: str) -> dict:
+    """The whole coherent set as one machine-readable object.
+
+    THE contract for anyone downstream who needs to know what the floor is —
+    CIRISGrace's readiness gates, most immediately. Published as a command
+    rather than left to be regexed out of the YAML, because the YAML shape is
+    ours to change and a consumer's regex is not something we can see break.
+
+    The specific hazard this exists to remove: a `^\\s{2}(ciris-[a-z-]+): "..."`
+    pattern matched every member while the matrix was one flat `stack`. Against
+    the two-channel matrix it matches the PyPI half and silently drops the git
+    half — so a currency check over it reports PASS while never looking at the
+    two members carrying the most drift. Under-coverage that presents as a pass
+    is worse than no gate.
+
+    `channel` is the load-bearing field: a `pypi` member is checked against the
+    index, a `git` member is NOT — persist and edge still publish to PyPI, but
+    those releases are abandoned and trail their real head by majors, so
+    "latest on PyPI" is the wrong currency question for them. Ask CIRISServer
+    main's Cargo.toml instead; it is the integrator and its tags are the set.
+    """
+    data = load_matrix(matrix_path)
+    members: dict[str, dict] = {}
+    for pkg, ver in (data.get("stack") or {}).items():
+        members[pkg] = {"channel": "pypi", "version": str(ver)}
+    for pkg, entry in (data.get("substrate") or {}).items():
+        if isinstance(entry, str):
+            members[pkg] = {"channel": "git", "spec": entry}
+            continue
+        members[pkg] = {
+            "channel": "git",
+            "repo": entry["repo"],
+            "tag": entry["tag"],
+            "sha": entry["sha"],
+            "currency_source": "https://github.com/CIRISAI/CIRISServer"
+                               "/blob/main/Cargo.toml",
+        }
+    return {
+        "schema": "ciris-coherent-set/v1",
+        "members": members,
+        "constitution": data.get("constitution") or {},
+        "python_versions": data.get("python_versions") or [],
+        "install_args": resolve_install_args(matrix_path)[0],
+    }
+
+
 def verify_refs(matrix_path: str) -> int:
     """Check every substrate `tag` still resolves upstream to its `sha`.
 
@@ -351,10 +397,18 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--verify-refs", action="store_true",
                    help="check each substrate tag still resolves to its recorded "
                         "sha upstream, then exit (network only, no install)")
+    p.add_argument("--print-set", action="store_true",
+                   help="print the coherent set as JSON (ciris-coherent-set/v1) "
+                        "and exit — the published contract for downstream "
+                        "readers such as CIRISGrace")
     a = p.parse_args(argv)
 
     if a.verify_refs:
         return verify_refs(a.matrix)
+
+    if a.print_set:
+        print(json.dumps(coherent_set(a.matrix), indent=2, sort_keys=True))
+        return 0
 
     try:
         overrides = json.loads(a.overrides or "{}")
