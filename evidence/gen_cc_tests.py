@@ -57,7 +57,15 @@ COLUMNS = [
 
 # The ciris-* distributions whose versions pin the floor the registry is derived
 # against; recorded in the TSV header so a floor bump is visible in the diff.
-FLOOR_DISTS = ("ciris-persist", "ciris-verify", "ciris-edge")
+#
+# ciris-server joined the set when persist and edge left PyPI: it is the
+# integrator whose Cargo.toml states what cohabits, and the suite drives its
+# surfaces directly. A floor that named the substrate but not the integrator
+# would not identify the code the statuses were actually recorded against.
+#
+# Versions come from installed metadata, so a git-tag member reports its
+# package version (32.3.0), not the tag it was installed from (v32.3.0).
+FLOOR_DISTS = ("ciris-server", "ciris-persist", "ciris-verify", "ciris-edge")
 
 
 class ClaimRow:

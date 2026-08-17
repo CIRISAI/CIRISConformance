@@ -104,10 +104,30 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
 
-      - name: install pinned ciris-* wheels from matrices/current.yaml
+      - name: check the substrate tags still resolve to their recorded shas
+        # The matrix records each git member's commit twice — once as a tag a
+        # human reads, once as the sha that actually gets installed. Network
+        # only, seconds, and it fails the cell BEFORE a 20-minute cargo build
+        # that would have compiled the wrong commit.
+        run: python tools/install_pins.py --verify-refs
+
+      - name: cache pip (incl. wheels built from the substrate git shas)
+        # ciris-persist and ciris-edge install from git, so pip builds them
+        # with cargo. pip stores the built wheel in its wheel cache keyed on the
+        # requirement — which is why the matrix pins immutable shas rather than
+        # tags. Without this the substrate recompiles in all six cells of every
+        # run; with it, only a set bump pays the build.
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ runner.os }}-${{ runner.arch }}-py${{ matrix.python }}-${{ hashFiles('matrices/current.yaml') }}
+          restore-keys: |
+            pip-${{ runner.os }}-${{ runner.arch }}-py${{ matrix.python }}-
+
+      - name: install the pinned coherent set from matrices/current.yaml
         # Retries only on a PyPI/CDN propagation race (a just-published pin not
-        # yet on this runner's edge); fails fast on a real ResolutionImpossible.
-        # See tools/install_pins.py.
+        # yet on this runner's edge); fails fast on a real ResolutionImpossible,
+        # and never retries a git member — see tools/install_pins.py.
         run: python tools/install_pins.py
 
       - name: run conformance suite (py${{ matrix.python }} × ${{ matrix.backend }})
@@ -169,11 +189,26 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
 
-      - name: bundle pinned ciris-* wheels (Chaquopy-style — bypass requires-python)
+      - name: cache pip (incl. wheels built from the substrate git shas)
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-chaquopy-${{ runner.os }}-${{ hashFiles('matrices/current.yaml') }}
+          restore-keys: |
+            pip-chaquopy-${{ runner.os }}-
+
+      - name: bundle the pinned set (Chaquopy-style — bypass requires-python)
         # Exactly what Chaquopy does: take the cp310-abi3 wheel and ignore the
-        # metadata floor entirely (defensive — every wheel is at >=3.10 now, but
+        # metadata floor entirely (defensive — every member is at >=3.10 now, but
         # the flag costs nothing and guards a future regression). Same
         # propagation-race retry as the core cells (tools/install_pins.py).
+        #
+        # NOTE the ciris-persist / ciris-edge members build from source here
+        # rather than arriving as prebuilt abi3 wheels, so this cell no longer
+        # reproduces Chaquopy's mechanism for them — it exercises the flag and
+        # the py3.10 floor, not the bundled-wheel path. The real Android surface
+        # is the `-android-wheels.tar.gz` release asset those repos still ship;
+        # driving that is CIRISConformance#83's field-harness work.
         run: python tools/install_pins.py --ignore-requires-python
 
       - name: run mobile-target + cohab-init gates on py3.10
@@ -219,7 +254,7 @@ jobs:
     # silently drift. This job regenerates the TSV and fails on `git diff` — the
     # map is force-kept in lockstep with the suite.
     #
-    # It installs the CC-floor triple from evidence/floor_pins.txt (NOT
+    # It installs the CC-floor coherent set from evidence/floor_pins.txt (NOT
     # matrices/current.yaml): the registry is pinned to the exact floor whose live
     # status was recorded, so regeneration here reproduces a floor-generated commit
     # even while current.yaml is mid-migration. sqlite only — the mapped claims are
@@ -250,7 +285,18 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
 
-      - name: install the CC-floor ciris-* triple (evidence/floor_pins.txt)
+      - name: cache pip (incl. wheels built from the floor's git shas)
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-evidence-${{ runner.os }}-${{ hashFiles('evidence/floor_pins.txt') }}
+          restore-keys: |
+            pip-evidence-${{ runner.os }}-
+
+      - name: install the CC-floor coherent set (evidence/floor_pins.txt)
+        # Two channels: ciris-server + ciris-verify from PyPI, ciris-persist +
+        # ciris-edge built from their git refs. The floor moved to that shape
+        # when the substrate stopped publishing desktop wheels (#84).
         run: pip install -r evidence/floor_pins.txt
 
       - name: regenerate evidence/cc_tests.tsv from the live suite

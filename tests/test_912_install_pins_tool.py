@@ -1,10 +1,19 @@
 """
 Unit coverage for the pin-install retry helper (`tools/install_pins.py`).
 
-All three CI install steps (core conformance cells, chaquopy bundle, bench)
-route through this helper so a same-minute matrix bump that races PyPI/CDN
-propagation retries instead of going red — while a genuine pin conflict still
-fails fast. The value is entirely in the classifier, so we pin it here.
+Every CI install step routes through this helper — the core conformance cells,
+the chaquopy bundle, bench, AND the reusable `run-against-wheels.yml` consumers
+call. Two things are worth pinning here:
+
+1. **The classifier.** A same-minute matrix bump that races PyPI/CDN
+   propagation must retry instead of going red, while a genuine pin conflict
+   still fails fast.
+2. **Set resolution.** The matrix has two channels (PyPI `stack` + git-tag
+   `substrate`). `run-against-wheels.yml` used to carry its own inline copy of
+   this logic; when the second channel landed, that copy would have kept
+   installing only the PyPI half — a cell that goes green while never
+   installing the substrate it claims to test. There is now one implementation,
+   and these tests are what hold it to the matrix's real shape.
 """
 
 from __future__ import annotations
@@ -77,3 +86,157 @@ def test_real_matrix_resolves_to_string_versions(tool):
     for pkg, ver in pins.items():
         assert pkg.startswith("ciris-"), pkg
         assert isinstance(ver, str) and ver[0].isdigit(), (pkg, ver)
+
+
+# ─── the git-tag channel ──────────────────────────────────────────────
+
+_MATRIX = (
+    "stack:\n"
+    '  ciris-server: "0.5.176"\n'
+    '  ciris-verify: "13.3.1"\n'
+    "substrate:\n"
+    "  ciris-persist:\n"
+    '    repo: "https://github.com/CIRISAI/CIRISPersist"\n'
+    '    tag: "v32.3.0"\n'
+    '    sha: "5d1cd36e3d9fd8131cfc38ff4b023667a8d42b6d"\n'
+    "  ciris-edge:\n"
+    '    repo: "https://github.com/CIRISAI/CIRISEdge"\n'
+    '    tag: "v17.4.1"\n'
+    '    sha: "abee3686e2ee5f52282619f5fbce7771d126544a"\n'
+)
+
+
+@pytest.fixture
+def matrix_file(tmp_path):
+    m = tmp_path / "current.yaml"
+    m.write_text(_MATRIX)
+    return str(m)
+
+
+def test_load_substrate_builds_git_specs(tool, matrix_file):
+    assert tool.load_substrate(matrix_file) == {
+        "ciris-persist": "git+https://github.com/CIRISAI/CIRISPersist@5d1cd36e3d9fd8131cfc38ff4b023667a8d42b6d",
+        "ciris-edge": "git+https://github.com/CIRISAI/CIRISEdge@abee3686e2ee5f52282619f5fbce7771d126544a",
+    }
+
+
+@pytest.mark.parametrize("entry, label", [
+    ('    repo: "https://github.com/CIRISAI/CIRISPersist"\n',
+     "no tag and no sha"),
+    ('    repo: "https://github.com/CIRISAI/CIRISPersist"\n'
+     '    tag: "v32.3.0"\n',
+     "tag without sha — would reinstall from a mutable ref"),
+    ('    repo: "https://github.com/CIRISAI/CIRISPersist"\n'
+     '    sha: "5d1cd36e3d9fd8131cfc38ff4b023667a8d42b6d"\n',
+     "sha without tag — nothing a human can read"),
+])
+def test_incomplete_substrate_member_is_a_hard_error(tool, tmp_path, entry, label):
+    """A half-written substrate entry must not resolve to a floating ref."""
+    m = tmp_path / "current.yaml"
+    m.write_text("substrate:\n  ciris-persist:\n" + entry)
+    with pytest.raises(SystemExit):
+        tool.load_substrate(str(m))
+
+
+@pytest.mark.parametrize("sha, label", [
+    ("5d1cd36", "abbreviated"),
+    ("5ee7ce3aa8ce8ffd2a0da8692cbb409fb876f0b0", "the TAG OBJECT's id"),
+])
+def test_sha_must_be_a_full_commit_id(tool, tmp_path, sha, label):
+    """pip caches a VCS build only on an immutable full-length ref.
+
+    The tag-object case is the live footgun: `git ls-remote <repo>
+    refs/tags/v32.3.0` prints the annotated tag's own id, and the commit only
+    comes back from the `^{}` dereference. Both are 40 hex chars, so only the
+    upstream check (--verify-refs) can tell them apart — but the length rule
+    still catches the abbreviated paste.
+    """
+    m = tmp_path / "current.yaml"
+    m.write_text("substrate:\n  ciris-persist:\n"
+                 '    repo: "https://github.com/CIRISAI/CIRISPersist"\n'
+                 '    tag: "v32.3.0"\n'
+                 f'    sha: "{sha}"\n')
+    if len(sha) != 40:
+        with pytest.raises(SystemExit):
+            tool.load_substrate(str(m))
+    else:
+        # Well-formed, so parsing accepts it — this is exactly the case that
+        # needs the network check, not a local one.
+        assert tool.load_substrate(str(m))["ciris-persist"].endswith(sha)
+
+
+def test_live_matrix_substrate_is_fully_specified(tool):
+    """The real matrix carries repo + tag + full sha for every git member."""
+    root = Path(__file__).resolve().parent.parent
+    specs = tool.load_substrate(str(root / "matrices" / "current.yaml"))
+    assert specs, "no substrate members parsed from matrices/current.yaml"
+    for pkg, spec in specs.items():
+        assert spec.startswith("git+https://"), (pkg, spec)
+        assert tool._SHA_RE.match(spec.rsplit("@", 1)[1]), (pkg, spec)
+
+
+def test_resolve_covers_both_channels(tool, matrix_file):
+    """The whole coherent set installs — not just the half that's on PyPI."""
+    args, pins = tool.resolve_install_args(matrix_file)
+    assert args == [
+        "ciris-server==0.5.176",
+        "ciris-verify==13.3.1",
+        "git+https://github.com/CIRISAI/CIRISPersist@5d1cd36e3d9fd8131cfc38ff4b023667a8d42b6d",
+        "git+https://github.com/CIRISAI/CIRISEdge@abee3686e2ee5f52282619f5fbce7771d126544a",
+    ]
+    # Only the PyPI half is subject to the propagation race.
+    assert pins == {"ciris-server": "0.5.176", "ciris-verify": "13.3.1"}
+
+
+def test_under_test_member_is_skipped(tool, matrix_file):
+    """A consumer's own artifact must not be shadowed by the pinned version.
+
+    CIRISEdge's tag-run supplies a built `ciris_edge` wheel; installing
+    the matrix's edge alongside it would mean the cell tests the pin, green,
+    while never touching the artifact under test.
+    """
+    args, _ = tool.resolve_install_args(matrix_file, under_test="ciris-edge")
+    assert not any("CIRISEdge" in a for a in args), args
+    assert "git+https://github.com/CIRISAI/CIRISPersist@5d1cd36e3d9fd8131cfc38ff4b023667a8d42b6d" in args
+
+
+def test_under_test_matches_across_name_spelling(tool, matrix_file):
+    """`ciris_edge` and `ciris-edge` name the same member."""
+    args, _ = tool.resolve_install_args(matrix_file, under_test="ciris_edge")
+    assert not any("CIRISEdge" in a for a in args), args
+
+
+def test_override_replaces_a_matrix_member(tool, matrix_file):
+    """Branch fire-tests pin a sibling to an untagged ref (see the workflow)."""
+    ref = "git+https://github.com/CIRISAI/CIRISPersist.git@v4.0-das"
+    args, pins = tool.resolve_install_args(
+        matrix_file, overrides={"ciris-persist": ref})
+    assert ref in args
+    assert "git+https://github.com/CIRISAI/CIRISPersist@5d1cd36e3d9fd8131cfc38ff4b023667a8d42b6d" not in args
+    # An overridden PyPI member drops out of the race set — the pinned version
+    # it would have retried for is no longer what's being installed.
+    args, pins = tool.resolve_install_args(
+        matrix_file, overrides={"ciris-verify": "ciris-verify==13.0.0"})
+    assert "ciris-verify" not in pins
+
+
+def test_override_loses_to_the_under_test_artifact(tool, matrix_file):
+    args, _ = tool.resolve_install_args(
+        matrix_file,
+        under_test="ciris-edge",
+        overrides={"ciris-edge": "git+https://github.com/CIRISAI/CIRISEdge@vX"},
+    )
+    assert not any("CIRISEdge" in a for a in args), args
+
+
+def test_git_member_failure_is_never_a_propagation_race(tool, matrix_file):
+    """A bad tag or a failed cargo build must fail fast, not burn the budget.
+
+    Git refs don't propagate through a CDN. If a substrate member leaked into
+    the race set, a typo'd tag would retry six times with linear backoff before
+    reporting a failure it could have reported immediately.
+    """
+    _, pins = tool.resolve_install_args(matrix_file)
+    output = ("ERROR: Could not find a version that satisfies the requirement "
+              "ciris-persist (from versions: none)")
+    assert tool._is_propagation_race(output, pins) is False

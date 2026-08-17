@@ -66,26 +66,36 @@ def step(label, fn):
     except Exception as exc:  # noqa: BLE001 — capture the substrate's decision
         report[label] = {"ok": False, "error": str(exc)}
 
-# add — genuine add then idempotent re-add on the affiliations cohort
+# add — genuine add then idempotent re-add on the affiliations cohort.
+# The adds carry a real AdmitSpec (CIRISPersist#654); the re-add carries none,
+# because persist short-circuits an already-rostered member before the
+# authorship gate. `affiliations` shares the community roster, so the preimage
+# is the grown Community record (CC 4.4.3.2.8 / CIRISPersist#308).
+_alice = roster_member(ALICE, NOW)
+_bob = roster_member(BOB, NOW)
 step("add_alice", lambda: engine.cohort_add_member(
-    "affiliations", founder, json.dumps({"key_id": ALICE, "joined_at": NOW})))
+    "affiliations", founder, json.dumps(_alice),
+    admit_spec("affiliations", founder, _alice)))
 step("after_add", roster)
 step("readd_alice", lambda: engine.cohort_add_member(
-    "affiliations", founder, json.dumps({"key_id": ALICE, "joined_at": NOW})))
+    "affiliations", founder, json.dumps(_alice), "{}"))
 
 # add bob, then immediate-revoke bob → forward secrecy drops him now
 step("add_bob", lambda: engine.cohort_add_member(
-    "affiliations", founder, json.dumps({"key_id": BOB, "joined_at": NOW})))
+    "affiliations", founder, json.dumps(_bob),
+    admit_spec("affiliations", founder, _bob)))
 step("after_add_bob", roster)
 step("revoke_bob", lambda: engine.cohort_revoke_member(
-    "affiliations", founder, BOB, json.dumps({"effective_at": NOW, "reason": "removed"})))
+    "affiliations", founder, BOB,
+    revoke_spec("affiliations", founder, BOB, NOW, reason="removed")))
 step("after_revoke_bob", roster)
 
 # future-dated revoke of alice → REJECTED: community/affiliations removal is
 # immediate-only for forward secrecy (SecReview F4). The boundary fail-closes;
 # alice stays active because the revoke never landed.
 step("future_revoke_alice", lambda: engine.cohort_revoke_member(
-    "affiliations", founder, ALICE, json.dumps({"effective_at": FUTURE})))
+    "affiliations", founder, ALICE,
+    revoke_spec("affiliations", founder, ALICE, FUTURE)))
 step("after_future_revoke_alice", roster)
 
 report["stage"] = "done"

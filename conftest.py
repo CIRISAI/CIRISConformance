@@ -100,24 +100,49 @@ ALL_WHEELS: tuple[str, ...] = (
 
 @dataclass(frozen=True)
 class WheelMatrix:
-    """The pinned wheel set under test, parsed from matrices/current.yaml."""
+    """The coherent set under test, parsed from matrices/current.yaml.
+
+    The set spans two channels: `versions` holds the PyPI members
+    (`name==version`) and `substrate` holds the git-tag members, which have no
+    PyPI release at head and are built from source. `version()` resolves across
+    both — a caller asking "what edge is under test?" wants an answer whether
+    edge arrived as a wheel or as a tag.
+    """
 
     versions: dict[str, str]
+    substrate: dict[str, str]
+    constitution: dict[str, str]
     python_versions: list[str]
     known_failures: list[dict]
 
     @classmethod
     def load(cls, path: Path = MATRIX_PATH) -> "WheelMatrix":
         data = yaml.safe_load(path.read_text())
+        substrate = {}
+        for pkg, entry in (data.get("substrate") or {}).items():
+            substrate[pkg] = entry["tag"] if isinstance(entry, dict) else str(entry)
         return cls(
             versions=data.get("stack", {}),
+            substrate=substrate,
+            constitution=data.get("constitution", {}),
             python_versions=data.get("python_versions", []),
             known_failures=data.get("known_failures", []),
         )
 
+    @property
+    def members(self) -> dict[str, str]:
+        """Every member of the coherent set, both channels, one mapping."""
+        return {**self.versions, **self.substrate}
+
     def version(self, package: str) -> str | None:
-        """Resolve `ciris_persist` → `2.2.0` etc. Handles underscore/hyphen."""
-        for key, value in self.versions.items():
+        """Resolve `ciris_persist` → `v32.3.0` etc. Handles underscore/hyphen.
+
+        Substrate members answer with their git tag (leading `v`), PyPI members
+        with their bare version — the string is the member's identity on the
+        channel it actually ships through, so a test comparing against
+        `__version__` must strip the tag's `v`.
+        """
+        for key, value in self.members.items():
             if key.replace("-", "_") == package.replace("-", "_"):
                 return value
         return None
@@ -368,6 +393,136 @@ engine = cp.Engine(DB_URL, key_id, local_key_id=key_id, local_key_path=_seed,
 _id_type = globals().get("IDENTITY_TYPE", "agent")
 kid = engine.register_self_federation_key(_id_type, IDENTITY_REF, None, None, None)
 report = {"key_id": key_id}
+
+# ─── Roster-growth authority (persist v31.0.0, CIRISPersist#654) ──────
+# `cohort_add_member` / `cohort_swap_member` / `cohort_revoke_member` take a
+# caller-supplied authority signature. Before #654 roster growth was reachable
+# from PyO3 with NO authority check at all, which left `federation_communities`
+# holding a roster nobody had signed next to signature columns still describing
+# the roster that used to be there — and the roster is both numerator and
+# denominator of the family/WA quorum, so a free seat changes who can charter a
+# trust root. These helpers build the specs that gate now demands.
+#
+# NOTE the asymmetry, which is a real usability seam and not our choice:
+# `put_community_json` SELF-SIGNS when the caller supplies no authority (the
+# node creating a community it is the authority for), but the very same node
+# growing that community's roster must hand-build a signature. Same key, same
+# wheel-local API, two different contracts.
+
+def _canonical_ts(ts):
+    """Spell a timestamp the way persist's own serializer will spell it.
+
+    The signature covers persist's serialization of the GROWN record, not the
+    string we passed in, so a trailing `.000` we send but persist drops would
+    silently produce a preimage that cannot verify. chrono's `DateTime<Utc>`
+    serde writes RFC-3339 at automatic precision — a zero fractional part is
+    omitted. Derived here, and ASSERTED against persist's own output in
+    `_cohort_signing_envelope` below, so a spelling change upstream fails loudly
+    instead of as a mystery hybrid-verify rejection.
+    """
+    return ts.replace(".000Z", "Z") if ts.endswith(".000Z") else ts
+
+
+def _sign_envelope(envelope):
+    """Hybrid-sign a canonical envelope as THIS node's registered authority.
+
+    `engine.canonicalize_envelope` is the produce-side CEG gate
+    (`ceg_produce_canonicalize`) that the admission path re-runs on verify.
+    Deliberately NOT `canonicalize_envelope_for_signing`, whose docstring
+    claims the two are the same canonicalizer: at persist v32.3.0 they are not
+    — that one runs the pre-cut Python canonicalizer and strips `signature`
+    fields, so signing through it yields bytes the gate never reconstructs,
+    and the failure reads as a generic hybrid-verify rejection. Filed as
+    CIRISPersist#714; drop this note if that lands and the names agree.
+    """
+    canonical = engine.canonicalize_envelope(json.dumps(envelope))
+    sigs = engine.local_sign_hybrid(canonical)
+    return {
+        "authority_key_id": kid,
+        "scrub_signature_classical": base64.b64encode(sigs["classical_sig"]).decode(),
+        "scrub_signature_pqc": base64.b64encode(sigs["pqc_sig"]).decode(),
+    }
+
+
+# `affiliations` is the fourth rostered tier and shares the community
+# machinery exactly (CC 4.4.3.2.8 / CIRISPersist#308) — same storage, same
+# revocation table, so the same preimage shape.
+_COHORT_PLANE = {"family": "family", "community": "community",
+                 "affiliations": "community"}
+
+
+def _stored_group(cohort, group_key_id):
+    plane = _COHORT_PLANE[cohort]
+    raw = (engine.lookup_family_json(group_key_id) if plane == "family"
+           else engine.lookup_community_json(group_key_id))
+    stored = json.loads(raw)
+    for m in stored.get("members") or []:
+        # Ground-truth check of _canonical_ts against a member persist itself
+        # serialized. If this fires, the derivation above is stale.
+        assert m["joined_at"] == _canonical_ts(m["joined_at"]), (
+            "persist now spells a stored joined_at as %r, which _canonical_ts "
+            "would rewrite to %r — the AdmitSpec preimage derivation is stale"
+            % (m["joined_at"], _canonical_ts(m["joined_at"])))
+    return stored
+
+
+def roster_member(key_id, joined_at, role=None):
+    """A RosterMember spelled the way persist will re-serialize it.
+
+    `role` is `skip_serializing_if = "Option::is_none"`, so a `None` role must
+    be ABSENT from the preimage, not present-and-null.
+    """
+    member = {"key_id": key_id, "joined_at": _canonical_ts(joined_at)}
+    if role is not None:
+        member["role"] = role
+    return member
+
+
+def admit_spec(cohort, group_key_id, member):
+    """The AdmitSpec authorizing `member`'s addition to `group_key_id`.
+
+    Mirrors `authorize_{family,community}_growth`: read the stored record, push
+    the member, sign `signing_envelope()` (the record minus the server-computed
+    `persist_row_hash`). Reading the record back rather than reusing the dict we
+    wrote means the preimage is built from what persist actually stored.
+    """
+    grown = dict(_stored_group(cohort, group_key_id))
+    grown["members"] = list(grown.get("members") or []) + [member]
+    grown.pop("persist_row_hash", None)
+    return json.dumps(_sign_envelope(grown))
+
+
+def revoke_spec(cohort, group_key_id, removed_key_id, effective_at,
+                reason=None, witness_set=()):
+    """The RevokeSpec authorizing `removed_key_id`'s removal.
+
+    Signed over the cohort's `MembershipRevocation::signing_envelope()`.
+    `removed_at` IS `effective_at` — every field the gate verifies over must be
+    caller-known in advance, so persist never mints a `now` the caller could not
+    have signed.
+    """
+    effective_at = _canonical_ts(effective_at)
+    plane = _COHORT_PLANE[cohort]
+    group_field = "family_key_id" if plane == "family" else "community_key_id"
+    envelope = {
+        group_field: group_key_id,
+        "removed_identity_key_id": removed_key_id,
+        "removed_at": effective_at,
+        "effective_at": effective_at,
+    }
+    if reason is not None:
+        envelope["reason"] = reason
+    if witness_set:
+        envelope["witness_set"] = list(witness_set)
+    # The spec carries only the caller's knobs plus the authority signature;
+    # persist builds the rest of the revocation row from its own arguments.
+    spec = {"effective_at": effective_at}
+    if reason is not None:
+        spec["reason"] = reason
+    if witness_set:
+        spec["witness_set"] = list(witness_set)
+    spec.update(_sign_envelope(envelope))
+    return json.dumps(spec)
 '''
     post = '\nprint(json.dumps(report)); sys.stdout.flush(); os._exit(0)\n'
     return header + preamble + body + post
@@ -649,9 +804,18 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
     passed_all = not (totals.get("failed", 0) or totals.get("error", 0)
                       or totals.get("xpassed", 0))
     url = get_database_url()
+    loaded = WheelMatrix.load()
     report = {
         "schema": "ciris-conformance-report/v1",
-        "matrix": WheelMatrix.load().versions,
+        # `matrix` stays the flat {member: version} an existing consumer reads.
+        # The channel split and the Constitution pin are additive keys, so a
+        # report reader written against v1 keeps working.
+        "matrix": loaded.members,
+        "matrix_channels": {
+            "pypi": loaded.versions,
+            "git_tag": loaded.substrate,
+        },
+        "constitution": loaded.constitution,
         "database_backend": "postgres" if url.startswith("postgres") else "sqlite",
         "exit_status": int(exitstatus),
         "passed_all_gates": passed_all,
