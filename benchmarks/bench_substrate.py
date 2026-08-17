@@ -87,8 +87,15 @@ def run(quick: bool) -> dict:
     d = tempfile.mkdtemp()
     seed = os.path.join(d, "s")
     open(seed, "wb").write(secrets.token_bytes(32))
+    # edge v17 (CIRISEdge#458) will not stand up the Reticulum transport on an
+    # Ed25519-only signer, and `cohab_init_edge_runtime` below is one of the
+    # numbers this bench exists to report. A hybrid signer is also what a real
+    # node carries, so the bootstrap cost measured here stays representative.
+    pqc_seed = os.path.join(d, "p")
+    open(pqc_seed, "wb").write(secrets.token_bytes(32))
     kid_label = "bench-" + secrets.token_hex(6)
-    engine = cp.Engine("sqlite::memory:", kid_label, local_key_id=kid_label, local_key_path=seed)
+    engine = cp.Engine("sqlite::memory:", kid_label, local_key_id=kid_label, local_key_path=seed,
+                       local_pqc_key_id=kid_label + "-pqc", local_pqc_key_path=pqc_seed)
     key_id = engine.register_self_federation_key("agent", "bench-ref", None, None, None)
     pk = engine.local_public_key_b64()
 
@@ -150,7 +157,8 @@ def run(quick: bool) -> dict:
     #    bootstrap, and repeated init spins up accumulating Reticulum listeners.
     #    Done last (it resets the engine singleton). ──
     cp.reset_engine()
-    e2 = cp.Engine("sqlite::memory:", kid_label, local_key_id=kid_label, local_key_path=seed)
+    e2 = cp.Engine("sqlite::memory:", kid_label, local_key_id=kid_label, local_key_path=seed,
+                   local_pqc_key_id=kid_label + "-pqc", local_pqc_key_path=pqc_seed)
     idp = os.path.join(tempfile.mkdtemp(), "t.id")
     open(idp, "wb").write(b"\x00" * 64)
     t0 = time.perf_counter_ns()

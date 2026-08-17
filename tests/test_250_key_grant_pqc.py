@@ -36,7 +36,13 @@ from conftest import run_python_script
 
 pytestmark = pytest.mark.substrate
 
-_V2_ALG = "x25519-mlkem768-aes256-gcm-hkdf-sha256"
+# The v2 hybrid token was RESPELLED with underscores somewhere between the
+# rc2 floor and persist v32.3.0; v1 kept its hyphens. That divergence is not
+# cosmetic — these are wire identifiers a peer compares byte-for-byte, and the
+# suite pins them precisely so a respelling shows up here as a decision rather
+# than as a mismatch in the field. The two spellings now coexisting on the same
+# surface is reported upstream (CIRISPersist#715).
+_V2_ALG = "x25519_mlkem768_aes256_gcm_hkdf_sha256"
 _V1_ALG = "x25519-aes256-gcm-hkdf-sha256"
 
 _GRANT_SCRIPT = r"""

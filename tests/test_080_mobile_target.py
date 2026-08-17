@@ -137,9 +137,15 @@ def _mobile_bringup_script(database_url: str) -> str:
         "report['imported'] = True\n"
         "d = tempfile.mkdtemp()\n"
         "seed = os.path.join(d, 'k'); open(seed, 'wb').write(b'\\x11' * 32)\n"
+        # edge v17 (CIRISEdge#458) requires the ML-DSA-65 half to stand up the
+        # Reticulum transport. On mobile that seed is part of normal keystore
+        # provisioning, so supplying it here is what the target actually ships
+        # with — the 32-byte Ed25519 transport identity asserted below is
+        # unchanged by its presence.
+        "pqc = os.path.join(d, 'p'); open(pqc, 'wb').write(b'\\x22' * 32)\n"
         "idp = os.path.join(d, 't.id'); open(idp, 'wb').write(b'\\x00' * 64)\n"
         "ciris_persist.reset_engine()\n"
-        f"engine = ciris_persist.Engine({db_url_repr}, 'mobile-key', local_key_id='mobile-key', local_key_path=seed)\n"
+        f"engine = ciris_persist.Engine({db_url_repr}, 'mobile-key', local_key_id='mobile-key', local_key_path=seed, local_pqc_key_id='mobile-key-pqc', local_pqc_key_path=pqc)\n"
         "report['keyring_storage_kind'] = engine.keyring_storage_kind()\n"
         "report['transport_pubkey_len'] = len(base64.b64decode(engine.local_public_key_b64()))\n"
         "try:\n"

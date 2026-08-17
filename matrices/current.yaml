@@ -131,4 +131,34 @@ python_versions:
 # corresponding tests carry @pytest.mark.xfail(strict=True). When an
 # issue closes, remove from this list AND remove the xfail marker —
 # strict=True will then flag any silent regression.
-known_failures: []
+known_failures:
+  - issue: "CIRISConformance#87"
+    summary: >-
+      The witness-reserved prefixes (`age_assurance:`, `capacity_assurance:`)
+      gained a `required_delegation_scope` of `infra:attest_assurance`, and the
+      check is not a delegation the emitter can arrange for itself: persist's
+      `check_reserved_prefix_admission` needs `set_node_key_id()` AND the
+      capability conferred to the attesting key from a trust root THIS NODE
+      trusts. The harness has no trust-root ceremony, so every witness emit is
+      refused with `federation_reserved_prefix_emitter_mismatch`. Closing it is
+      new fixture infrastructure (a genesis root + conferral), not a pin bump.
+    tests:
+      - tests/test_350_age_assurance_reservation.py::test_witness_key_admitted_on_age_assurance
+      - tests/test_351_age_band_ratchet.py::test_witness_assurance_outranks_self
+      - tests/test_351_age_band_ratchet.py::test_cross_subject_witness_graduation
+      - tests/test_351_age_band_ratchet.py::test_fine_band_witness_graduation
+      - tests/test_360_steward_binding_admission.py::test_node_steward_binding_is_admitted_and_resolves
+      - tests/test_360_steward_binding_admission.py::test_witness_attestation_graduates_age_bands
+      - tests/test_360_steward_binding_admission.py::test_adult_target_user_binding_is_rejected
+      - tests/test_360_steward_binding_admission.py::test_adult_target_steward_bind_is_rejected
+      - tests/test_360_steward_binding_admission.py::test_unverified_age_target_is_rejected
+      - tests/test_360_steward_binding_admission.py::test_minor_target_user_binding_is_admitted_only_because_minor
+      - tests/test_550_detection_discriminator.py::test_lenscore_detector_key_admitted_on_detection
+      - tests/test_572_capacity_incapacity_gate.py::test_capacity_graduates_per_domain_and_presumes_capacity
+      - tests/test_573_co_stewardship.py::test_steward_bindings_resolve_to_both_stewards
+      - tests/test_573_co_stewardship.py::test_node_never_orphaned_while_one_steward_remains
+    # test_361's three cases fail in a module fixture rather than the call
+    # phase, so a marker cannot reach them — pytest reports a fixture failure as
+    # an error, not an xfail. They use conftest's
+    # `xfail_if_unconferred_assurance_scope`, the same imperative shape as the
+    # pre-existing postgres edge-runtime crash guard.

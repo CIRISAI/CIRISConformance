@@ -131,8 +131,15 @@ k = "node-" + secrets.token_hex(8)
 # build_signed_inbound_envelope (it emits no PQC half).
 engine = cp.Engine(DB_URL, k, local_key_id=k, local_key_path=_sp)
 kid = engine.register_self_federation_key("agent", "wire-ref", None, None, None)
+# `disable_reticulum=True` keeps the engine Ed25519-only — the documented
+# pairing this test is about. edge v17 (CIRISEdge#458) refuses to stand up the
+# RETICULUM transport without an ML-DSA-65 half; provisioning one would make
+# register_self publish a PQC pubkey and the key would stop being
+# hybrid-pending, which is the state `ed25519_fallback` exists to accept. The
+# wire vocabulary is a codec/variant question, not a transport one.
 edge = init_edge_runtime(engine, _idp, listen_addr="127.0.0.1:0",
-                         hybrid_policy="ed25519_fallback")
+                         hybrid_policy="ed25519_fallback",
+                         disable_reticulum=True)
 if not hasattr(edge, "build_signed_inbound_envelope"):
     print(json.dumps({"_error": "absent"})); sys.exit(2)
 dest = edge.signer_key_id()

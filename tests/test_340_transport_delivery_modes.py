@@ -91,10 +91,18 @@ import ciris_persist as cp
 from ciris_edge.ciris_edge import init_edge_runtime
 
 d = tempfile.mkdtemp(); s = os.path.join(d, "s"); open(s, "wb").write(secrets.token_bytes(32))
+# Hybrid signer: this fabric runs a LIVE Reticulum transport, and edge v17
+# (CIRISEdge#458, #393 item 2) will not bring one up on an Ed25519-only signer
+# — without the ML-DSA-65 half the node cannot mint the hybrid-signed
+# SignedTransportDestination, so every peer would drop its frames UNATTRIBUTED
+# at the E3 gate: it would route and never root. A real fabric node carries
+# both keys, which is exactly what these four nodes are standing in for.
+p = os.path.join(d, "p"); open(p, "wb").write(secrets.token_bytes(32))
 idp = os.path.join(d, "id"); open(idp, "wb").write(secrets.token_bytes(64))
 cp.reset_engine()
 k = ROLE + "-" + secrets.token_hex(8)
-eng = cp.Engine(DB_URL, k, local_key_id=k, local_key_path=s)
+eng = cp.Engine(DB_URL, k, local_key_id=k, local_key_path=s,
+                local_pqc_key_id=k + "-pqc", local_pqc_key_path=p)
 kid = eng.register_self_federation_key("agent", ROLE, None, None, None)
 boot = ["127.0.0.1:" + p for p in BOOT_PORTS.split(",") if p]
 listen = "127.0.0.1:" + LISTEN_PORT

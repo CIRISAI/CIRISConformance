@@ -240,6 +240,37 @@ _PG_EDGE_CRASH_REASON = (
     "Tracked: CIRISPersist#354.")
 
 
+# ─── Unconferred assurance scope (CIRISConformance#87) ────────────────
+# `age_assurance:` and `capacity_assurance:` gained a `required_delegation_scope`
+# of `infra:attest_assurance`, and the check is NOT a delegation the emitter can
+# arrange for itself: `check_reserved_prefix_admission` needs
+# `directory.node_key_id()` set AND the capability conferred to the attesting key
+# from a trust root this node trusts. The harness has no trust-root ceremony, so
+# every witness-reserved emit is refused with
+# `federation_reserved_prefix_emitter_mismatch`.
+#
+# Tests that fail in the CALL phase carry `xfail(strict=True)` pointed at #87.
+# This helper is for the ones that fail in a FIXTURE, where a marker cannot
+# reach — pytest reports those as errors, not xfails. Same shape as
+# `xfail_if_pg_edge_runtime_crash` above.
+_UNCONFERRED_SCOPE = "federation_reserved_prefix_emitter_mismatch"
+_UNCONFERRED_REASON = (
+    "witness-reserved prefix refused: `infra:attest_assurance` must be CONFERRED "
+    "from a trust root this node trusts (not self-granted), and the harness has "
+    "no trust-root ceremony. Tracked: CIRISConformance#87.")
+
+
+def xfail_if_unconferred_assurance_scope(result: "ScriptResult") -> None:
+    """Imperatively `pytest.xfail` iff a witness emit was refused for lack of
+    a conferred `infra:attest_assurance` capability.
+
+    Deliberately narrow: it matches ONLY the reserved-prefix rejection token, so
+    a scenario that fails for any other reason still fails loudly. The gate
+    returns the moment #87 lands a conferral fixture."""
+    if _UNCONFERRED_SCOPE in (result.stderr or ""):
+        pytest.xfail(_UNCONFERRED_REASON)
+
+
 def xfail_if_pg_edge_runtime_crash(result: "ScriptResult") -> None:
     """Imperatively `pytest.xfail` iff this is the postgres init_edge_runtime abort.
 

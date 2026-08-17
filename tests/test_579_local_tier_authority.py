@@ -148,7 +148,7 @@ r["producer_no_subject_local_ok"] = _pn not in _ids
 r["producer_named_subject_local_ok"] = _pns not in _ids
 
 # ── Promotion resolves the not-local-eligible flag ──
-_attempt("promote_subject", lambda: A.engine().attestation_promote(_sa))
+_attempt("promote_subject", lambda: A.engine().attestation_promote(_sa, "community"))
 _attempt("overdue_after", _overdue_ids)
 _ids_after = r["overdue_after"].get("value") or []
 r["cleared_after_promote"] = _sa not in _ids_after

@@ -121,7 +121,7 @@ _attempt("insert_local", lambda: A.engine().attestation_insert_local(json.dumps(
 _aid = r["insert_local"].get("value")
 
 # (c) preserved on re-emission (promotion = Consumer relaying as Producer).
-_attempt("promote", lambda: A.engine().attestation_promote(_aid))
+_attempt("promote", lambda: A.engine().attestation_promote(_aid, "community"))
 
 
 def _read_stored_envelope():

@@ -54,10 +54,18 @@ except ImportError as exc:
 
 _d = tempfile.mkdtemp()
 _seed = os.path.join(_d, "local.seed"); open(_seed, "wb").write(b"\x11" * 32)
+# edge v17 (CIRISEdge#458, #393 item 2): the Reticulum transport requires a
+# HYBRID federation signer. Without the ML-DSA-65 half the node cannot mint the
+# hybrid-signed SignedTransportDestination, so every peer drops its frames
+# UNATTRIBUTED at the E3 gate — it would route and never root. A real node
+# carries both keys; provisioning only the Ed25519 half is the fault edge now
+# refuses to boot with, rather than discovering it as silence on the wire.
+_pqc = os.path.join(_d, "local.pqc.seed"); open(_pqc, "wb").write(b"\x22" * 32)
 _idp = os.path.join(_d, "transport.id"); open(_idp, "wb").write(b"\x00" * 64)
 cp.reset_engine()
 engine = cp.Engine(DB_URL, "send-recv-key",
-                   local_key_id="send-recv-key", local_key_path=_seed)
+                   local_key_id="send-recv-key", local_key_path=_seed,
+                   local_pqc_key_id="send-recv-key-pqc", local_pqc_key_path=_pqc)
 # Ephemeral ports so this never collides with other transport scenarios.
 edge = init_edge_runtime(engine, _idp, listen_addr="127.0.0.1:0")
 
