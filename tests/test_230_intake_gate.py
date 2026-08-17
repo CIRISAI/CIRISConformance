@@ -58,18 +58,22 @@ k = "node-" + secrets.token_hex(8)
 engine = cp.Engine(DB_URL, k, local_key_id=k, local_key_path=_seed)
 kid = engine.register_self_federation_key("agent", "intake-ref", None, None, None)
 
-# `disable_reticulum=True` KEEPS the engine Ed25519-only, which is the subject
-# here. edge v17 (CIRISEdge#458) refuses to bring up the RETICULUM transport
-# without an ML-DSA-65 half — it could not mint the hybrid-signed
+# HTTPS-only, so the engine stays Ed25519-only — which is the subject here.
+# edge v17 (CIRISEdge#458) refuses to bring up the RETICULUM transport without
+# an ML-DSA-65 half: it could not mint the hybrid-signed
 # SignedTransportDestination, so peers would drop its frames UNATTRIBUTED at
 # the E3 gate. Adding a PQC half to satisfy that would make register_self
-# publish an ML-DSA pubkey, so the key would no longer be hybrid-pending and
-# `ed25519_fallback` would have nothing left to fall back FROM. The intake gate
-# needs no live transport, so turning Reticulum off preserves the pairing
-# instead of quietly changing what is tested.
-edge = init_edge_runtime(engine, _idp, listen_addr="127.0.0.1:0",
-                         hybrid_policy="ed25519_fallback",
-                         disable_reticulum=True)
+# publish an ML-DSA pubkey, the key would stop being hybrid-pending, and
+# `ed25519_fallback` would have nothing left to fall back FROM — the test would
+# pass while testing something else. `disable_reticulum=True` also REQUIRES an
+# https_listen_addr ("an edge with no transports cannot send or receive"), so
+# the HTTPS leg is what keeps this a real runtime. The intake gate runs after
+# verify, on bytes handed to `dispatch_inbound_bytes` directly, so which
+# transport is up does not change what is under test.
+edge = init_edge_runtime(engine, _idp, hybrid_policy="ed25519_fallback",
+                         disable_reticulum=True,
+                         https_listen_addr="127.0.0.1:0",
+                         https_dev_self_signed=True)
 
 if not hasattr(edge, "build_signed_inbound_envelope"):
     print(json.dumps({"_error": "absent"})); sys.exit(2)
