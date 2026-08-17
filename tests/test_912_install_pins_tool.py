@@ -65,6 +65,60 @@ def test_propagation_race_classifier(tool, output, expected, label):
     assert tool._is_propagation_race(output, _PINS) is expected, label
 
 
+# ─── retention eviction vs propagation race ───────────────────────────
+# Both print "Could not find a version that satisfies the requirement", and
+# they need OPPOSITE responses. This is not hypothetical: CIRISConformance
+# `main`'s scheduled run went red nightly from 2026-08-13 because
+# ciris-server 0.5.131 aged out of the index's ~5-release retention window,
+# and every one of those runs spent the full six-attempt linear backoff before
+# reporting a transient-sounding reason for a failure that could never clear.
+
+_SERVER_PINS = {"ciris-server": "0.5.131"}
+_EVICTED = (
+    "ERROR: Could not find a version that satisfies the requirement "
+    "ciris-server==0.5.131 (from versions: 0.5.165, 0.5.166, 0.5.167, 0.5.169, "
+    "0.5.170, 0.5.171, 0.5.172, 0.5.173, 0.5.174)\n"
+    "ERROR: No matching distribution found for ciris-server==0.5.131"
+)
+_NOT_YET_PROPAGATED = (
+    "ERROR: Could not find a version that satisfies the requirement "
+    "ciris-server==0.5.176 (from versions: 0.5.169, 0.5.170, 0.5.171)\n"
+    "ERROR: No matching distribution found for ciris-server==0.5.176"
+)
+
+
+def test_retention_eviction_is_not_retried(tool):
+    """Index holds ONLY newer versions ⇒ the pin aged out. Fail fast."""
+    assert tool._is_propagation_race(_EVICTED, _SERVER_PINS) is False
+
+
+def test_retention_eviction_names_itself_in_the_error(tool):
+    report = tool._eviction_report(_EVICTED, _SERVER_PINS)
+    assert report and "ciris-server==0.5.131" in report
+    assert "retention window" in report, report
+
+
+def test_pin_newer_than_the_index_is_still_a_race(tool):
+    """Index holds only OLDER versions ⇒ our publish hasn't landed here yet."""
+    assert tool._is_propagation_race(
+        _NOT_YET_PROPAGATED, {"ciris-server": "0.5.176"}) is True
+    assert tool._eviction_report(
+        _NOT_YET_PROPAGATED, {"ciris-server": "0.5.176"}) is None
+
+
+def test_no_from_versions_list_stays_a_race(tool):
+    """Without pip's inventory there is nothing to compare — keep retrying."""
+    out = "ERROR: No matching distribution found for ciris-server==0.5.131"
+    assert tool._is_propagation_race(out, _SERVER_PINS) is True
+
+
+def test_from_versions_none_stays_a_race(tool):
+    """`(from versions: none)` says nothing about ordering."""
+    out = ("ERROR: Could not find a version that satisfies the requirement "
+           "ciris-server==0.5.131 (from versions: none)")
+    assert tool._is_propagation_race(out, _SERVER_PINS) is True
+
+
 def test_load_pins_reads_stack(tool, tmp_path):
     m = tmp_path / "current.yaml"
     m.write_text(

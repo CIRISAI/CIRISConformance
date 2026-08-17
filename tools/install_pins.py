@@ -65,6 +65,11 @@ _PROPAGATION_PATTERNS = (
     re.compile(r"No matching distribution found for\s+(\S+)", re.I),
     re.compile(r"Could not find a version that satisfies the requirement\s+(\S+)", re.I),
 )
+# pip prints what the index DOES hold alongside the miss:
+#   Could not find a version that satisfies the requirement ciris-server==0.5.131
+#     (from versions: 0.5.165, 0.5.166, …)
+# That list is how a retention eviction is told apart from a propagation race.
+_FROM_VERSIONS = re.compile(r"\(from versions:\s*([^)]*)\)", re.I)
 # If pip reports a true resolver conflict, do NOT retry — that's a real pin bug.
 _HARD_CONFLICT = re.compile(
     r"ResolutionImpossible|conflicting dependencies|"
@@ -209,23 +214,77 @@ def resolve_install_args(
     return args, applied_pypi
 
 
+def _index_is_ahead(output: str, pinned_version: str) -> bool:
+    """True when the index holds only versions NEWER than the one we pinned.
+
+    This is the retention eviction, not a propagation race, and the two need
+    opposite responses. ciris-server's index retains only ~5 releases, so a pin
+    that sat still long enough simply stops existing — permanently. Retrying
+    that six times with linear backoff wastes a minute per cell and then reports
+    a transient-sounding reason for a failure that will never clear.
+
+    The tell is pip's own `(from versions: …)` list: if everything the index
+    offers is newer than our pin, the index moved past us. A pin NEWER than
+    everything listed is the genuine race — the publish hasn't reached this
+    CDN edge yet.
+    """
+    m = _FROM_VERSIONS.search(output)
+    if not m:
+        return False
+    available = [v.strip() for v in m.group(1).split(",") if v.strip()]
+    if not available or "none" in (v.lower() for v in available):
+        return False
+    try:
+        from packaging.version import InvalidVersion, Version
+    except ImportError:  # packaging is a pip dependency, but don't hard-fail
+        return False
+    try:
+        pinned = Version(pinned_version)
+        parsed = [Version(v) for v in available]
+    except InvalidVersion:
+        return False
+    return all(v > pinned for v in parsed)
+
+
 def _is_propagation_race(output: str, pins: dict[str, str]) -> bool:
-    """True only for "a PINNED PyPI version isn't on this index edge yet".
+    """True only for "a PINNED PyPI version isn't on this index edge YET".
 
     `pins` must be the PyPI members alone. A git member reaching this function
     would make a bad tag look like a race and burn the full retry budget.
     """
     if _HARD_CONFLICT.search(output):
         return False
-    pinned_names = {p.lower() for p in pins}
+    lowered = {p.lower(): v for p, v in pins.items()}
     for pat in _PROPAGATION_PATTERNS:
         for m in pat.finditer(output):
             # the matched requirement text starts with the package name
             req = m.group(1).strip().lower()
             name = re.split(r"[=<>!~ ]", req, 1)[0]
-            if name in pinned_names:
-                return True
+            if name not in lowered:
+                continue
+            if _index_is_ahead(output, lowered[name]):
+                return False  # evicted, not pending — fail fast
+            return True
     return False
+
+
+def _eviction_report(output: str, pins: dict[str, str]) -> str | None:
+    """Name the evicted pin for the error message, if that's what happened."""
+    for pat in _PROPAGATION_PATTERNS:
+        for m in pat.finditer(output):
+            req = m.group(1).strip()
+            name = re.split(r"[=<>!~ ]", req, 1)[0]
+            for pkg, ver in pins.items():
+                if pkg.lower() == name.lower() and _index_is_ahead(output, ver):
+                    return (
+                        f"{pkg}=={ver} is no longer on the index — every version "
+                        f"it offers is newer. This is the retention window, not a "
+                        f"propagation race: the index retains only the most recent "
+                        f"releases, so this pin rots fastest. Bump it in "
+                        f"matrices/current.yaml (and evidence/floor_pins.txt if "
+                        f"that is what failed)."
+                    )
+    return None
 
 
 def install(args: list[str], pins: dict[str, str], *,
@@ -258,10 +317,15 @@ def install(args: list[str], pins: dict[str, str], *,
             time.sleep(wait)
             continue
 
-        # Real failure (conflict, build error, bad git tag, or retries exhausted).
-        reason = ("retries exhausted (still a propagation race)"
-                  if _is_propagation_race(combined, pins)
-                  else "non-transient pip failure — NOT retried")
+        # Real failure (eviction, conflict, build error, bad git tag, or
+        # retries exhausted).
+        evicted = _eviction_report(combined, pins)
+        if evicted:
+            reason = evicted
+        elif _is_propagation_race(combined, pins):
+            reason = "retries exhausted (still a propagation race)"
+        else:
+            reason = "non-transient pip failure — NOT retried"
         print(f"::error::set install failed: {reason}", flush=True)
         return proc.returncode
 
