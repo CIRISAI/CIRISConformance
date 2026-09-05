@@ -13,19 +13,34 @@ settled-local. The substrate drives it to federation-tier promotion; promotion
 "computes the hybrid signature and flips the row federation-visible … It is
 **idempotent** (promoting a `federation` row returns it unchanged)" (§5.3.2.4.2).
 
-What is REAL on the floor (persist 16.1.1), driven end-to-end here:
+What is REAL on the floor (persist v40.0.0), driven end-to-end here:
 
 - **Local-tier write of a subject-side consent revocation.** A
   `consent:state:revoked` attestation carrying a subject in `subject_key_ids` (the
   subject holds revocation authority) is admitted to the local tier via
   `Engine.attestation_insert_local(input_json)` (returns the attestation id).
-- **Promotion local → federation.** `Engine.attestation_promote(attestation_id)`
-  returns `True` — the local→federation promotion (the hybrid-sign-and-flip step;
-  the engine carries a PQC identity so the CC 5.3.2.4.3 hybrid signature is
-  computed at promote).
-- **Idempotency.** A second `attestation_promote` of the same id returns `False` —
-  an already-federation row is returned unchanged (§5.3.2.4.2). The `True → False`
-  transition IS the observable tier flip local→federation.
+- **Promotion local → federation is TWO verbs, and the actor signs.** persist
+  v39.0.0 retired `attestation_promote` — it re-signed the row with the NODE's
+  key, cleared every co-scrub and rewrote `cohort_scope` inside the signed
+  envelope, so the fabric became the author of an actor's claim (persist FSD
+  "promotion preserves the actor signature"). What stands in its place:
+  `Engine.enter_mesh(id, contextual_integrity)` flips the local row to the
+  federation tier over the SAME bytes (§5.3.2.4.2 — `cohort_scope` is one of
+  those bytes, so a `(local, self)` row enters as `(federation, self)`), and
+  `Engine.widen_audience(id, contextual_integrity, strip)` writes a `supersedes`
+  row the actor signs at the strictly wider `cohort_scope` (CC 4.4.3.3.1). Both
+  take the nine-axis CC 4.5.1.1 ContextualIntegrity description, derived
+  truthfully from the row by `Engine.describe_crossing(id, scope, cohort, basis)`;
+  a caller that edits an axis to lie is refused by the axis's name. The engine
+  carries a PQC identity so the CC 5.3.2.4.3 hybrid signature is computed.
+- **Idempotency is TYPED.** A second `enter_mesh` of the same id reports
+  `already_in_mesh`; a second `widen_audience` of the same prior by the same
+  attester reports `already_widened` (CEG §6.1 dedup) — nothing is touched
+  (§5.3.2.4.2). The `crossed → already_*` transition IS the observable tier flip.
+- **v40.0.0 — the widening carries the CLAIM's instant.** The `supersedes` row's
+  `asserted_at` is the prior's, verbatim; the placement's own instant is the
+  signed `widened_at`. Asserted here so a re-dated widening (the v39 defect
+  that made two widenings of one claim read as contradictory) cannot return.
 - **The 24-hour SLA overdue detector — NOW REAL (persist 16.1.x, closes
   CIRISPersist#434 which this harness filed).** The
   `hard_case:consent_revocation_promotion_overdue` observability the substrate MUST
@@ -34,7 +49,7 @@ What is REAL on the floor (persist 16.1.1), driven end-to-end here:
   `Engine.list_consent_revocation_promotion_overdue_json(sla_seconds)`. Driven here:
   an un-promoted subject-side `consent:state:revoked` is flagged overdue at
   `sla_seconds=0` (rests-local terminal state, forbidden by §5.3.2.2), and after
-  `attestation_promote` the overdue list no longer contains it — the detector
+  it enters the mesh the overdue list no longer contains it — the detector
   tracks exactly the "must not rest local" invariant.
 
   (Historical note: this detector was previously **absent** from the Engine FFI —
@@ -42,10 +57,11 @@ What is REAL on the floor (persist 16.1.1), driven end-to-end here:
   16.1.x ships it; the gap is closed and the leg below is genuinely green.)
 
 Real surface: `Engine.attestation_insert_local(input_json)` (LocalAttestationInput
-— requires a full CC 2.1 `attestation_envelope`), `Engine.attestation_promote(
-attestation_id)`, `Engine.list_consent_revocation_promotion_overdue_json(
-sla_seconds)`. The engine is constructed with a PQC identity so promotion's hybrid
-sign succeeds.
+— requires a full CC 2.1 `attestation_envelope`), `Engine.describe_crossing(id,
+scope, cohort_target, basis_json)`, `Engine.enter_mesh(id, ci_json)`,
+`Engine.widen_audience(prior_id, ci_json, strip)`,
+`Engine.list_consent_revocation_promotion_overdue_json(sla_seconds)`. The engine
+is constructed with a PQC identity so the crossing's hybrid sign succeeds.
 """
 
 from __future__ import annotations
@@ -94,7 +110,8 @@ class Ident:
                          local_pqc_key_id=self.k + "-pqc", local_pqc_key_path=self.p)
 
 
-for surface in ("attestation_insert_local", "attestation_promote"):
+for surface in ("attestation_insert_local", "describe_crossing", "enter_mesh",
+                "widen_audience", "list_consent_revocation_promotion_overdue_json"):
     if not hasattr(Ident("probe", "agent", "probe").engine(), surface):
         report({"_error": "absent", "surface": surface})
 
@@ -109,6 +126,21 @@ def _attempt(label, fn):
         r[label] = {"outcome": "ok", "value": fn()}
     except Exception as exc:
         r[label] = {"outcome": "err", "token": str(exc)[:200]}
+
+
+# persist v39.0.0: the crossing is described, not asserted. `describe_crossing`
+# derives the nine CC 4.5.1.1 axes from the row for a stated audience + basis;
+# the verbs re-derive and refuse a lie by the axis's name. The basis is
+# producer authority — the actor publishes its own claim (CC 5.3.2.2).
+_BASIS = json.dumps({"kind": "producer_authority"})
+
+
+def _enter(engine, aid):
+    return engine.enter_mesh(aid, engine.describe_crossing(aid, "self", None, _BASIS))
+
+
+def _widen(engine, aid, audience="federation"):
+    return engine.widen_audience(aid, engine.describe_crossing(aid, audience, None, _BASIS), [])
 
 
 # ── Local-tier write of a subject-side consent revocation ──
@@ -133,32 +165,50 @@ _local_input = {
 _attempt("insert_local", lambda: A.engine().attestation_insert_local(json.dumps(_local_input)))
 
 _aid = r["insert_local"].get("value")
-# ── Promotion local → federation (True), then idempotent re-promote (False) ──
-# persist v21.5.0 (CIRISPersist#519) — a promotion now CARRIES its placement:
-# `attestation_promote(id, cohort_scope)`. A tier flip without a coherent
-# federation-visible scope is rejected, and `self` is rejected specifically,
-# because "promote to federation tier, visible to nobody" is not a state.
-# The placement lands WITH the tier flip rather than as a pre-stamp, so a
-# refused promotion leaves no mutated row behind (#589 / AV-9).
+# ── Promotion local → federation: enter (same bytes), then widen (actor-signed) ──
+# `enter_mesh` flips the (local, self) row to (federation, self) over the SAME
+# bytes — a self row is structurally undiscoverable (CC 5.2) and never advertised,
+# so reaching any wider audience MUST go through `widen_audience`, which writes a
+# `supersedes` the actor signs at the wider scope. The prior row is untouched.
 #
 # `federation`, NOT `community`, and the difference is the point. This row
 # NAMES A THIRD PARTY — `subject_key_ids` carries the revoking subject, which
-# is the whole shape of a subject-side revocation. `check_promotion_cohort_
-# standing` (CIRISPersist#589, AV-45) refuses exactly that for the TARGETED
-# cohorts: to place a row at `family`/`community` it must name no party but its
-# own producer, or it is an unverifiable claim about someone else's cohort
-# arriving through the one door AV-45 cannot stand at. The broad belonging
-# tiers (`affiliations`/`species`/`biosphere`/`federation`) have no cohort to
-# have standing in, so they are the correct home for a row like this — and
-# `federation` is what CC 5.3.2.2 means by promotion anyway.
-_attempt("promote_1", lambda: A.engine().attestation_promote(_aid, "federation"))
-_attempt("promote_2", lambda: A.engine().attestation_promote(_aid, "federation"))
+# is the whole shape of a subject-side revocation. The widening door (persist
+# `check_promotion_cohort_standing`, CIRISPersist#589, AV-45) refuses exactly
+# that for the TARGETED cohorts: to place a row at `family`/`community` it must
+# name no party but its own producer, or it is an unverifiable claim about
+# someone else's cohort. The broad belonging tiers (`affiliations`/`species`/
+# `biosphere`/`federation`) have no cohort to have standing in, so they are the
+# correct home for a row like this — and `federation` is what CC 5.3.2.2 means
+# by promotion anyway.
+_attempt("enter_1", lambda: _enter(A.engine(), _aid))
+_attempt("widen_1", lambda: _widen(A.engine(), _aid))
+# Idempotent re-crossing: typed outcomes, nothing touched (§5.3.2.4.2).
+_attempt("enter_2", lambda: _enter(A.engine(), _aid))
+_attempt("widen_2", lambda: _widen(A.engine(), _aid))
+
+
+def _row(aid):
+    page = json.loads(A.engine().list_attestations_for(A.kid, None, 50, A.kid))
+    items = page.get("items", page.get("attestations", []))
+    row = next(x for x in items if x.get("attestation_id") == aid)
+    env = row.get("attestation_envelope")
+    row["attestation_envelope"] = json.loads(env) if isinstance(env, str) else env
+    return row
+
+
+# v40.0.0: the widening carries the claim's `asserted_at` verbatim and its own
+# signed `widened_at` — read both rows back to compare.
+_wid = ((r["widen_1"].get("value") or {}).get("attestation_id")
+        if r["widen_1"]["outcome"] == "ok" else None)
+_attempt("prior_row", lambda: _row(_aid))
+_attempt("widened_row", lambda: _row(_wid))
 
 # ── 24-hour SLA overdue detector (persist 16.1.x, CIRISPersist#434) ──
 # A SEPARATE, deliberately un-promoted subject-side revocation. At sla_seconds=0 it
 # is instantly overdue (it "rests local", the §5.3.2.2-forbidden terminal state);
-# after promotion the detector no longer lists it. `_aid` above is already
-# federation-tier by now (promote_1), so it cannot pollute this observation.
+# once it enters the mesh the detector no longer lists it. `_aid` above is already
+# federation-tier by now (enter_1), so it cannot pollute this observation.
 _od_input = {
     "attesting_key_id": A.kid,
     "attestation_type": "consent:state:revoked",
@@ -184,7 +234,9 @@ def _overdue_ids():
 
 
 _attempt("overdue_before_promote", lambda: _od_aid in _overdue_ids())
-_attempt("od_promote", lambda: A.engine().attestation_promote(_od_aid, "federation"))
+_attempt("od_enter", lambda: _enter(A.engine(), _od_aid))
+_attempt("overdue_after_enter", lambda: _od_aid in _overdue_ids())
+_attempt("od_widen", lambda: _widen(A.engine(), _od_aid))
 _attempt("overdue_after_promote", lambda: _od_aid in _overdue_ids())
 
 r["stage"] = "done"
@@ -211,8 +263,9 @@ def test_subject_revocation_is_written_local_then_promoted(promotion):
 
     `attestation_insert_local` admits the `consent:state:revoked` (subject-side,
     `subject_key_ids` names the revoking subject) and returns its id;
-    `attestation_promote(id)` returns `True` — the local→federation promotion that
-    computes the CC 5.3.2.4.3 hybrid signature and flips the row federation-visible.
+    `enter_mesh` reports `crossed` — the local→federation flip over the same bytes
+    — and `widen_audience` reports `crossed` with a NEW attestation id: the
+    actor-signed `supersedes` at `federation` that makes the revocation visible.
     """
     r = promotion
     assert r["insert_local"]["outcome"] == "ok", (
@@ -220,26 +273,71 @@ def test_subject_revocation_is_written_local_then_promoted(promotion):
         f"{r['insert_local']}")
     assert isinstance(r["insert_local"]["value"], str) and r["insert_local"]["value"], (
         f"attestation_insert_local did not return an attestation id: {r['insert_local']}")
-    assert r["promote_1"]["outcome"] == "ok", f"promotion errored: {r['promote_1']}"
-    assert r["promote_1"]["value"] is True, (
-        f"promoting the local-tier subject revocation did not return True (the "
-        f"local→federation flip): {r['promote_1']}")
+    assert r["enter_1"]["outcome"] == "ok", f"enter_mesh errored: {r['enter_1']}"
+    assert r["enter_1"]["value"].get("outcome") == "crossed", (
+        f"entering the mesh with the local-tier subject revocation did not report "
+        f"`crossed` (the local→federation flip): {r['enter_1']}")
+    assert r["enter_1"]["value"].get("attestation_id") == r["insert_local"]["value"], (
+        f"enter_mesh crossed a DIFFERENT row than the one written — the same-bytes "
+        f"contract of §5.3.2.4.2 is broken: {r['enter_1']}")
+    assert r["widen_1"]["outcome"] == "ok", f"widen_audience errored: {r['widen_1']}"
+    assert r["widen_1"]["value"].get("outcome") == "crossed", (
+        f"widening the entered revocation to `federation` did not report `crossed`: "
+        f"{r['widen_1']}")
+    assert r["widen_1"]["value"].get("attestation_id") not in (None, r["insert_local"]["value"]), (
+        f"the widening did not write a NEW `supersedes` row — the prior must stay "
+        f"untouched and the wider claim must be its own actor-signed row: {r['widen_1']}")
 
 
 @pytest.mark.requires_persist
 def test_promotion_is_idempotent(promotion):
-    """CC 5.3.2.4.2: promotion is idempotent — re-promoting a federation row returns
+    """CC 5.3.2.4.2: promotion is idempotent — re-crossing a federation row returns
     it unchanged.
 
-    A second `attestation_promote` of the same id returns `False` (already
-    federation-tier, no-op). The `True → False` transition is the observable proof
-    the row moved local→federation and stays there.
+    A second `enter_mesh` of the same id reports `already_in_mesh`; a second
+    `widen_audience` of the same prior by the same attester reports
+    `already_widened` (CEG §6.1 dedup at the put door). Neither raises and neither
+    writes. The `crossed → already_*` transition is the observable proof the row
+    moved local→federation and stays there.
     """
     r = promotion
-    assert r["promote_2"]["outcome"] == "ok", f"second promote errored: {r['promote_2']}"
-    assert r["promote_2"]["value"] is False, (
-        f"re-promoting an already-federation row was not idempotent (expected "
-        f"False/unchanged): {r['promote_2']}")
+    assert r["enter_2"]["outcome"] == "ok", f"second enter_mesh errored: {r['enter_2']}"
+    assert r["enter_2"]["value"].get("outcome") == "already_in_mesh", (
+        f"re-entering an already-federation row was not the typed idempotent "
+        f"outcome (expected `already_in_mesh`): {r['enter_2']}")
+    assert r["widen_2"]["outcome"] == "ok", f"second widen_audience errored: {r['widen_2']}"
+    assert r["widen_2"]["value"].get("outcome") == "already_widened", (
+        f"re-widening the same prior was not deduplicated (expected "
+        f"`already_widened`, CEG §6.1): {r['widen_2']}")
+
+
+@pytest.mark.requires_persist
+def test_widening_carries_the_claims_instant(promotion):
+    """persist v40.0.0 / CC 2.6.7: a widening asserts the CLAIM's instant verbatim;
+    the placement's own instant is the signed `widened_at`.
+
+    The `supersedes` row written by `widen_audience` carries the prior's
+    `asserted_at` byte-for-byte and a `widened_at` that is not before it. A
+    widening stamped with its placement time would make two widenings of one
+    claim read as two contradictory claims (the v39 defect v40 closed).
+    """
+    r = promotion
+    assert r["prior_row"]["outcome"] == "ok", f"could not read the prior row back: {r['prior_row']}"
+    assert r["widened_row"]["outcome"] == "ok", f"could not read the widening back: {r['widened_row']}"
+    prior, widened = r["prior_row"]["value"], r["widened_row"]["value"]
+    assert widened["attestation_envelope"].get("asserted_at") == prior["attestation_envelope"].get("asserted_at"), (
+        f"the widening re-dated the claim: prior asserted_at="
+        f"{prior['attestation_envelope'].get('asserted_at')!r} widening asserted_at="
+        f"{widened['attestation_envelope'].get('asserted_at')!r}")
+    widened_at = widened["attestation_envelope"].get("widened_at")
+    assert isinstance(widened_at, str) and widened_at, (
+        f"the widening carries no signed `widened_at` — the placement's own instant "
+        f"is unrecorded (v40.0.0 W15): {widened['attestation_envelope']}")
+    assert widened_at >= widened["attestation_envelope"]["asserted_at"], (
+        f"`widened_at` {widened_at!r} precedes the claim's asserted_at "
+        f"{widened['attestation_envelope']['asserted_at']!r}")
+    assert widened["attestation_envelope"].get("references_attestation_id") == prior["attestation_id"], (
+        f"the widening does not reference its prior: {widened['attestation_envelope']}")
 
 
 @pytest.mark.requires_persist
@@ -270,13 +368,13 @@ def test_promotion_clears_the_overdue_flag(promotion):
     """CC 5.3.2.2: promotion is a conformant terminal state, so a promoted revocation
     is no longer overdue.
 
-    After `attestation_promote` drives the revocation local→federation, the same
+    After `enter_mesh` drives the revocation local→federation, the same
     `list_consent_revocation_promotion_overdue_json(0)` no longer lists it — the
-    detector tracks exactly the un-promoted set, and promotion resolves the SLA.
+    detector tracks exactly the un-promoted set, and the crossing resolves the SLA.
     """
     r = promotion
-    assert r["od_promote"]["outcome"] == "ok" and r["od_promote"]["value"] is True, (
-        f"promoting the overdue revocation did not return True: {r['od_promote']}")
+    assert r["od_enter"]["outcome"] == "ok" and r["od_enter"]["value"].get("outcome") == "crossed", (
+        f"entering the mesh with the overdue revocation did not report `crossed`: {r['od_enter']}")
     assert r["overdue_after_promote"]["outcome"] == "ok", (
         f"the overdue re-check errored: {r['overdue_after_promote']}")
     assert r["overdue_after_promote"]["value"] is False, (

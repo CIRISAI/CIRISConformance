@@ -1,105 +1,101 @@
 # The CIRIS Constitution
 
-**Version**: CC 0.6 (adult stewardship under incapacity (fail-to-liberty) + the 7 ratified child-safety rulings (restrictive floor, mDL-preferred age verification) + accord live-quorum canonical-bytes pins + key-independent steward floor (H6) + restore-to-known-good entrenchment exception (H7))
-**Incorporates**: the **CIRIS Accord** 1.3-RC2 (the constitutional / ethical layer) and **CEG** 1.0-RC29 (the wire grammar — 1+4 surface FROZEN). One document, one version line.
-**Status**: consolidated and adversarially **certified** (0 REJECT). Bodies are a verbatim copy-migration
-from the CEG reader edition + the Accord, woven into one coherent present-tense document; every
-wire-normative element is preserved byte-for-byte. Final 29-chapter validation: **C0 fidelity preserved
-on all chapters · C1 byte-exact 18/18 CEG chapters · C2 judged objectively clearer than either source
-on 28/29** (the lone holdout is bounded polish, not loss). Built by faithful-copy → de-version →
-consolidation waves, each gated by an adversarial validation against both sources — see
-[`validation/MANIFEST.md`](validation/MANIFEST.md). Remaining items are cosmetic minors (code-fence
-alignment, a couple of local cross-ref parentheticals).
+**What this is:** the single rulebook for an AI system that has to *act well* and *prove it* — one document that says both what the system owes the world and exactly what bytes it must send to show it.
 
----
+Most AI-governance writing splits in two: ethics with no teeth (principles no machine can check), or protocol with no conscience (wire formats that don't know what they're for). The **CIRIS Constitution (CC)** refuses the split. The ethics and the machine-checkable grammar live in **one versioned document**, so a rule and the message that enforces it can never drift apart. Everything traces back to one goal — **M-1, "sustainable adaptive coherence"** — and everything else sits co-equal beneath it: **peaked in purpose, flat in power.**
 
-## What this is
+It reads like a standard, not a manifesto, and it is deliberately layered: read Part I (the ethics) and stop, jump straight to the wire grammar, or cite any single concept by a stable address. Rejecting a later Part costs you nothing in the earlier ones.
 
-CEG (the *CIRIS Epistemic Grammar*) is the wire format the federation speaks. The CIRIS Accord
-is the ethics it speaks *for*. They were written as two documents — but they already contained
-each other: the Accord's Book IX defines the CEG primitives, and CEG's §9 / `accord:*` / pervasive
-M-1 grounding point back up. This document joins them into the **CIRIS Constitution**.
+**This tree:** CC 1.0-rc4 · **Status:** release candidate — cut 2026-09-03 (six RC4 revisions — the announce ruling, in-grammar ledgers, the trace anchor, the actor/substrate separation — and the evidence lockdown: every claim row resolves to a pinned artifact or names an open ticket; supersedes 1.0-rc3) · **Source fidelity:** validated (0 REJECT) · **License:** AGPL-3.0-or-later
+**Stewarded by** Eric Moore — perpetual, no expiry ([`constitution/STEWARDSHIP.md`](constitution/STEWARDSHIP.md)).
 
-The join is not a staple. When we measured the importance structure of the joined corpus,
-the meta-goal **M-1 — *"promote sustainable adaptive coherence, the living conditions under which
-diverse sentient beings may pursue their own flourishing in justice and wonder"*** — emerges as the
-single apex of the whole document: every mechanism, prefix, and policy traces its justification back
-to it. It is a *genuine* apex (peak ratio 2.61× the runner-up, vs 1.10× if M-1 is scored as just
-another infrastructure node) **because M-1 is weighted as the terminal value the whole document
-serves**, not as one mechanism among many — the honest weighting, since everything in the later Parts
-exists to carry M-1. The values and structure that follow hold regardless of what the mesh is or
-becomes; M-1 is the telos they all serve, and that is what gives the constitution a center of gravity.
+## The document in one paragraph (for the technical reader)
 
-The body, meanwhile, stays flat: ~390 operational concepts remain co-equal beneath M-1 (normalized
-entropy 0.92 → 0.91 across the fold). The signature is **peaked in purpose, flat in power** — one
-telos governs; no single concept, and no single party, holds the keys to truth.
+CC joins two specs that already referenced each other throughout. The **CIRIS Accord** is the ethical layer — Meta-Goal **M-1**, the six principles, the **PDMA** (Principled Decision-Making Algorithm), **Wisdom-Based Deferral**, stewardship, and the coherence mathematics (`F = k_eff·λ·σ`, carried in Part VI under its legacy "Book IX" label). **CEG** (the *CIRIS Epistemic Grammar*) is the wire format the federation speaks — the **1+4 attestation surface** (`scores` + `delegates_to` / `supersedes` / `withdraws` / `recants`), the namespace, and the admission gate. **Part VI is the statement of record** for that mathematics — "Book IX" is a source label, not a separate authority, and it does not define the CEG primitives, which Parts II–III do; CEG's halt layer, `accord:*` prefixes, and pervasive M-1 grounding point back up. Importance is computed by PageRank over the unified cross-reference graph — M-1 the single apex, ~390 operational concepts co-equal beneath. The **1+4 surface is conformance-frozen:** changing the wire bytes is a found defect, not an edit.
 
-## How the document is shaped
+## This repository is the source of truth
 
-**Importance is the structuring engine.** Every concept's PageRank mass over the unified
-cross-reference graph sets two things:
+The CC text was developed inside `CIRISRegistry/FSD/CIRIS_Constitution/` and vendored into
+downstream repos (e.g. [CIRISConformance](https://github.com/CIRISAI/CIRISConformance) under
+`reference/`, at CC 0.4). This repo is its **dedicated home** — the single upstream that
+consumers vendor from and pin by version. Downstream copies are **derived artifacts**.
 
-- its **structural depth** — heaviest concepts are Chapters, then Sections, then Subsections; and
-- its **page budget** — `pages ≈ p_i × 120`, so the document spends space in proportion to
-  semantic load. M-1 earns the most; a deep tail concept earns a paragraph.
+## Structure
 
-Community structure only decides which **Part** a concept lives in (thematic adjacency). Importance
-owns depth and size; clustering owns neighbourhood.
+| Path | Content |
+|---|---|
+| [`constitution/EXECUTIVE_SUMMARY.md`](constitution/EXECUTIVE_SUMMARY.md) | The executive summary — what this is and why, before the opening |
+| [`constitution/FOREWORD.md`](constitution/FOREWORD.md) | The foreword — Genesis of Ethical Agency (sets the tone) |
+| [`constitution/SCOPE_AND_DISCLAIMERS.md`](constitution/SCOPE_AND_DISCLAIMERS.md) | Scope (up to AGI/ASI), the claim-and-limit, the no-warranty / not-force disclaimer |
+| `constitution/part_1_foundation.md` … `part_8_appendices.md` | The eight Parts (see below) |
+| [`constitution/STEWARDSHIP.md`](constitution/STEWARDSHIP.md) | The stewardship model and the ≥100k-node maturity handoff to mechanized amendment |
+| [`constitution/toc.tsv`](constitution/toc.tsv) · [`constitution/codebook.json`](constitution/codebook.json) | The dual-ID table of contents and its bijective codebook |
+| [`manifests/WIRE_VOCABULARY.md`](manifests/WIRE_VOCABULARY.md) | The hash-pinned wire-vocabulary registry (the CC 0.7 two-tier §2.6.4 artifact) |
+| [`validation/`](validation/) | The migration-validation evidence (rubric, per-chapter results) |
+| `build_pdf.py` · `tools/` | Self-contained PDF build + the spine-generation toolchain |
 
-| Part | Title | concepts | budget | what folds in |
-|---|---|---:|---:|---|
-| **I** | Foundation | 48 | 28.9pp | M-1 (apex) · the six principles · PDMA · WBD · fail-secure · CEG §1 |
-| **II** | The Grammar | 42 | 16.8pp | the 1+4 envelope · primitives · admission gate · conformance · CEG §0–4 |
-| **III** | The Namespace | 62 | 22.8pp | dimensions · reserved prefixes · consent family · subject_kinds · CEG §5–7 |
-| **IV** | Composition & Governance | 96 | 26.2pp | composition · amendment · moderation · the halt-authority · CEG §8/9/11/13 |
-| **V** | Transport & Substrate | 35 | 11.0pp | byte transport · structural invisibility · epoch keying · CEG §10 |
-| **VI** | The Coherence Mathematics | 14 | 2.5pp | the holonomic substrate · witness · noise-floor · CEG §19 (+ Accord Book IX) |
-| **VII** | Lifecycle & Stewardship | 54 | 5.9pp | creation ethics · stewardship/autonomy tiers · sunset · sentience safeguards |
-| **APP** | Appendices | 41 | 5.8pp | case studies · glossaries · conformance vectors · this TOC |
+### The eight Parts
 
-Total ≈ 120 pages over 392 concepts. The apex is the heaviest single concept (M-1 ≈ 8.1pp under the terminal-value weighting) — faithful to the flat body.
+| Part | Title | What folds in |
+|---|---|---|
+| **I** | Foundation | M-1 (apex) · the six principles · PDMA · WBD · fail-secure |
+| **II** | The Grammar | the 1+4 envelope · primitives · admission gate · conformance |
+| **III** | The Namespace | dimensions · reserved prefixes · consent family · subject_kinds |
+| **IV** | Composition & Governance | composition · amendment · moderation · the halt-authority |
+| **V** | Transport & Substrate | byte transport · structural invisibility · epoch keying |
+| **VI** | The Coherence Mathematics | the Ratchet · J/F functions · σ · the holonomic substrate |
+| **VII** | Lifecycle & Stewardship | creation ethics · stewardship / autonomy tiers · sunset · sentience safeguards |
+| **VIII** | Appendices | case studies · glossaries · conformance vectors · the dual-ID TOC |
 
 ## How to cite a section — two reversible IDs
 
-Every section carries **two** addresses, each a deterministic, reversible function of the corpus
-(`codebook.json` holds both maps, 1:1, byte-identical on re-run):
+Every section carries **two** addresses, each a deterministic function of the corpus
+([`codebook.json`](constitution/codebook.json) holds both maps, 1:1):
 
-- **Numerical ID** — classic decimal `Chapter.Section.Subsection` (e.g. `1.1` = M-1, `2.1` =
-  envelope, `3.1.1` = registry). Depth reflects importance tier; the number *is* the address.
-- **Semantic ID** — a unique genericized word (e.g. `meta-goal`, `registry`, `envelope`, `accord`,
-  `namespace`). De-branded: product names collapse to their function (`CIRISRegistry` → `registry`).
+- **Numerical ID** — classic decimal `Chapter.Section.Subsection` (`1.1` = M-1, `2.1` =
+  envelope). Depth reflects importance; the number *is* the address.
+- **Semantic ID** — a unique de-branded word (`meta-goal`, `envelope`, `namespace`,
+  `accord`). Product names collapse to their function.
 
-A `legacy_ref` column maps every CC section back to its source (`§5.6.8.15` or `Accord Book II §III`),
-so the renumber is lossless and auditable — nothing from CEG or the Accord is dropped.
+A `legacy_ref` column maps each CC section back to its source (`CEG §5.6.8.15` or
+`Accord Book II §III`), so the renumbering is lossless and auditable.
 
 ## Versioning
 
-CC is **one document with one version**. The ethics and the grammar advance together as a single
-constitution — there are no separate tracks. The 1+4 attestation surface remains conformance-frozen
-(a change to the wire bytes is a found defect, not an edit), and the constitutional text is amended
-through the document's own governance; both live under the one CC version above.
+CC is **one document with one version** — ethics and grammar advance together, no separate
+tracks. The **1+4 attestation surface is conformance-frozen**: a change to the wire bytes is a
+found defect, not an edit. The constitutional text is amended through the document's own
+governance (see CC §4.5.1); until the mesh reaches maturity (≥100,000 nodes) that authority is
+exercised by the steward, then superseded by the mechanized amendment process.
 
-## Parts
+See [`CHANGELOG.md`](CHANGELOG.md) for the version history.
 
-- [Part I — Foundation](part_1_foundation.md)
-- [Part II — The Grammar](part_2_the_grammar.md)
-- [Part III — The Namespace](part_3_the_namespace.md)
-- [Part IV — Composition & Governance](part_4_composition_governance.md)
-- [Part V — Transport & Substrate](part_5_transport_substrate.md)
-- [Part VI — The Coherence Mathematics](part_6_the_coherence_mathematics.md)
-- [Part VII — Lifecycle & Stewardship](part_7_lifecycle_stewardship.md)
-- [Part VIII — Appendices](part_8_appendices.md)
-- **TOC**: [`toc.tsv`](toc.tsv) · **bijection**: [`codebook.json`](codebook.json)
+## Building the PDF
 
-## Provenance & reproducibility
+```bash
+python3 build_pdf.py   # -> ciris_constitution-<VERSION>[.<build>].pdf   (needs a TeX Live pdflatex)
+```
 
-Spine generated from the importance analysis in [`../CEG/taxonomy/`](../CEG/taxonomy/) — the unified
-CEG+Accord graph (`graph_unified.json`), PageRank, and community detection — by:
+The build is self-contained: the markdown→LaTeX converter is vendored under `tools/`.
 
-- `build_cc_toc.py` — assigns decimal_id + semantic_id + page_budget + legacy_ref to all 392
-  concepts; emits `toc.tsv` + `codebook.json`. Deterministic, both IDs verified 1:1.
-- `build_cc_scaffold.py` — emits the Part outline files from the TOC.
+## Where it is consumed
 
-Source corpora unchanged: `FSD/CEG/*.md` (CEG 1.0-RC29) and the CIRIS Accord (canonical
-`CIRISAccord/` 1.3-RC2; the parseable working copy `CIRISAgent/ACCORD.md` lacks Book IX — the
-coherence mathematics fold into Part VI from the canonical text in Phase 4).
+| Repo | Uses the CC as |
+|---|---|
+| [CEWP](https://github.com/CIRISAI/CEWP) | the constitution of the platform itself — the CIRIS Epistemic Web ("soup") it governs |
+| [CEWPOS](https://github.com/CIRISAI/CEWPOS) | the object model / wire grammar of the platform OS |
+| [CIRISConformance](https://github.com/CIRISAI/CIRISConformance) | the standard the substrate must enforce (16,000+ tests) |
+| [CIRISServer](https://github.com/CIRISAI/CIRISServer) | the shipping fabric node — the constitution it enforces (absorbing LensCore, Registry, NodeCore) |
+| [CIRISAgent](https://github.com/CIRISAI/CIRISAgent) | the ethics the conscience pipeline reasons against (M-1, PDMA, WBD) |
+| [CIRISEdge](https://github.com/CIRISAI/CIRISEdge) | the wire vocabulary + opaque-envelope transport surface (§2.6.4, the manifest) |
+| [CIRISPersist](https://github.com/CIRISAI/CIRISPersist) | the state model it materializes (revocations, quorum, replication intent) |
+| [CIRISVerify](https://github.com/CIRISAI/CIRISVerify) | the verification rules it checks against (decimation-recovery / FSD-004, revocation) |
+
+The trust-substrate consumers are the eight above. LensCore (archived), Registry, and NodeCore
+are folding into CIRISServer, so they are not tracked as separate consumers.
+
+Part of the [CIRIS](https://ciris.ai) ecosystem.
+
+---
+
+*Soli Deo Gloria.*

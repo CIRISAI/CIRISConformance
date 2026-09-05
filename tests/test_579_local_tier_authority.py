@@ -18,7 +18,7 @@ authority" from "subject-set emptiness": a producer-authority write that NAMES a
 subject. If the discriminator were subject-set emptiness, that row would be
 ineligible; because the discriminator is revocation authority, it rests local-eligible.
 
-What is REAL on the floor (persist 16.1.1), driven end-to-end here:
+What is REAL on the floor (persist v40.0.0), driven end-to-end here:
 
 - **The tier gate: local-tier is `cohort_scope=self` only.** `attestation_insert_local`
   REJECTS `cohort_scope` ∈ {family, community, federation} with
@@ -34,8 +34,11 @@ What is REAL on the floor (persist 16.1.1), driven end-to-end here:
   where the subject (not the producer) holds revocation authority is flagged overdue
   by `list_consent_revocation_promotion_overdue_json(sla_seconds=0)` — the carve-out
   that must NOT rest local.
-- **Promotion resolves it.** After `attestation_promote`, the subject-authority row
-  is no longer flagged.
+- **Entering the mesh resolves it.** After `enter_mesh` (persist v39.0.0 — the
+  local→federation flip over the same bytes that replaced the node-re-signing
+  `attestation_promote`), the subject-authority row is no longer flagged; it is
+  then widened to `federation` by an actor-signed `supersedes` so the revocation
+  is visible, per CC 5.3.2.2.
 
 NOT ASSERTED (verified unenforced on the floor): the §5.3.2.4.1 tier-specific
 addition "`witness_relation` MUST be `self` for any local-tier write" — the string
@@ -44,9 +47,10 @@ a free-form envelope member, so there is no gate to assert. That is a distinct
 CIRISPersist gap, out of scope here.
 
 Real surface: `Engine.attestation_insert_local(input_json)`,
-`Engine.attestation_promote(attestation_id)`,
+`Engine.describe_crossing(id, scope, cohort_target, basis_json)`,
+`Engine.enter_mesh(id, ci_json)`, `Engine.widen_audience(prior_id, ci_json, strip)`,
 `Engine.list_consent_revocation_promotion_overdue_json(sla_seconds)`. Engines carry
-PQC identities so promotion's hybrid sign succeeds.
+PQC identities so the crossing's hybrid sign succeeds.
 """
 
 from __future__ import annotations
@@ -89,8 +93,8 @@ class Ident:
                          local_pqc_key_id=self.k + "-pqc", local_pqc_key_path=self.p)
 
 
-for surface in ("attestation_insert_local", "attestation_promote",
-                "list_consent_revocation_promotion_overdue_json"):
+for surface in ("attestation_insert_local", "describe_crossing", "enter_mesh",
+                "widen_audience", "list_consent_revocation_promotion_overdue_json"):
     if not hasattr(Ident("probe", "agent", "probe").engine(), surface):
         print(json.dumps({"_error": "absent", "surface": surface})); sys.exit(2)
 
@@ -105,6 +109,20 @@ def _attempt(label, fn):
         r[label] = {"outcome": "ok", "value": fn()}
     except Exception as exc:
         r[label] = {"outcome": "err", "token": str(exc)[:160]}
+
+
+# persist v39.0.0: a crossing is described (nine CC 4.5.1.1 axes derived from the
+# row by `describe_crossing`), then entered / widened; the basis is producer
+# authority — the actor publishes its own claim.
+_BASIS = json.dumps({"kind": "producer_authority"})
+
+
+def _enter(engine, aid):
+    return engine.enter_mesh(aid, engine.describe_crossing(aid, "self", None, _BASIS))
+
+
+def _widen(engine, aid, audience="federation"):
+    return engine.widen_audience(aid, engine.describe_crossing(aid, audience, None, _BASIS), [])
 
 
 def _local(dim, subject_key_ids=None, cohort_scope="self"):
@@ -147,8 +165,9 @@ r["subject_flagged"] = _sa in _ids
 r["producer_no_subject_local_ok"] = _pn not in _ids
 r["producer_named_subject_local_ok"] = _pns not in _ids
 
-# ── Promotion resolves the not-local-eligible flag ──
-_attempt("promote_subject", lambda: A.engine().attestation_promote(_sa, "federation"))
+# ── Entering the mesh resolves the not-local-eligible flag ──
+_attempt("enter_subject", lambda: _enter(A.engine(), _sa))
+_attempt("widen_subject", lambda: _widen(A.engine(), _sa))
 _attempt("overdue_after", _overdue_ids)
 _ids_after = r["overdue_after"].get("value") or []
 r["cleared_after_promote"] = _sa not in _ids_after
@@ -228,12 +247,16 @@ def test_subject_authority_revocation_is_not_local_eligible(tier):
 
 @pytest.mark.requires_persist
 def test_promotion_clears_not_local_eligible(tier):
-    """CC 5.3.2.4.1 / §5.3.2.4.2: promotion is the conformant resolution — the
-    subject-authority row, once promoted local→federation, is no longer flagged.
+    """CC 5.3.2.4.1 / §5.3.2.4.2: entering the mesh is the conformant resolution —
+    the subject-authority row, once crossed local→federation over the same bytes,
+    is no longer flagged; the actor-signed widening then makes it visible.
     """
-    assert tier["promote_subject"]["outcome"] == "ok" and tier["promote_subject"]["value"] is True, (
-        f"promoting the subject-authority revocation did not return True: "
-        f"{tier['promote_subject']}")
+    assert tier["enter_subject"]["outcome"] == "ok" and tier["enter_subject"]["value"].get("outcome") == "crossed", (
+        f"entering the mesh with the subject-authority revocation did not report "
+        f"`crossed`: {tier['enter_subject']}")
+    assert tier["widen_subject"]["outcome"] == "ok" and tier["widen_subject"]["value"].get("outcome") == "crossed", (
+        f"widening the subject-authority revocation to `federation` did not report "
+        f"`crossed`: {tier['widen_subject']}")
     assert tier["cleared_after_promote"] is True, (
         "the subject-authority revocation was still flagged not-local-eligible after "
-        "promotion — promotion does not resolve the carve-out")
+        "it entered the mesh — the crossing does not resolve the carve-out")

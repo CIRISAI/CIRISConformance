@@ -32,6 +32,7 @@ import pytest
 from conftest import (
     get_database_url,
     run_python_script,
+    xfail_if_helper_cannot_sign_hybrid,
     xfail_if_pg_edge_runtime_crash,
 )
 
@@ -50,27 +51,26 @@ except ImportError as exc:
 _sender_seed = secrets.token_bytes(32)
 _d = tempfile.mkdtemp()
 _seed = os.path.join(_d, "s"); open(_seed, "wb").write(_sender_seed)
+_pqc = os.path.join(_d, "p"); open(_pqc, "wb").write(secrets.token_bytes(32))
 _idp = os.path.join(_d, "t.id"); open(_idp, "wb").write(b"\x00" * 64)
 cp.reset_engine()
 k = "node-" + secrets.token_hex(8)
-# Ed25519-ONLY engine → register_self yields a hybrid-pending key the
-# ed25519_fallback verify policy accepts (the helper emits no PQC half).
-engine = cp.Engine(DB_URL, k, local_key_id=k, local_key_path=_seed)
+# The engine carries BOTH halves. edge v19.0.0 (CIRISEdge#562, adopting persist
+# v39): "every signature is the FULL hybrid — no classical-only fallback";
+# `sign_envelope` refuses a signer without its ML-DSA-65 half, so the
+# Ed25519-only pairing this probe used through edge v17 (`ed25519_fallback`)
+# can no longer mint the envelope at all. The intake gate — trust threshold
+# over a VERIFIED inbound — is what is under test, and it runs after verify on
+# bytes handed to `dispatch_inbound_bytes` directly, so the signer's shape is
+# not the subject; the hybrid signer is simply the only one that signs.
+engine = cp.Engine(DB_URL, k, local_key_id=k, local_key_path=_seed,
+                   local_pqc_key_id=k + "-pqc", local_pqc_key_path=_pqc)
 kid = engine.register_self_federation_key("agent", "intake-ref", None, None, None)
 
-# HTTPS-only, so the engine stays Ed25519-only — which is the subject here.
-# edge v17 (CIRISEdge#458) refuses to bring up the RETICULUM transport without
-# an ML-DSA-65 half: it could not mint the hybrid-signed
-# SignedTransportDestination, so peers would drop its frames UNATTRIBUTED at
-# the E3 gate. Adding a PQC half to satisfy that would make register_self
-# publish an ML-DSA pubkey, the key would stop being hybrid-pending, and
-# `ed25519_fallback` would have nothing left to fall back FROM — the test would
-# pass while testing something else. `disable_reticulum=True` also REQUIRES an
-# https_listen_addr ("an edge with no transports cannot send or receive"), so
-# the HTTPS leg is what keeps this a real runtime. The intake gate runs after
-# verify, on bytes handed to `dispatch_inbound_bytes` directly, so which
-# transport is up does not change what is under test.
-edge = init_edge_runtime(engine, _idp, hybrid_policy="ed25519_fallback",
+# HTTPS-only. `disable_reticulum=True` REQUIRES an https_listen_addr ("an edge
+# with no transports cannot send or receive"), so the HTTPS leg is what keeps
+# this a real runtime; which transport is up does not change what is under test.
+edge = init_edge_runtime(engine, _idp,
                          disable_reticulum=True,
                          https_listen_addr="127.0.0.1:0",
                          https_dev_self_signed=True)
@@ -119,6 +119,7 @@ def _intake_script(database_url: str) -> str:
 def intake_gate():
     result = run_python_script(_intake_script(get_database_url()))
     xfail_if_pg_edge_runtime_crash(result)  # CIRISPersist#354 (postgres native abort)
+    xfail_if_helper_cannot_sign_hybrid(result.stderr)
     payload = result.parsed_stdout()
     if payload.get("_error") == "absent":
         pytest.fail("edge.build_signed_inbound_envelope is missing — the intake-gate "

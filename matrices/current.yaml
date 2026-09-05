@@ -119,15 +119,37 @@ rationale:
     survives a tier crossing instead of being replaced by the node's), and
     v40.0.0 made a widening carry the CLAIM's `asserted_at` verbatim with the
     placement's own instant moving to a signed `widened_at`. Both are wire
-    breaks the suite drives directly, so expect harness rework rather than a
-    clean bump.
+    breaks the suite drives directly, and the harness absorbed them: test_574
+    / test_576 / test_579 now drive `describe_crossing` → `enter_mesh` →
+    `widen_audience` (typed `crossed` / `already_in_mesh` / `already_widened`
+    outcomes stand in for the old True→False flip; test_574 additionally
+    asserts the widening carries the prior's `asserted_at` verbatim plus a
+    signed `widened_at`). Also absorbed on the way: v34/v35 removed the
+    classical DEK wrap (test_250 now asserts the minter is GONE and that the
+    retired spellings are refused BY NAME at the decode door, against a
+    wrong-key control); v36 typed `retire_key_grants` as
+    `{outcome, retired[, failed]}` (test_130); and at v40 an `accord:*` emit
+    from a key naming no accord root is refused by the trust-root gate
+    (`federation_accord_root_unnamed`) before role membership is consulted,
+    so test_580's unheld-role probe moved to `detection:*` /
+    `lenscore_detector` to keep hitting the set-membership gate it is about.
   ciris-edge: >-
     v17.4.1 → v20.1.1. MAJOR 17→20. The tag CIRISServer pins, not edge's head
     (v20.2.1) — the set is what the integrator carries. Chat is end-to-end
     encrypted from v19.0.0 (sealed under the pair room's MLS record secret)
     and every signature is now the full hybrid with no classical-only
     fallback, so a fixture signing Ed25519-only is refused at source rather
-    than admitted and dropped later.
+    than admitted and dropped later. Harness impact: every probe engine now
+    carries its ML-DSA-65 half (test_140, test_230, test_520); the
+    `ed25519_fallback` pairing those probes documented is gone with the
+    fallback. Edge's OWN pyo3 conformance helper was not moved with it —
+    `build_signed_inbound_envelope` still builds an Ed25519-only signer and
+    refuses on its own wheel (CIRISEdge#573), so test_230 and test_520's
+    accept probe carry an imperative xfail keyed on that exact signer token
+    until it lands. The `WIRE_VOCABULARY.md` this set's edge speaks is the
+    CC 1.0-rc4 manifest (26 Tier-1 variants; `EphemeralResponse` joined in
+    CC 0.7 §2.9), re-vendored under reference/ in the same bump because
+    test_520 derives its wheel expectation from it.
 
 # Python interpreter version under test. Every member declares
 # `requires-python = ">=3.10"`; the abi3-py310 build (one wheel for all
