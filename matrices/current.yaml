@@ -165,34 +165,36 @@ python_versions:
 # issue closes, remove from this list AND remove the xfail marker —
 # strict=True will then flag any silent regression.
 known_failures:
-  - id: "CIRISConformance#87"
-    url: "https://github.com/CIRISAI/CIRISConformance/issues/87"
+  - id: "CIRISEdge#573"
+    url: "https://github.com/CIRISAI/CIRISEdge/issues/573"
     title: >-
-      The witness-reserved prefixes (`age_assurance:`, `capacity_assurance:`)
-      gained a `required_delegation_scope` of `infra:attest_assurance`, and the
-      check is not a delegation the emitter can arrange for itself: persist's
-      `check_reserved_prefix_admission` needs `set_node_key_id()` AND the
-      capability conferred to the attesting key from a trust root THIS NODE
-      trusts. The harness has no trust-root ceremony, so every witness emit is
-      refused with `federation_reserved_prefix_emitter_mismatch`. Closing it is
-      new fixture infrastructure (a genesis root + conferral), not a pin bump.
+      Edge's own pyo3 conformance helper `build_signed_inbound_envelope` still
+      builds an Ed25519-only software signer, but every signature is the FULL
+      hybrid since edge v19.0.0 — the helper refuses at `sign_envelope` on the
+      wheel that ships it, so the inbound path is undrivable from Python. Fix
+      shape filed: accept a `pqc_seed_bytes` (mirroring
+      `tests/trust_short_circuit.rs::FedKey::pqc_signer`) or sign with the
+      runtime's own `extract_local_signer(engine)`.
     affects:
-      - tests/test_350_age_assurance_reservation.py::test_witness_key_admitted_on_age_assurance
-      - tests/test_351_age_band_ratchet.py::test_witness_assurance_outranks_self
-      - tests/test_351_age_band_ratchet.py::test_cross_subject_witness_graduation
-      - tests/test_351_age_band_ratchet.py::test_fine_band_witness_graduation
-      - tests/test_360_steward_binding_admission.py::test_node_steward_binding_is_admitted_and_resolves
-      - tests/test_360_steward_binding_admission.py::test_witness_attestation_graduates_age_bands
-      - tests/test_360_steward_binding_admission.py::test_adult_target_user_binding_is_rejected
-      - tests/test_360_steward_binding_admission.py::test_adult_target_steward_bind_is_rejected
-      - tests/test_360_steward_binding_admission.py::test_unverified_age_target_is_rejected
-      - tests/test_360_steward_binding_admission.py::test_minor_target_user_binding_is_admitted_only_because_minor
-      - tests/test_550_detection_discriminator.py::test_lenscore_detector_key_admitted_on_detection
-      - tests/test_572_capacity_incapacity_gate.py::test_capacity_graduates_per_domain_and_presumes_capacity
-      - tests/test_573_co_stewardship.py::test_steward_bindings_resolve_to_both_stewards
-      - tests/test_573_co_stewardship.py::test_node_never_orphaned_while_one_steward_remains
-    # test_361's three cases fail in a module fixture rather than the call
-    # phase, so a marker cannot reach them — pytest reports a fixture failure as
-    # an error, not an xfail. They use conftest's
-    # `xfail_if_unconferred_assurance_scope`, the same imperative shape as the
-    # pre-existing postgres edge-runtime crash guard.
+      - tests/test_230_intake_gate.py::test_verified_inbound_is_received
+      - tests/test_230_intake_gate.py::test_low_trust_source_is_short_circuited
+      - tests/test_230_intake_gate.py::test_threshold_zero_readmits
+      - tests/test_520_wire_vocabulary.py::test_tier1_and_opaque_variants_accepted
+    # These fail inside the probe (fixture / accept map), so they carry
+    # conftest's imperative `xfail_if_helper_cannot_sign_hybrid`, keyed on the
+    # exact `has no ML-DSA-65 (PQC) half` signer token — any other refusal still
+    # fails loudly, and they resume with nothing to remove.
+  - id: "CIRISPersist#811"
+    url: "https://github.com/CIRISAI/CIRISPersist/issues/811"
+    title: >-
+      `is_steward_bound` still counts a plain capability conferral after the
+      sole owner-binding is revoked — the predicate did not narrow with the
+      `steward_bindings_of` fold (CIRISConstitution#87 "conferral is not
+      stewardship" pairs them; persist documents the biconditional). A node
+      whose only custody edge is withdrawn reads steward-bound to nobody.
+    affects:
+      - tests/test_361_minor_stewardship_liveness.py::test_conferral_does_not_keep_a_node_steward_bound_predicate
+  # CLOSED — CIRISConformance#87 (the trust-root conferral fixture). The harness
+  # now performs the real three-row ceremony (charter / accept / confer, see
+  # conftest.TRUST_ROOT_CEREMONY_SRC), so every witness-reserved and detector
+  # emit is drivable; the fourteen markers and the imperative guard are gone.

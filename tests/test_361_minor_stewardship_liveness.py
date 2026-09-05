@@ -36,8 +36,11 @@ from __future__ import annotations
 
 import pytest
 
-from conftest import (get_database_url, run_python_script,
-                      xfail_if_unconferred_assurance_scope)
+from conftest import (
+    TRUST_ROOT_CEREMONY_SRC,
+    get_database_url,
+    run_python_script,
+)
 
 pytestmark = pytest.mark.fabric
 
@@ -69,12 +72,19 @@ class Ident:
         self.s = os.path.join(d, "s"); open(self.s, "wb").write(secrets.token_bytes(32))
         self.p = os.path.join(d, "p"); open(self.p, "wb").write(secrets.token_bytes(32))
         self.k = prefix + "-" + secrets.token_hex(8)
+        self.itype = itype
         self.kid = self.engine().register_self_federation_key(itype, ref, None, None, None)
 
     def engine(self):
         cp.reset_engine()
-        return cp.Engine(DB_URL, self.k, local_key_id=self.k, local_key_path=self.s,
-                         local_pqc_key_id=self.k + "-pqc", local_pqc_key_path=self.p)
+        eng = cp.Engine(DB_URL, self.k, local_key_id=self.k, local_key_path=self.s,
+                        local_pqc_key_id=self.k + "-pqc", local_pqc_key_path=self.p)
+        # persist v40: a fresh Engine has no node identity until it registers;
+        # the conferral gates resolve "does THIS NODE trust the root", so bind
+        # it on every reconstruction (see conftest.TRUST_ROOT_CEREMONY_SRC).
+        if getattr(self, "kid", None):
+            _bind_node_identity(eng, self.itype)
+        return eng
 
 
 for surface in ("steward_bind", "revoke_delegation", "is_steward_bound_json",
@@ -87,8 +97,16 @@ W = Ident("witness", "witness", "age-witness")   # attests subjects' age bands (
 S = Ident("steward", "user", "adult-steward")    # the adult-user guardian (signer)
 M = Ident("minor", "user", "minor-ward")         # the proven-minor user ward
 N = Ident("node", "agent", "node-ref")           # node/agent control
+N2 = Ident("node2", "agent", "node-ref-2")       # node with a surviving conferral (CIRISPersist#811)
+S2 = Ident("steward2", "user", "adult-steward-2")  # a second adult user — confers, never stewards
 
-report = {"S": S.kid, "M": M.kid, "N": N.kid}
+# CIRISConformance#87 — stand up a trust root and confer the witness-reserved
+# capability from it (persist v30.2.0+): holding `witness` is necessary, never
+# sufficient. Drives the real three-row ceremony (see conftest).
+ROOT = Ident("root", "agent", "trust-root")
+_TRUST_ROOT_CEREMONY = confer_from_trust_root(ROOT, W, "infra:attest_assurance")
+
+report = {"S": S.kid, "S2": S2.kid, "M": M.kid, "N": N.kid, "N2": N2.kid}
 
 # ── #368 witness-attests-subject: graduate the ages FIRST ──
 # The witness emits age_assurance:provider:* attestations naming each subject's
@@ -100,7 +118,13 @@ def _attest(subject_kid, atype):
         "attested_key_id": subject_kid}))
 
 _attest(S.kid, "age_assurance:provider:adult:v1")
+_attest(S2.kid, "age_assurance:provider:adult:v1")
 _attest(M.kid, "age_assurance:provider:16_17:v1")
+
+# CIRISConstitution#87 / CC 3.2: stewardship is the OWNER-BINDING edge; persist's
+# engine path for it is `delegation_purpose="responsible_for"`. A steward_bind with
+# no purpose is a capability conferral and neither enters nor leaves custody.
+CUSTODY = "responsible_for"
 e = W.engine()
 report["band_S"] = e.age_band_json(S.kid)
 report["band_M"] = e.age_band_json(M.kid)
@@ -108,7 +132,7 @@ report["band_M"] = e.age_band_json(M.kid)
 # ── Minor: create the live adult→minor guardianship binding ──
 # Proven-adult S → proven-minor M is ADMITTED (CIRISPersist#367, persist 13.0).
 try:
-    appt_m = S.engine().steward_bind(M.kid, ["infra:transport"])
+    appt_m = S.engine().steward_bind(M.kid, ["infra:transport"], CUSTODY)
     report["minor_bind"] = {"outcome": "admitted", "id": appt_m}
 except Exception as exc:
     appt_m = None
@@ -127,7 +151,7 @@ if appt_m is not None:
     report["minor_revoked_bindings_of"] = json.loads(e.steward_bindings_of_json(M.kid))
 
 # ── Control: node/agent fail-secure — bind then withdraw ──
-appt_n = S.engine().steward_bind(N.kid, ["infra:transport"])
+appt_n = S.engine().steward_bind(N.kid, ["infra:transport"], CUSTODY)
 e = S.engine()
 report["node_bound_is_steward_bound"] = e.is_steward_bound_json(N.kid)
 report["node_bound_bindings_of"] = json.loads(e.steward_bindings_of_json(N.kid))
@@ -137,6 +161,20 @@ e = S.engine()
 report["node_revoked_is_steward_bound"] = e.is_steward_bound_json(N.kid)
 report["node_revoked_bindings_of"] = json.loads(e.steward_bindings_of_json(N.kid))
 
+# ── Fail-secure with a SURVIVING conferral (CIRISPersist#811) ──
+# Custody from S plus a plain conferral from S2; withdraw the custody. The fold
+# empties (a conferral is not custody); the predicate MUST agree — CC 3.2 rc4
+# pairs them on the same owner-binding predicate, and persist documents
+# `is_steward_bound(k) ⟺ !steward_bindings_of(k).is_empty()`.
+appt_n2 = S.engine().steward_bind(N2.kid, ["infra:transport"], CUSTODY)
+report["n2_conferral"] = S2.engine().steward_bind(N2.kid, ["infra:transport"])
+e = S.engine()
+report["n2_bound_bindings_of"] = json.loads(e.steward_bindings_of_json(N2.kid))
+S.engine().revoke_delegation(appt_n2, N2.kid)
+e = S.engine()
+report["n2_revoked_is_steward_bound"] = e.is_steward_bound_json(N2.kid)
+report["n2_revoked_bindings_of"] = json.loads(e.steward_bindings_of_json(N2.kid))
+
 report["stage"] = "done"
 print(json.dumps(report)); sys.stdout.flush(); os._exit(0)
 """
@@ -144,14 +182,8 @@ print(json.dumps(report)); sys.stdout.flush(); os._exit(0)
 
 @pytest.fixture(scope="module")
 def liveness():
-    script = f"INJECTED_URL = {get_database_url()!r}\n" + _BODY
+    script = f"INJECTED_URL = {get_database_url()!r}\n" + TRUST_ROOT_CEREMONY_SRC + _BODY
     result = run_python_script(script)
-    # The scenario attests an age band, which is a witness-reserved prefix.
-    # Since persist v32.3.0 that also requires a CONFERRED
-    # `infra:attest_assurance` capability, which the harness cannot yet mint —
-    # the node dies before printing its report, so this must be caught here
-    # rather than by an xfail marker on each test (CIRISConformance#87).
-    xfail_if_unconferred_assurance_scope(result)
     payload = result.parsed_stdout()
     if payload.get("_error") == "absent":
         pytest.fail(f"persist steward surface missing: {payload.get('surface')}")
@@ -217,3 +249,41 @@ def test_steward_less_minor_fails_secure(liveness):
         f"resolves true — the steward-less-minor fail-secure transition is broken: {r}")
     assert r["minor_revoked_bindings_of"] == [], (
         f"a withdrawn minor binding still lists a steward: {r}")
+
+
+@pytest.mark.requires_persist
+def test_conferral_does_not_keep_a_node_steward_bound_fold(liveness):
+    """CC 3.2 (CIRISConstitution#87): a capability conferral is not custody, so the
+    custody FOLD ignores it — before and after the owner-binding is withdrawn.
+
+    N2 carries custody from S and a plain conferral from S2. `steward_bindings_of`
+    names S alone while the custody is live, and is empty once it is withdrawn:
+    the conferring user never enters the custody set.
+    """
+    r = liveness
+    assert r["n2_bound_bindings_of"] == [r["S"]], (
+        f"the conferring user S2 entered the custody set: {r['n2_bound_bindings_of']}")
+    assert r["n2_revoked_bindings_of"] == [], (
+        f"custody withdrawn but the fold still names a steward: {r['n2_revoked_bindings_of']}")
+
+
+@pytest.mark.requires_persist
+@pytest.mark.xfail(strict=True, reason=
+    "CIRISPersist#811: `is_steward_bound` still counts a plain conferral after the sole "
+    "owner-binding is revoked — the predicate did not narrow with the fold (CC 3.2 rc4 pairs "
+    "them; persist documents the biconditional). Turns red the moment the predicate is narrowed.")
+def test_conferral_does_not_keep_a_node_steward_bound_predicate(liveness):
+    """CC 3.2 (CIRISConstitution#87): the PREDICATE agrees with the fold — a node whose
+    only custody edge is withdrawn is steward-less, whatever conferrals survive.
+
+    Same N2 as the fold test: after S's owner-binding is revoked, with S2's
+    conferral still live, `is_steward_bound(N2)` MUST read false. On persist
+    v40.0.0 it reads true (CIRISPersist#811) while the fold is already empty — a
+    steward-less state the substrate can create but not describe.
+    """
+    r = liveness
+    assert r["n2_revoked_bindings_of"] == [], r
+    assert r["n2_revoked_is_steward_bound"] == "false", (
+        f"the node reads steward-bound on the strength of a conferral alone after its "
+        f"custody was withdrawn: is_steward_bound={r['n2_revoked_is_steward_bound']} "
+        f"bindings_of={r['n2_revoked_bindings_of']}")
