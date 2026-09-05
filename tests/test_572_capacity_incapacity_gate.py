@@ -50,7 +50,7 @@ from __future__ import annotations
 
 import pytest
 
-from conftest import get_database_url, run_python_script
+from conftest import TRUST_ROOT_CEREMONY_SRC, get_database_url, run_python_script
 
 pytestmark = pytest.mark.fabric
 
@@ -84,12 +84,19 @@ class Ident:
         self.s = os.path.join(d, "s"); open(self.s, "wb").write(secrets.token_bytes(32))
         self.p = os.path.join(d, "p"); open(self.p, "wb").write(secrets.token_bytes(32))
         self.k = prefix + "-" + secrets.token_hex(8)
+        self.itype = itype
         self.kid = self.engine().register_self_federation_key(itype, ref, None, None, None)
 
     def engine(self):
         cp.reset_engine()
-        return cp.Engine(DB_URL, self.k, local_key_id=self.k, local_key_path=self.s,
-                         local_pqc_key_id=self.k + "-pqc", local_pqc_key_path=self.p)
+        eng = cp.Engine(DB_URL, self.k, local_key_id=self.k, local_key_path=self.s,
+                        local_pqc_key_id=self.k + "-pqc", local_pqc_key_path=self.p)
+        # persist v40: a fresh Engine has no node identity until it registers;
+        # the conferral gates resolve "does THIS NODE trust the root", so bind
+        # it on every reconstruction (see conftest.TRUST_ROOT_CEREMONY_SRC).
+        if getattr(self, "kid", None):
+            _bind_node_identity(eng, self.itype)
+        return eng
 
 
 for surface in ("capacity_state_json", "emit_attestation", "emit_attestation_self",
@@ -100,6 +107,12 @@ for surface in ("capacity_state_json", "emit_attestation", "emit_attestation_sel
 W = Ident("witness", "witness", "cap-witness")     # the qualified assessor (witness-reserved)
 Sub = Ident("subj", "user", "adult-subject")       # the adult whose capacity is assessed
 Ag = Ident("agentx", "agent", "agent-emitter")     # a non-witness key (must be refused the prefix)
+
+# CIRISConformance#87 — stand up a trust root and confer the witness-reserved
+# capability from it (persist v30.2.0+): holding `witness` is necessary, never
+# sufficient. Drives the real three-row ceremony (see conftest).
+ROOT = Ident("root", "agent", "trust-root")
+_TRUST_ROOT_CEREMONY = confer_from_trust_root(ROOT, W, "infra:attest_assurance")
 
 r = {}
 
@@ -149,7 +162,7 @@ report(r)
 
 @pytest.fixture(scope="module")
 def gate():
-    script = f"INJECTED_URL = {get_database_url()!r}\n" + _BODY
+    script = f"INJECTED_URL = {get_database_url()!r}\n" + TRUST_ROOT_CEREMONY_SRC + _BODY
     payload = run_python_script(script).parsed_stdout()
     if payload.get("_error") == "absent":
         pytest.fail(f"persist capacity surface missing: {payload.get('surface')}")
@@ -160,8 +173,6 @@ def gate():
 
 
 @pytest.mark.requires_persist
-@pytest.mark.xfail(strict=True, reason=
-    "CIRISConformance#87: `age_assurance:`/`capacity_assurance:` now also require `infra:attest_assurance` CONFERRED from a trust root this node trusts (persist v32.3.0). The harness has no trust-root ceremony, so the witness emit is refused with federation_reserved_prefix_emitter_mismatch.")
 def test_capacity_graduates_per_domain_and_presumes_capacity(gate):
     """CC 3.4.12: a witness's per-domain incapacity attestation graduates
     `capacity_state_json`; an untouched domain stays `"unknown"` (presumption of

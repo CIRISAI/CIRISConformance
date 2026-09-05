@@ -48,7 +48,7 @@ from __future__ import annotations
 
 import pytest
 
-from conftest import get_database_url, run_python_script
+from conftest import TRUST_ROOT_CEREMONY_SRC, get_database_url, run_python_script
 
 pytestmark = pytest.mark.fabric
 
@@ -93,8 +93,14 @@ class Ident:
 
     def engine(self):
         cp.reset_engine()
-        return cp.Engine(DB_URL, self.k, local_key_id=self.k, local_key_path=self.s,
-                         local_pqc_key_id=self.k + "-pqc", local_pqc_key_path=self.p)
+        eng = cp.Engine(DB_URL, self.k, local_key_id=self.k, local_key_path=self.s,
+                        local_pqc_key_id=self.k + "-pqc", local_pqc_key_path=self.p)
+        # persist v40: a fresh Engine has no node identity until it registers;
+        # the conferral gates resolve "does THIS NODE trust the root", so bind
+        # it on every reconstruction (see conftest.TRUST_ROOT_CEREMONY_SRC).
+        if getattr(self, "kid", None):
+            _bind_node_identity(eng, self.itype)
+        return eng
 
 
 for surface in ("steward_bind", "grant_delegation", "is_steward_bound_json",
@@ -109,6 +115,12 @@ T = Ident("minor", "user", "minor-ward")         # the proven-minor ward (user)
 A = Ident("adult", "user", "adult-other")        # a self-sovereign adult user
 U = Ident("unver", "user", "unverified-user")    # a user of unverified age
 N = Ident("node", "agent", "node-ref")           # a node/agent (the control)
+
+# CIRISConformance#87 — stand up a trust root and confer the witness-reserved
+# capability from it (persist v30.2.0+): holding `witness` is necessary, never
+# sufficient. Drives the real three-row ceremony (see conftest).
+ROOT = Ident("root", "agent", "trust-root")
+_TRUST_ROOT_CEREMONY = confer_from_trust_root(ROOT, W, "infra:attest_assurance")
 
 report = {"S": S.kid, "T": T.kid, "A": A.kid, "U": U.kid, "N": N.kid}
 
@@ -140,14 +152,29 @@ for lbl, kid in (("S", S.kid), ("T", T.kid), ("A", A.kid), ("U", U.kid)):
     report["fine_" + lbl] = e.age_band_fine_json(kid)
 
 # ── CC 3.2 user-target admission attempts, signed by the adult steward S ──
+# CIRISConstitution#87 (CC 3.2 rc3+, "conferral is not stewardship"): the gate
+# and the fold key on OWNER-BINDING edges alone. persist's engine path for that
+# is `steward_bind(..., delegation_purpose="responsible_for")` /
+# `grant_delegation(..., delegation_purpose="responsible_for")` (the versioned
+# `ownership:responsible_party:node:v1` dimension); a `delegates_to` with no
+# purpose is a capability CONFERRAL — a consensual grant the target accepts for
+# itself — and MUST NOT be refused as a stewardship act. Each target below gets
+# the PAIR: the custody claim (gated by CC 3.2) and the conferral (never gated
+# on age), so the discriminator under test is the consent structure, not the
+# presence of any delegates_to.
+CUSTODY = "responsible_for"
 # S (proven adult) → T (proven minor): the legal minor-guardianship case → ADMIT.
-_attempt("minor_target_grant", lambda: S.engine().grant_delegation(T.kid, ["steward"], False))
-_attempt("minor_target_bind", lambda: S.engine().steward_bind(T.kid, ["infra:transport"]))
-# S (proven adult) → A (proven adult): un-stewardable → REJECT.
-_attempt("adult_target_grant", lambda: S.engine().grant_delegation(A.kid, ["steward"], False))
-_attempt("adult_target_steward_bind", lambda: S.engine().steward_bind(A.kid, ["infra:transport"]))
-# S (proven adult) → U (unverified age): presumption of sovereignty → REJECT.
-_attempt("unver_target_steward_bind", lambda: S.engine().steward_bind(U.kid, ["infra:transport"]))
+_attempt("minor_target_grant", lambda: S.engine().grant_delegation(T.kid, ["infra:transport"], False, CUSTODY))
+_attempt("minor_target_bind", lambda: S.engine().steward_bind(T.kid, ["infra:transport"], CUSTODY))
+# S (proven adult) → A (proven adult): custody is un-stewardable → REJECT;
+# a duty conferral onto the same adult → ADMIT (the #87 pair).
+_attempt("adult_target_grant", lambda: S.engine().grant_delegation(A.kid, ["infra:transport"], False, CUSTODY))
+_attempt("adult_target_steward_bind", lambda: S.engine().steward_bind(A.kid, ["infra:transport"], CUSTODY))
+_attempt("adult_target_conferral", lambda: S.engine().grant_delegation(A.kid, ["moderate"], False))
+# S (proven adult) → U (unverified age): presumption of sovereignty → REJECT
+# the custody claim; the conferral is not an age-gated act → ADMIT.
+_attempt("unver_target_steward_bind", lambda: S.engine().steward_bind(U.kid, ["infra:transport"], CUSTODY))
+_attempt("unver_target_conferral", lambda: S.engine().grant_delegation(U.kid, ["moderate"], False))
 
 # Confirm the admitted minor binding actually resolves as a live steward-binding.
 e = S.engine()
@@ -155,7 +182,10 @@ report["minor_is_steward_bound"] = e.is_steward_bound_json(T.kid)
 report["minor_bindings_of"] = json.loads(e.steward_bindings_of_json(T.kid))
 
 # ── Control: node/agent steward-binding IS real and enforced ──
-_attempt("node_bind", lambda: S.engine().steward_bind(N.kid, ["infra:transport"]))
+# The custody claim resolves in the fold; a plain conferral onto the same node
+# from another user (U) is admitted and does NOT enter the custody set.
+_attempt("node_bind", lambda: S.engine().steward_bind(N.kid, ["infra:transport"], CUSTODY))
+_attempt("node_conferral", lambda: U.engine().steward_bind(N.kid, ["infra:transport"]))
 e = S.engine()
 report["node_is_steward_bound"] = e.is_steward_bound_json(N.kid)
 report["node_bindings_of"] = json.loads(e.steward_bindings_of_json(N.kid))
@@ -171,7 +201,7 @@ def admission():
     # substrate; under the sqlite default the body mints an on-disk file (the
     # cross-engine key visibility this scenario needs is impossible over the
     # conftest `:memory:` default, where each Engine gets a private database).
-    script = f"INJECTED_URL = {get_database_url()!r}\n" + _BODY
+    script = f"INJECTED_URL = {get_database_url()!r}\n" + TRUST_ROOT_CEREMONY_SRC + _BODY
     payload = run_python_script(script).parsed_stdout()
     if payload.get("_error") == "absent":
         pytest.fail(f"persist steward surface missing: {payload.get('surface')}")
@@ -181,23 +211,26 @@ def admission():
 
 # ── Control: the node/agent steward-binding gate IS real (CC 3.2 unchanged) ──
 @pytest.mark.requires_persist
-@pytest.mark.xfail(strict=True, reason=
-    "CIRISConformance#87: `age_assurance:`/`capacity_assurance:` now also require `infra:attest_assurance` CONFERRED from a trust root this node trusts (persist v32.3.0). The harness has no trust-root ceremony, so the witness emit is refused with federation_reserved_prefix_emitter_mismatch.")
 def test_node_steward_binding_is_admitted_and_resolves(admission):
-    """A node/agent steward-binding is admitted and resolves `is_steward_bound` true."""
+    """A node/agent steward-binding is admitted and resolves `is_steward_bound` true;
+    a plain conferral onto the same node from another user is admitted but is not
+    custody — it never enters `steward_bindings_of` (CC 3.2, CIRISConstitution#87)."""
     r = admission
     assert r["node_bind"]["outcome"] == "admitted", (
         f"node steward_bind was refused: {r['node_bind']}")
     assert r["node_is_steward_bound"] == "true", (
         f"steward-bound node not recognized by is_steward_bound: {r}")
+    assert r["node_conferral"]["outcome"] == "admitted", (
+        f"a plain conferral onto the node was refused as if it were custody: {r['node_conferral']}")
+    assert r["U"] not in r["node_bindings_of"], (
+        f"a conferring user entered the node's custody set — conferral is being read as "
+        f"stewardship: {r['node_bindings_of']}")
     assert r["S"] in r["node_bindings_of"], (
         f"adult steward absent from the node's steward_bindings_of: {r}")
 
 
 # ── Age graduation via the #368 witness-attests-subject path IS the precondition ──
 @pytest.mark.requires_persist
-@pytest.mark.xfail(strict=True, reason=
-    "CIRISConformance#87: `age_assurance:`/`capacity_assurance:` now also require `infra:attest_assurance` CONFERRED from a trust root this node trusts (persist v32.3.0). The harness has no trust-root ceremony, so the witness emit is refused with federation_reserved_prefix_emitter_mismatch.")
 def test_witness_attestation_graduates_age_bands(admission):
     """The witness's age_assurance attestations graduate S → adult and T → minor.
 
@@ -219,18 +252,23 @@ def test_witness_attestation_graduates_age_bands(admission):
 
 # ── CC 3.2 user-target admission rule — the un-stewardable rejections ──
 @pytest.mark.requires_persist
-@pytest.mark.xfail(strict=True, reason=
-    "CIRISConformance#87: `age_assurance:`/`capacity_assurance:` now also require `infra:attest_assurance` CONFERRED from a trust root this node trusts (persist v32.3.0). The harness has no trust-root ceremony, so the witness emit is refused with federation_reserved_prefix_emitter_mismatch.")
 def test_adult_target_user_binding_is_rejected(admission):
-    """CC 3.2: a user-target steward-binding onto a PROVEN adult MUST be rejected.
+    """CC 3.2: an OWNER-BINDING onto a PROVEN adult MUST be rejected; a capability
+    conferral onto the same adult MUST NOT be (CIRISConstitution#87).
 
-    Probed real on persist 13.2.0: `grant_delegation` targeting a user whose
-    `age_band==adult` is rejected with
+    `grant_delegation(..., delegation_purpose="responsible_for")` targeting a user
+    whose `age_band==adult` is rejected with
     `federation_user_target_steward_binding_forbidden` — the un-stewardable-adult
-    guarantee (presumption of sovereignty). The admit fires ONLY for a
-    proven-minor target, never an adult one.
+    guarantee (presumption of sovereignty). The same call with NO purpose is a
+    consensual conferral (here a `moderate` duty scope) and is admitted: through
+    persist v30.7 this gate fired on EVERY delegates_to to a user, which is the
+    conflation the ruling retired.
     """
     r = admission
+    assert r["adult_target_conferral"]["outcome"] == "admitted", (
+        f"a duty conferral onto a proven-adult user was refused as a stewardship act "
+        f"— conferral is still being read as custody (CIRISConstitution#87): "
+        f"{r['adult_target_conferral']}")
     assert r["adult_target_grant"]["outcome"] == "rejected", (
         f"a delegates_to targeting a proven-adult user was admitted — the CC 3.2 "
         f"un-stewardable guarantee is not enforced: {r['adult_target_grant']}")
@@ -240,12 +278,10 @@ def test_adult_target_user_binding_is_rejected(admission):
 
 
 @pytest.mark.requires_persist
-@pytest.mark.xfail(strict=True, reason=
-    "CIRISConformance#87: `age_assurance:`/`capacity_assurance:` now also require `infra:attest_assurance` CONFERRED from a trust root this node trusts (persist v32.3.0). The harness has no trust-root ceremony, so the witness emit is refused with federation_reserved_prefix_emitter_mismatch.")
 def test_adult_target_steward_bind_is_rejected(admission):
-    """CC 3.2: `steward_bind` onto a PROVEN adult user MUST be rejected.
+    """CC 3.2: an owner-binding `steward_bind` onto a PROVEN adult user MUST be rejected.
 
-    Probed real on persist 13.2.0: `steward_bind` onto a user whose
+    `steward_bind(..., delegation_purpose="responsible_for")` onto a user whose
     `age_band==adult` is rejected with
     `federation_user_target_steward_binding_forbidden`.
     """
@@ -259,20 +295,22 @@ def test_adult_target_steward_bind_is_rejected(admission):
 
 
 @pytest.mark.requires_persist
-@pytest.mark.xfail(strict=True, reason=
-    "CIRISConformance#87: `age_assurance:`/`capacity_assurance:` now also require `infra:attest_assurance` CONFERRED from a trust root this node trusts (persist v32.3.0). The harness has no trust-root ceremony, so the witness emit is refused with federation_reserved_prefix_emitter_mismatch.")
 def test_unverified_age_target_is_rejected(admission):
-    """CC 3.2: `steward_bind` onto a user of UNVERIFIED age MUST be rejected.
+    """CC 3.2: an owner-binding onto a user of UNVERIFIED age MUST be rejected; a
+    conferral onto the same user is not an age-gated act and is admitted.
 
-    Presumption of sovereignty (probed real on persist 13.2.0): a user with no
-    proven-minor band (`age_band==unknown`) is treated as a self-sovereign adult,
-    so binding onto it rejects with
-    `federation_user_target_steward_binding_forbidden` — identical posture to a
-    proven-adult target. This is the leg the earlier (12.5.0) test drove WRONG:
-    it bound onto an unverified target and misread this sovereignty forbid as a
-    "wholesale" block of ALL user-target bindings.
+    Presumption of sovereignty: a user with no proven-minor band
+    (`age_band==unknown`) is treated as a self-sovereign adult, so a custody claim
+    onto it rejects with `federation_user_target_steward_binding_forbidden` —
+    identical posture to a proven-adult target. The conferral pair pins the other
+    half of CIRISConstitution#87: the steward gate no longer doubles as an age
+    gate for conferrals (a duty needing an age floor declares it on its own
+    CC 4.5.5 row).
     """
     r = admission
+    assert r["unver_target_conferral"]["outcome"] == "admitted", (
+        f"a conferral onto an unverified-age user was refused — the steward gate is "
+        f"still doubling as an age gate for conferrals: {r['unver_target_conferral']}")
     assert r["unver_target_steward_bind"]["outcome"] == "rejected", (
         f"steward_bind onto an unverified-age user was admitted — presumption of "
         f"sovereignty is not enforced: {r['unver_target_steward_bind']}")
@@ -283,8 +321,6 @@ def test_unverified_age_target_is_rejected(admission):
 
 # ── CC 3.2 user-target admission rule — the POSITIVE minor-guardianship admit ──
 @pytest.mark.requires_persist
-@pytest.mark.xfail(strict=True, reason=
-    "CIRISConformance#87: `age_assurance:`/`capacity_assurance:` now also require `infra:attest_assurance` CONFERRED from a trust root this node trusts (persist v32.3.0). The harness has no trust-root ceremony, so the witness emit is refused with federation_reserved_prefix_emitter_mismatch.")
 def test_minor_target_user_binding_is_admitted_only_because_minor(admission):
     """CC 3.2: a user-target binding is ADMITTED iff the target is a proven minor.
 

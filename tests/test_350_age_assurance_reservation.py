@@ -59,7 +59,7 @@ from __future__ import annotations
 
 import pytest
 
-from conftest import get_database_url, run_python_script
+from conftest import TRUST_ROOT_CEREMONY_SRC, get_database_url, run_python_script
 
 pytestmark = pytest.mark.fabric
 
@@ -100,8 +100,14 @@ class Ident:
 
     def engine(self):
         cp.reset_engine()
-        return cp.Engine(_URL, self.k, local_key_id=self.k, local_key_path=self.s,
-                         local_pqc_key_id=self.k + "-pqc", local_pqc_key_path=self.p)
+        eng = cp.Engine(_URL, self.k, local_key_id=self.k, local_key_path=self.s,
+                        local_pqc_key_id=self.k + "-pqc", local_pqc_key_path=self.p)
+        # persist v40: a fresh Engine has no node identity until it registers;
+        # the conferral gates resolve "does THIS NODE trust the root", so bind
+        # it on every reconstruction (see conftest.TRUST_ROOT_CEREMONY_SRC).
+        if getattr(self, "kid", None):
+            _bind_node_identity(eng, self.itype)
+        return eng
 
 
 # Sanity: both admission surfaces must exist.
@@ -172,6 +178,12 @@ report["agent_roles_xsubject_age_assurance"] = emit_about(
 
 # ── A registered WITNESS-type key (a provider/government verifier) ────────
 witness = Ident("witn", "witness", "age-witness")
+
+# CIRISConformance#87 — stand up a trust root and confer the witness-reserved
+# capability from it (persist v30.2.0+): holding `witness` is necessary, never
+# sufficient. Drives the real three-row ceremony (see conftest).
+ROOT = Ident("root", "agent", "trust-root")
+_TRUST_ROOT_CEREMONY = confer_from_trust_root(ROOT, witness, "infra:attest_assurance")
 report["witness_register"] = "ok" if witness.reg_error is None else "REGFAIL:" + witness.reg_error
 
 # The witness cannot SELF-emit age_assurance:* either — self is unfalsifiable, so
@@ -191,7 +203,7 @@ os._exit(0)
 
 
 def _admit_script(database_url: str) -> str:
-    return f"DB_URL = {database_url!r}\n" + _ADMIT_BODY
+    return f"DB_URL = {database_url!r}\n" + TRUST_ROOT_CEREMONY_SRC + _ADMIT_BODY
 
 
 @pytest.fixture(scope="module")
@@ -271,8 +283,6 @@ def test_agent_admitted_on_age_self_declared_band(admission):
 
 
 @pytest.mark.requires_persist
-@pytest.mark.xfail(strict=True, reason=
-    "CIRISConformance#87: `age_assurance:`/`capacity_assurance:` now also require `infra:attest_assurance` CONFERRED from a trust root this node trusts (persist v32.3.0). The harness has no trust-root ceremony, so the witness emit is refused with federation_reserved_prefix_emitter_mismatch.")
 def test_witness_key_admitted_on_age_assurance(admission):
     """CC 3.4.11 (persist 13) reservation is symmetric: witness self-emit REFUSED, witness cross-attest ADMITTED.
 

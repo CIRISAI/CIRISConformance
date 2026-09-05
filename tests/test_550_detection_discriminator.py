@@ -51,7 +51,7 @@ from __future__ import annotations
 
 import pytest
 
-from conftest import get_database_url, run_python_script
+from conftest import TRUST_ROOT_CEREMONY_SRC, get_database_url, run_python_script
 
 pytestmark = pytest.mark.fabric
 
@@ -80,12 +80,19 @@ class Ident:
         self.s = os.path.join(d, "s"); open(self.s, "wb").write(secrets.token_bytes(32))
         self.p = os.path.join(d, "p"); open(self.p, "wb").write(secrets.token_bytes(32))
         self.k = prefix + "-" + secrets.token_hex(8)
+        self.itype = itype
         self.kid = self.engine().register_self_federation_key(itype, ref, None, None, roles)
 
     def engine(self):
         cp.reset_engine()
-        return cp.Engine(DB_URL, self.k, local_key_id=self.k, local_key_path=self.s,
-                         local_pqc_key_id=self.k + "-pqc", local_pqc_key_path=self.p)
+        eng = cp.Engine(DB_URL, self.k, local_key_id=self.k, local_key_path=self.s,
+                        local_pqc_key_id=self.k + "-pqc", local_pqc_key_path=self.p)
+        # persist v40: a fresh Engine has no node identity until it registers;
+        # the conferral gates resolve "does THIS NODE trust the root", so bind
+        # it on every reconstruction (see conftest.TRUST_ROOT_CEREMONY_SRC).
+        if getattr(self, "kid", None):
+            _bind_node_identity(eng, self.itype)
+        return eng
 
 
 probe = Ident("probe", "agent", "probe")
@@ -105,6 +112,15 @@ AGENT = Ident("agent", "agent", "agent-ref")                    # ordinary agent
 DET_BARE = Ident("det", "lenscore_detector", "det-ref")         # bare detector role
 DET_FOLD = Ident("fold", "agent,lenscore_detector", "fold-ref") # CC 3.4.8 fold set
 DET_ROLES = Ident("rls", "agent", "roles-ref", roles=["lenscore_detector"])  # roles= kwarg
+
+# CIRISConformance#87 — the enumerated detector leaves are gated on a CONFERRED
+# `infra:detect` (persist v30.4.0) held from a trust root this node trusts, on
+# top of `lenscore_detector ∈ identity_type`. Confer it on ALL THREE candidate
+# keys so the remaining discriminator is exactly the identity_type membership:
+# the roles= kwarg key stays refused WITH the conferral in hand.
+ROOT = Ident("root", "agent", "trust-root")
+_TRUST_ROOT_CEREMONY = {name: confer_from_trust_root(ROOT, det, "infra:detect")
+                            for name, det in (("bare", DET_BARE), ("fold", DET_FOLD), ("roles", DET_ROLES))}
 
 report = {}
 # Sanity — a plain scores attestation from the agent key is admitted, so the
@@ -150,7 +166,7 @@ print(json.dumps(report)); sys.stdout.flush(); os._exit(0)
 
 @pytest.fixture(scope="module")
 def admission():
-    script = f"INJECTED_URL = {get_database_url()!r}\n" + _BODY
+    script = f"INJECTED_URL = {get_database_url()!r}\n" + TRUST_ROOT_CEREMONY_SRC + _BODY
     payload = run_python_script(script).parsed_stdout()
     if payload.get("_error") == "absent":
         pytest.fail("persist.emit_attestation_self is missing — the attestation "
@@ -186,8 +202,6 @@ def test_detection_leaves_refused_from_agent_key(admission):
 
 
 @pytest.mark.requires_persist
-@pytest.mark.xfail(strict=True, reason=
-    "CIRISConformance#87: `age_assurance:`/`capacity_assurance:` now also require `infra:attest_assurance` CONFERRED from a trust root this node trusts (persist v32.3.0). The harness has no trust-root ceremony, so the witness emit is refused with federation_reserved_prefix_emitter_mismatch.")
 def test_lenscore_detector_key_admitted_on_detection(admission):
     """CC 3.4.8: a key holding `lenscore_detector` in `identity_type` IS admitted on detection:*.
 

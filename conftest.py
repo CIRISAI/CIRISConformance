@@ -240,35 +240,66 @@ _PG_EDGE_CRASH_REASON = (
     "Tracked: CIRISPersist#354.")
 
 
-# ─── Unconferred assurance scope (CIRISConformance#87) ────────────────
-# `age_assurance:` and `capacity_assurance:` gained a `required_delegation_scope`
-# of `infra:attest_assurance`, and the check is NOT a delegation the emitter can
-# arrange for itself: `check_reserved_prefix_admission` needs
-# `directory.node_key_id()` set AND the capability conferred to the attesting key
-# from a trust root this node trusts. The harness has no trust-root ceremony, so
-# every witness-reserved emit is refused with
-# `federation_reserved_prefix_emitter_mismatch`.
+# ── CIRISConformance#87 — the trust-root capability conferral ceremony ────────
+# Since persist v30.2.0 (CIRISPersist#607) the witness-reserved prefixes
+# (`age_assurance:`, `capacity_assurance:`) and the detector leaves (`detection:*`)
+# are gated on a CONFERRED capability — `infra:attest_assurance` / `infra:detect` —
+# held from a trust root THIS NODE trusts, resolved by
+# `trust_root::capability_roots_to_trusted_root(node, subject, scope)`. Holding
+# the role is necessary, never sufficient. The ceremony a real deployment performs,
+# driven here over the real wheel as three federation-tier `delegates_to` rows:
 #
-# Tests that fail in the CALL phase carry `xfail(strict=True)` pointed at #87.
-# This helper is for the ones that fail in a FIXTURE, where a marker cannot
-# reach — pytest reports those as errors, not xfails. Same shape as
-# `xfail_if_pg_edge_runtime_crash` above.
-_UNCONFERRED_SCOPE = "federation_reserved_prefix_emitter_mismatch"
-_UNCONFERRED_REASON = (
-    "witness-reserved prefix refused: `infra:attest_assurance` must be CONFERRED "
-    "from a trust root this node trusts (not self-granted), and the harness has "
-    "no trust-root ceremony. Tracked: CIRISConformance#87.")
+#   charter  root → root     dimension trust:charter:v1, scope {infra:serve, infra:attest},
+#                            pre_rotation_commitment = sha256(JCS(sorted successor ids))
+#   confer   root → subject  dimension trust:confers:v1, scope [<scope>]
+#   accept   node → root     dimension trust:accepts:v1, scope [infra:serve]
+#
+# "node" is whoever the emitting Engine says it is. persist binds that identity
+# inside `register_self_federation_key` — and NOWHERE else on the Python surface
+# — as an in-memory field of the backend, so a freshly constructed Engine (the
+# one-live-engine-per-process rule forces reconstruction) knows no node identity
+# until it registers again. Re-registering an existing key is refused as
+# `federation_conflict`, but the binding happens BEFORE the refused write, so the
+# refusal is the binding. `_bind_node_identity` relies on exactly that; if a
+# future persist reorders register_self, the witness emits below start refusing
+# with the emitter-mismatch token again and this comment is where to look.
+TRUST_ROOT_CEREMONY_SRC = r"""
+import hashlib as _hashlib, json as _json
 
 
-def xfail_if_unconferred_assurance_scope(result: "ScriptResult") -> None:
-    """Imperatively `pytest.xfail` iff a witness emit was refused for lack of
-    a conferred `infra:attest_assurance` capability.
+def _bind_node_identity(engine, itype):
+    # A fresh Engine knows no node identity; persist binds it inside
+    # register_self_federation_key BEFORE the (refused) duplicate write.
+    try:
+        engine.register_self_federation_key(itype, "rebind", None, None, None)
+    except Exception as exc:
+        if "federation_conflict" not in str(exc):
+            raise
 
-    Deliberately narrow: it matches ONLY the reserved-prefix rejection token, so
-    a scenario that fails for any other reason still fails loudly. The gate
-    returns the moment #87 lands a conferral fixture."""
-    if _UNCONFERRED_SCOPE in (result.stderr or ""):
-        pytest.xfail(_UNCONFERRED_REASON)
+
+def _trust_edge(ident, attested_kid, dimension, extra):
+    env = {"attesting_key_id": ident.kid, "attested_key_id": attested_kid,
+           "dimension": dimension, "score": 1.0,
+           "asserted_at": "2026-05-28T14:00:00.000Z", "witness_relation": "self"}
+    env.update(extra)
+    return ident.engine().emit_attestation_self(_json.dumps(
+        {"attestation_type": "delegates_to", "attested_key_id": attested_kid,
+         "attestation_envelope": env}))
+
+
+def confer_from_trust_root(root, subject, scope):
+    # Stand up `root` as a chartered trust root this node accepts, and confer
+    # `scope` on `subject` from it. Returns the three attestation ids.
+    commitment = _hashlib.sha256(_json.dumps(
+        sorted([root.kid + "-successor"]), separators=(",", ":")).encode()).hexdigest()
+    return {
+        "charter": _trust_edge(root, root.kid, "trust:charter:v1",
+                               {"scope": ["infra:serve", "infra:attest"],
+                                "pre_rotation_commitment": commitment}),
+        "confer": _trust_edge(root, subject.kid, "trust:confers:v1", {"scope": [scope]}),
+        "accept": _trust_edge(subject, root.kid, "trust:accepts:v1", {"scope": ["infra:serve"]}),
+    }
+"""
 
 
 # CIRISEdge#573 — the pyo3 conformance helper `build_signed_inbound_envelope`

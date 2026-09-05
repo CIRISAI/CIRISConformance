@@ -54,7 +54,10 @@ cc_decimal_id	cc_claim_id	conformance_test_id(s)	freeze_gate_vector(s)
 5.4.3	CC-5.4.3-content-fragmentation	tests/test_571_scope_privacy_fragmentation.py	-
 # ── CC 1.0-final evidence sweep, round 2: 4 substrate-seam claims driven green (were staged, pointed only at the now-CLOSED CIRISServer#155 umbrella — silent seam). Probed drivable on persist 15.1.0. ──
 3.4.12	CC-3.4.12-adult-incapacity-capacity-gate	tests/test_572_capacity_incapacity_gate.py	-
-3.4.9	CC-3.4.9-co-stewarded-multi-steward	tests/test_573_co_stewardship.py	-
+# 3.4.7.3: was `3.4.9  CC-3.4.9-co-stewarded-multi-steward` (rc2 co-stewardship). CC 1.0-rc4 moved the
+# rule: CC 3.4.9 is the co-stewarded licensure PREFIX; node custody cardinality is CC 3.4.7.3
+# Clause D (occurrence half + ONE custody claim; CC 3.2 single-owner). test_573 now drives that.
+3.4.7.3	CC-3.4.7.3-custody-cardinality-one	tests/test_573_co_stewardship.py	-
 5.3.2.2	CC-5.3.2.2-revocation-promotion	tests/test_574_revocation_promotion.py	-
 2.6.1.4	CC-2.6.1.4-worked-canonicalization-attack	tests/test_575_worked_canonicalization.py	-
 # ── CC 6.1.2.1.2 R9 residual CLOSED (CIRISConformance#71 / CIRISVerify#191 / CIRISEdge#328 / CIRISPersist#435).

@@ -57,7 +57,7 @@ from __future__ import annotations
 
 import pytest
 
-from conftest import get_database_url, run_python_script
+from conftest import TRUST_ROOT_CEREMONY_SRC, get_database_url, run_python_script
 
 pytestmark = pytest.mark.fabric
 
@@ -89,12 +89,19 @@ class Ident:
         self.s = os.path.join(d, "s"); open(self.s, "wb").write(secrets.token_bytes(32))
         self.p = os.path.join(d, "p"); open(self.p, "wb").write(secrets.token_bytes(32))
         self.k = prefix + "-" + secrets.token_hex(8)
+        self.itype = itype
         self.kid = self.engine().register_self_federation_key(itype, ref, None, None, None)
 
     def engine(self):
         cp.reset_engine()
-        return cp.Engine(DB_URL, self.k, local_key_id=self.k, local_key_path=self.s,
-                         local_pqc_key_id=self.k + "-pqc", local_pqc_key_path=self.p)
+        eng = cp.Engine(DB_URL, self.k, local_key_id=self.k, local_key_path=self.s,
+                        local_pqc_key_id=self.k + "-pqc", local_pqc_key_path=self.p)
+        # persist v40: a fresh Engine has no node identity until it registers;
+        # the conferral gates resolve "does THIS NODE trust the root", so bind
+        # it on every reconstruction (see conftest.TRUST_ROOT_CEREMONY_SRC).
+        if getattr(self, "kid", None):
+            _bind_node_identity(eng, self.itype)
+        return eng
 
 
 # Sanity: all three surfaces must exist.
@@ -140,6 +147,12 @@ report = {}
 
 # A single witness (provider/government verifier) attests about the subjects.
 WIT = Ident("witn", "witness", "witness")
+
+# CIRISConformance#87 — stand up a trust root and confer the witness-reserved
+# capability from it (persist v30.2.0+): holding `witness` is necessary, never
+# sufficient. Drives the real three-row ceremony (see conftest).
+ROOT = Ident("root", "agent", "trust-root")
+_TRUST_ROOT_CEREMONY = confer_from_trust_root(ROOT, WIT, "infra:attest_assurance")
 report["WIT"] = WIT.kid
 
 # ── (a) pre-declaration band is the absence sentinel ──
@@ -191,7 +204,7 @@ print(json.dumps(report)); sys.stdout.flush(); os._exit(0)
 
 @pytest.fixture(scope="module")
 def ratchet():
-    script = f"INJECTED_URL = {get_database_url()!r}\n" + _BODY
+    script = f"INJECTED_URL = {get_database_url()!r}\n" + TRUST_ROOT_CEREMONY_SRC + _BODY
     payload = run_python_script(script).parsed_stdout()
     if payload.get("_error") == "absent":
         pytest.fail(f"persist surface missing: {payload.get('surface')}")
@@ -254,8 +267,6 @@ def test_self_declared_adult_cannot_graduate_a_minor(ratchet):
 
 
 @pytest.mark.requires_persist
-@pytest.mark.xfail(strict=True, reason=
-    "CIRISConformance#87: `age_assurance:`/`capacity_assurance:` now also require `infra:attest_assurance` CONFERRED from a trust root this node trusts (persist v32.3.0). The harness has no trust-root ceremony, so the witness emit is refused with federation_reserved_prefix_emitter_mismatch.")
 def test_witness_assurance_outranks_self(ratchet):
     """CC §3.4.11 read-union: a witness age_assurance:* rung OUTRANKS the self rung (cross-subject).
 
@@ -297,8 +308,6 @@ def test_witness_assurance_outranks_self(ratchet):
 
 
 @pytest.mark.requires_persist
-@pytest.mark.xfail(strict=True, reason=
-    "CIRISConformance#87: `age_assurance:`/`capacity_assurance:` now also require `infra:attest_assurance` CONFERRED from a trust root this node trusts (persist v32.3.0). The harness has no trust-root ceremony, so the witness emit is refused with federation_reserved_prefix_emitter_mismatch.")
 def test_cross_subject_witness_graduation(ratchet):
     """CC §3.4.11 / CIRISPersist#368: a witness graduates ANOTHER subject's band — now REAL green.
 
@@ -320,8 +329,6 @@ def test_cross_subject_witness_graduation(ratchet):
 
 
 @pytest.mark.requires_persist
-@pytest.mark.xfail(strict=True, reason=
-    "CIRISConformance#87: `age_assurance:`/`capacity_assurance:` now also require `infra:attest_assurance` CONFERRED from a trust root this node trusts (persist v32.3.0). The harness has no trust-root ceremony, so the witness emit is refused with federation_reserved_prefix_emitter_mismatch.")
 def test_fine_band_witness_graduation(ratchet):
     """CC §3.4.13 Q1 / CIRISPersist#309: the four-band fine resolution graduates independently of the binary predicate.
 
