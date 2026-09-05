@@ -57,7 +57,12 @@ from pathlib import Path
 
 import pytest
 
-from conftest import REPO_ROOT, get_database_url, run_python_script
+from conftest import (
+    REPO_ROOT,
+    get_database_url,
+    run_python_script,
+    xfail_if_helper_cannot_sign_hybrid,
+)
 
 MANIFEST_PATH = REPO_ROOT / "reference" / "CIRIS_Constitution" / "WIRE_VOCABULARY.md"
 
@@ -124,22 +129,23 @@ except ImportError as exc:
 _seed = secrets.token_bytes(32)
 _d = tempfile.mkdtemp()
 _sp = os.path.join(_d, "s"); open(_sp, "wb").write(_seed)
+_pqc = os.path.join(_d, "p"); open(_pqc, "wb").write(secrets.token_bytes(32))
 _idp = os.path.join(_d, "t.id"); open(_idp, "wb").write(b"\x00" * 64)
 cp.reset_engine()
 k = "node-" + secrets.token_hex(8)
-# Ed25519-only engine + ed25519_fallback edge — the documented pairing for
-# build_signed_inbound_envelope (it emits no PQC half).
-engine = cp.Engine(DB_URL, k, local_key_id=k, local_key_path=_sp)
+# The engine carries BOTH halves. edge v19.0.0 (CIRISEdge#562): "every
+# signature is the FULL hybrid — no classical-only fallback", so
+# `build_signed_inbound_envelope` refuses an Ed25519-only signer outright and
+# the `ed25519_fallback` pairing this probe documented through edge v17 cannot
+# build ANY variant. The wire vocabulary is a codec/variant question; the
+# signer is whichever one signs, and only the hybrid one does.
+engine = cp.Engine(DB_URL, k, local_key_id=k, local_key_path=_sp,
+                   local_pqc_key_id=k + "-pqc", local_pqc_key_path=_pqc)
 kid = engine.register_self_federation_key("agent", "wire-ref", None, None, None)
-# HTTPS-only keeps the engine Ed25519-only — the documented pairing this test
-# is about. edge v17 (CIRISEdge#458) refuses to stand up the RETICULUM
-# transport without an ML-DSA-65 half; provisioning one would make
-# register_self publish a PQC pubkey and the key would stop being
-# hybrid-pending, which is the state `ed25519_fallback` exists to accept.
-# `disable_reticulum=True` requires an https_listen_addr in exchange (an edge
-# with no transports at all is refused). The wire vocabulary is a
-# codec/variant question, not a transport one.
-edge = init_edge_runtime(engine, _idp, hybrid_policy="ed25519_fallback",
+# HTTPS-only: `disable_reticulum=True` requires an https_listen_addr in
+# exchange (an edge with no transports at all is refused). Which transport is
+# up does not change what is under test.
+edge = init_edge_runtime(engine, _idp,
                          disable_reticulum=True,
                          https_listen_addr="127.0.0.1:0",
                          https_dev_self_signed=True)
@@ -206,6 +212,11 @@ def test_tier1_and_opaque_variants_accepted(wire):
     """
     assert _EXPECTED_ACCEPT, "manifest parse yielded no accepted variants"
     refused = {mt: r for mt, r in wire["accept"].items() if r != "accepted"}
+    # CIRISEdge#573: the helper itself cannot sign on edge >= v19 (no PQC half).
+    # xfail ONLY when every refusal is that signer token — a variant refused for
+    # any other reason must still fail loudly. Returns when the helper is fixed.
+    if refused and all("has no ML-DSA-65 (PQC) half" in r for r in refused.values()):
+        xfail_if_helper_cannot_sign_hybrid(next(iter(refused.values())))
     assert not refused, (
         f"manifest-ratified variants refused by the wheel: {refused}")
 

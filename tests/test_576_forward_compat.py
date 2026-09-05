@@ -14,8 +14,9 @@ breaking peers already speaking it:
   (do not strip), and (c) *preserve* it on re-emission when the Consumer is also
   acting as a relaying Producer.
 
-What is REAL on the floor (persist 16.1.1), driven end-to-end here — the substrate
-round-trips an unknown future field through the full write → promote → read path:
+What is REAL on the floor (persist v40.0.0), driven end-to-end here — the substrate
+round-trips an unknown future field through the full write → cross → widen → read
+path:
 
 - **NOT rejected on write.** An `attestation_envelope` carrying an unknown member
   (`zz_future_ceg_field`, a nested object) is admitted by
@@ -25,16 +26,22 @@ round-trips an unknown future field through the full write → promote → read 
   `attestation_envelope` read back via `list_attestations_for(...)` still carries
   `zz_future_ceg_field` with its exact nested value — the field is neither stripped
   nor mangled.
-- **Preserved on re-emission (promotion).** `attestation_promote(id)` re-emits the
-  row federation-tier — the "Consumer acting as a relaying Producer" case — and the
-  unknown field survives that re-emission.
+- **Preserved on re-emission (the crossing and the widening).** persist v39.0.0
+  retired `attestation_promote` (it re-signed the row with the node's key) for two
+  actor-signed verbs. `enter_mesh(id, ci)` flips the row federation-tier over the
+  SAME bytes; `widen_audience(id, ci, strip)` writes a `supersedes` row at the
+  wider `cohort_scope`, reusing the body member by member — THAT is the "Consumer
+  acting as a relaying Producer" re-emission, and the unknown field must survive
+  it: it is read back from the widening row (a fresh envelope the actor signed),
+  not only from the row that crossed unchanged.
 - **Inside the SIGNED canonical bytes.** `canonicalize_envelope(...)` over the
   stored envelope shows the unknown field is part of the canonical bytes the hybrid
-  signature covers at promote — the CC 2.1.1 canonical-bytes contract: the
+  signature covers at the crossing — the CC 2.1.1 canonical-bytes contract: the
   unrecognized field rides the signature, not silently outside it.
 
 Real surface: `Engine.attestation_insert_local(input_json)`,
-`Engine.attestation_promote(attestation_id)`,
+`Engine.describe_crossing(id, scope, cohort_target, basis_json)`,
+`Engine.enter_mesh(id, ci_json)`, `Engine.widen_audience(prior_id, ci_json, strip)`,
 `Engine.list_attestations_for(target_key_id, cursor, limit, caller_occurrence)`,
 `Engine.canonicalize_envelope(envelope_json)` (the production
 `PythonJsonDumpsCanonicalizer` — sorted keys, no whitespace, ensure_ascii). The
@@ -84,8 +91,8 @@ class Ident:
                          local_pqc_key_id=self.k + "-pqc", local_pqc_key_path=self.p)
 
 
-for surface in ("attestation_insert_local", "attestation_promote",
-                "list_attestations_for", "canonicalize_envelope"):
+for surface in ("attestation_insert_local", "describe_crossing", "enter_mesh",
+                "widen_audience", "list_attestations_for", "canonicalize_envelope"):
     if not hasattr(Ident("probe", "agent", "probe").engine(), surface):
         print(json.dumps({"_error": "absent", "surface": surface})); sys.exit(2)
 
@@ -98,6 +105,20 @@ def _attempt(label, fn):
         r[label] = {"outcome": "ok", "value": fn()}
     except Exception as exc:
         r[label] = {"outcome": "err", "token": str(exc)[:200]}
+
+
+# persist v39.0.0: a crossing is described (nine CC 4.5.1.1 axes derived from the
+# row by `describe_crossing`), then entered / widened; the basis is producer
+# authority — the actor publishes its own claim.
+_BASIS = json.dumps({"kind": "producer_authority"})
+
+
+def _enter(engine, aid):
+    return engine.enter_mesh(aid, engine.describe_crossing(aid, "self", None, _BASIS))
+
+
+def _widen(engine, aid, audience="federation"):
+    return engine.widen_audience(aid, engine.describe_crossing(aid, audience, None, _BASIS), [])
 
 
 # The unknown future field — a nested object, so a naive "stringify scalars only"
@@ -120,19 +141,26 @@ _inp = {
 _attempt("insert_local", lambda: A.engine().attestation_insert_local(json.dumps(_inp)))
 _aid = r["insert_local"].get("value")
 
-# (c) preserved on re-emission (promotion = Consumer relaying as Producer).
-_attempt("promote", lambda: A.engine().attestation_promote(_aid, "federation"))
+# (c) preserved on re-emission: enter the mesh over the same bytes, then widen —
+# the widening is a fresh actor-signed envelope (Consumer relaying as Producer).
+_attempt("enter", lambda: _enter(A.engine(), _aid))
+_attempt("widen", lambda: _widen(A.engine(), _aid))
+_wid = ((r["widen"].get("value") or {}).get("attestation_id")
+        if r["widen"]["outcome"] == "ok" else None)
 
 
-def _read_stored_envelope():
+def _read_stored_envelope(aid):
     page = json.loads(A.engine().list_attestations_for(A.kid, None, 50, A.kid))
     items = page.get("items", page.get("attestations", []))
-    row = next(x for x in items if x.get("attestation_id") == _aid)
+    row = next(x for x in items if x.get("attestation_id") == aid)
     se = row.get("attestation_envelope")
     return json.loads(se) if isinstance(se, str) else se
 
 
-_attempt("stored_envelope", _read_stored_envelope)
+_attempt("stored_envelope", lambda: _read_stored_envelope(_aid))
+_attempt("widened_envelope", lambda: _read_stored_envelope(_wid))
+_we = r["widened_envelope"].get("value") if r["widened_envelope"]["outcome"] == "ok" else None
+r["preserved_on_widening"] = bool(_we and _we.get("zz_future_ceg_field") == UNKNOWN)
 _se = r["stored_envelope"].get("value") if r["stored_envelope"]["outcome"] == "ok" else None
 
 # (b) preserved on read, byte-identical value.
@@ -197,12 +225,19 @@ def test_unknown_field_survives_re_emission(fc):
     """CC 2.1.1: a Consumer acting as a relaying Producer MUST preserve the unknown
     field on re-emission.
 
-    `attestation_promote` re-emits the row federation-tier; the unknown field
-    survives (asserted jointly with preservation-on-read, since the read happens
-    after promotion).
+    `enter_mesh` crosses the row over the same bytes (so the field trivially
+    survives — asserted jointly with preservation-on-read, since the read happens
+    after the crossing). `widen_audience` is the real re-emission: a NEW
+    `supersedes` envelope the actor signs at the wider scope, body reused member
+    by member — and the unknown nested member is present in it, unchanged.
     """
-    assert fc["promote"]["outcome"] == "ok" and fc["promote"]["value"] is True, (
-        f"promotion (the relay-as-Producer re-emission) did not succeed: {fc['promote']}")
+    assert fc["enter"]["outcome"] == "ok" and fc["enter"]["value"].get("outcome") == "crossed", (
+        f"entering the mesh with the unknown-field row did not report `crossed`: {fc['enter']}")
+    assert fc["widen"]["outcome"] == "ok" and fc["widen"]["value"].get("outcome") == "crossed", (
+        f"widening (the relay-as-Producer re-emission) did not succeed: {fc['widen']}")
+    assert fc["preserved_on_widening"] is True, (
+        f"the unknown field did not survive re-emission on the widening row — "
+        f"the relaying Producer stripped or mangled it: {fc.get('widened_envelope')}")
 
 
 @pytest.mark.requires_persist
@@ -211,7 +246,7 @@ def test_unknown_field_rides_the_signed_canonical_bytes(fc):
     bytes the signature covers, not silently outside it.
 
     `canonicalize_envelope` over the stored envelope contains `zz_future_ceg_field`
-    — so the hybrid signature computed at promote covers it (a new field cannot
+    — so the hybrid signature computed at the crossing covers it (a new field cannot
     silently change what an old signature covered).
     """
     assert fc["in_signed_bytes"] is True, (

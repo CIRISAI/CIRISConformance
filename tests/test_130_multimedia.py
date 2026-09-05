@@ -194,9 +194,24 @@ def test_takedown_rejects_unknown_legal_basis(media_substrate):
 @pytest.mark.ceg
 @pytest.mark.requires_persist
 def test_key_grant_retire_uses_supersedes_not_withdraws(media_substrate):
-    """CC 3.3.2 option-b: retire emits `supersedes` (with rotation_chain), not `withdraws`."""
+    """CC 3.3.2 option-b: retire emits `supersedes` (with rotation_chain), not `withdraws`.
+
+    persist v36.0.0 (CIRISPersist#711): the report is a typed
+    `RetireKeyGrantsOutcome` — `{outcome: complete, retired}` or
+    `{outcome: partial, retired, failed: [{contribution_id, stage, error}]}` —
+    and a retirement that retired nothing can no longer report success by
+    counting failures into a side column (`supersedes_failed` is gone). There is
+    still no `withdraws_emitted`: retirement is supersession, never withdrawal.
+    """
     rep = media_substrate["retire_report"]
-    assert set(rep) == {"grants_seen", "supersedes_emitted", "supersedes_failed"}, rep
+    assert rep.get("outcome") in ("complete", "partial"), rep
+    assert isinstance(rep.get("retired"), int), rep
+    if rep["outcome"] == "partial":
+        assert rep.get("failed"), f"`partial` with no named failure is unconstructible: {rep}"
+        assert all({"contribution_id", "stage", "error"} <= set(f) for f in rep["failed"]), rep
+    else:
+        assert "failed" not in rep, rep
+    assert "supersedes_failed" not in rep, rep
     assert "withdraws_emitted" not in rep, rep
 
 

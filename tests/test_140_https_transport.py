@@ -41,10 +41,15 @@ def _https_init_script(database_url: str) -> str:
         "    print(json.dumps({'stage': 'import', 'error': str(exc)})); sys.exit(2)\n"
         "d = tempfile.mkdtemp()\n"
         "seed = os.path.join(d, 's'); open(seed, 'wb').write(secrets.token_bytes(32))\n"
+        "pqc = os.path.join(d, 'p'); open(pqc, 'wb').write(secrets.token_bytes(32))\n"
         "idp = os.path.join(d, 't.id'); open(idp, 'wb').write(b'\\x00' * 64)\n"
         "cp.reset_engine()\n"
         "k = 'https-' + secrets.token_hex(6)\n"
-        f"engine = cp.Engine({db_url_repr}, k, local_key_id=k, local_key_path=seed)\n"
+        # edge v19.0.0 (CIRISEdge#562): every signature is the FULL hybrid, so the
+        # signer must carry its ML-DSA-65 half or a send refuses at sign_envelope
+        # before it ever reaches the HTTPS transport under test.
+        f"engine = cp.Engine({db_url_repr}, k, local_key_id=k, local_key_path=seed,\n"
+        "                   local_pqc_key_id=k + '-pqc', local_pqc_key_path=pqc)\n"
         "try:\n"
         # HTTPS-only edge with a dev self-signed cert — needs the
         # transport-http feature compiled into the wheel.
@@ -67,10 +72,15 @@ def _https_config_script(database_url: str) -> str:
         "from ciris_edge.ciris_edge import init_edge_runtime\n"
         "d = tempfile.mkdtemp()\n"
         "seed = os.path.join(d, 's'); open(seed, 'wb').write(secrets.token_bytes(32))\n"
+        "pqc = os.path.join(d, 'p'); open(pqc, 'wb').write(secrets.token_bytes(32))\n"
         "idp = os.path.join(d, 't.id'); open(idp, 'wb').write(b'\\x00' * 64)\n"
         "cp.reset_engine()\n"
         "k = 'https-' + secrets.token_hex(6)\n"
-        f"engine = cp.Engine({db_url_repr}, k, local_key_id=k, local_key_path=seed)\n"
+        # edge v19.0.0 (CIRISEdge#562): every signature is the FULL hybrid, so the
+        # signer must carry its ML-DSA-65 half or a send refuses at sign_envelope
+        # before it ever reaches the HTTPS transport under test.
+        f"engine = cp.Engine({db_url_repr}, k, local_key_id=k, local_key_path=seed,\n"
+        "                   local_pqc_key_id=k + '-pqc', local_pqc_key_path=pqc)\n"
         "engine.register_self_federation_key('agent', 'https-ref', None, None, None)\n"
         "report = {}\n"
         "try:\n"
@@ -89,7 +99,8 @@ def _https_config_script(database_url: str) -> str:
         "        report['unresolved'] = {'error': None}\n"
         "    except Exception as exc:\n"
         "        report['unresolved'] = {'type': type(exc).__name__,\n"
-        "                                'no_https_url': 'no HTTPS URL configured' in str(exc)}\n"
+        "                                'no_https_url': 'no HTTPS URL configured' in str(exc),\n"
+        "                                'message': str(exc)[:240]}\n"
         "except Exception as exc:\n"
         "    report['mtls_bearer_init'] = False; report['error'] = str(exc)[:160]\n"
         "report['stage'] = 'done'\n"

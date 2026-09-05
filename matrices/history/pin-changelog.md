@@ -12,6 +12,50 @@ line it was lifted from.
 
 Captured at CIRISConformance 3ab8b75 (the v0.5.131 / v13.8.0 triple).
 
+## The v0.5.176 cycle — was pinned `ciris-server 0.5.176`
+
+Captured at CIRISConformance 3658d42, displaced by the v0.5.197 retention
+bump. Verbatim as it read in `current.yaml`:
+
+**set** — Catch-up to the rolling head after a ~4-week, ~45-release drift (FSD
+#86 §1.2 measured it: main pinned ciris-server 0.5.131 of 2026-07-20 while
+CIRISServer main was 0.5.176 of 2026-08-16). The set is read off CIRISServer
+main's Cargo.toml, which is the integrator's own statement of what cohabits:
+persist v32.3.0, edge v17.4.1, verify v13.3.1. This bump also changes the SHAPE
+of the matrix, not just its numbers — persist and edge left PyPI mid-drift, so
+they move to the git-tag channel above.
+
+**ciris-server** — 0.5.131 → 0.5.176. Head of the integrator. 0.5.176 is the
+hosted-login un-break (#421). The old footgun this pin used to hit is now
+structural rather than incidental: ciris-server's PyPI index retains only ~5
+releases, so this pin still rots fastest — when all edge cohab cells fail
+uniformly at pip-install with "No matching distribution for ciris-server==X",
+bump this line first.
+
+**ciris-verify** — 10.5.0 → 13.3.1. MAJOR 10→13. The only substrate member
+still on PyPI, and its published version matches the server's Cargo tag exactly
+(v13.3.1), so the wheel and the compiled-in crate are the same code for the
+first time in several cycles.
+
+**ciris-persist** — 17.8.0 → v32.3.0. FIFTEEN majors. Moves to the git-tag
+channel. Three drifts the harness absorbed: `cohort_add_member`/
+`cohort_swap_member` gained a required `admit_spec_json` (CIRISPersist#654 —
+roster growth was reachable from PyO3 with NO authority check, and the roster is
+both numerator and denominator of the family quorum); `attestation_promote`
+gained `cohort_scope` (#519 — a promotion now carries its placement, and
+#589/AV-45 refuses a third-party-naming row at `family`/`community`); and the v2
+key-grant wrap token was respelled to underscores while v1 kept hyphens
+(reported as CIRISPersist#715).
+
+**ciris-edge** — 13.8.0 → v17.4.1. MAJOR 13→17. Moves to the git-tag channel.
+Note this is the tag CIRISServer pins, NOT edge's repo head (v17.5.0) — the set
+is what the integrator carries, and a member ahead of the integrator is not yet
+in the coherent set. Behavioural drift: the Reticulum transport now REQUIRES a
+hybrid federation signer (CIRISEdge#458 / #393 item 2) — an Ed25519-only node
+cannot mint the hybrid-signed SignedTransportDestination, so peers would drop
+its frames unattributed at the E3 gate. Edge refuses the boot rather than
+letting that surface as silence on the wire.
+
 ## ciris-persist — was pinned `17.8.0`
 
 BUMPED 17.5.2 → 17.8.0 — the CIRISServer v0.5.131 / CIRISEdge v13.8.0 coherent triple (persist v17.8.0 / verify v10.5.0 / edge v13.8.0). TRIGGER: PyPI retention — ciris-server keeps only ~5 releases indexed, so the matrix's 0.5.122 pin became uninstallable and ALL 6 of edge's cohabitation cells failed at pip-install on the v13.8.0 tag run (the #81 unblocks-edge-CI precedent, retention edition). Content: edge 13.1.2→13.8.0 is the mobile-trace arc — crypto-DRY (verify 10.5.0), leviculum-* rename v0.10.2 (off-lock resource builds), #353/#373 reply-side (live-link selection + progress-aware timeout + no-drop drain), #927 initiator-first proactive Deliver (+ register_peer collapse: it now ACTIVELY replicates), #336 route-table-first dial selection. Server 0.5.131 adopts the same; persist 17.8.0/verify 10.5.0 are the pins edge+server carry. Suite compatibility pre-validated: edge PR cohab ran this suite green against edge-13.8.0 wheels + persist 17.8.0 + verify 10.5.0 (with server 0.5.122); server 0.5.131 release-gates ran green with TARGET_EDGE=v13.8.0. PRIOR 17.5.2 — BUMPED 16.1.1 → 17.5.2 — the CIRISServer v0.5.122 / CIRISEdge v13.1.2 coherent triple (persist v17.5.2 / verify v10.3.0 / edge v13.1.2). MAJOR persist 16→17, edge 11→13. TWO FLAG DAYS FLIPPED GREEN, both filed by this harness and shipped in persist 17.x — test_580 now asserts the POST-fix behavior and fails closed if either regresses: CIRISPersist#441 (the roles=[...] SET path used to BYPASS the accord-conferral gate the scalar identity_type path enforced — a CC 4.5.8.1 self-claim backdoor that held only by the ACCIDENT that `roles` was decorative; now REJECTED at admission with the same tokens as the scalar path) and CIRISPersist#442 (list_federation_keys dropped the roles array to [] on postgres while sqlite returned it populated — the readback is now a real cross-backend assertion, not a diagnostic). This is what turned all 6 of CIRISEdge's cohabitation/conformance CI cells red on the v13.1.2 tag: edge CI feeds its own Cargo pins into our reusable run-against-wheels workflow, so it ran main's 16.1.1-era expectation against persist 17.5.2. verify 10.1.1 → 10.3.0 (server#232 shipped: the verify FFI now rides IN the server wheel, and verify-core/ffi are pinned in the server Cargo.lock rather than standalone). PRIOR 16.1.1 — BUMPED 16.1.0 → 16.1.1 — the CIRISServer v0.5.108 re-pin (triple: persist v16.1.1 / verify v10.1.1 / edge v11.1.2). Clean patch bump: full suite 245 passed / 0 failed / 0 xfailed, no rework. Server 0.5.108 also SHIPPED AN EVIDENCE-PACK CORRECTION — a 3-way skeptical audit found its impl: map "53% wrong" and honestly re-pointed/opened 47 rows (91 resolved / 22 open / 0 FAIL), validated by tools/check_evidence.py (every path#symbol MUST resolve at the pinned crate version). 17 decimals it previously claimed are now repo=— / crate=open — several of which the CONFORMANCE lane already backs green (4.4.3.2.8 affiliations, 4.5.13 infohazard). PRIOR 16.1.0 — BUMPED 15.1.0 → 16.1.0 — the CC 6.1.2.1.2 **R9 cut**: AggregationMetaV1 v2 → **v3** (CIRISVerify#191 wire surface, CIRISEdge#328 fold-time producer, CIRISPersist#435 admission). The v3 preimage appends u32_be(max_source_multiplicity) ‖ mass_commitment[32], and put_aggregated_tier now runs BOTH passes_dominance_gate AND passes_multiplicity_gate — a pre-v3 tier FAIL-CLOSES with aggregation_meta_multiplicity (flag-day, no deprecation window). HARNESS: test_541/542/561/562 stopped hand-rolling the preimage and now call edge's producer (content_multiplicity → assemble_tier_meta_v3) and sign edge's canonical signing_preimage — a Merkle over (member_id, mass_to_fixed(mass)) at a pinned 1e6 scale is exactly the kind of SIGNED field a Python reimpl silently forks (CIRISConformance#76). CLOSES THE R9 RESIDUAL: new test_541::test_r9_near_duplicate_multiplicity_rejected drives 900 near-duplicates under distinct ids at equal mass — an HONEST n_eff==1000 that the dominance gate alone ADMITS — and the v3 multiplicity gate rejects it (max_source_multiplicity=900, 900·2 > 1000). That is the CIRISConformance#71 executable fixture. PRIOR 15.1.0 — HELD 15.1.0 — CIRISServer v0.5.106 trace-delivery wheel keeps persist v15.1.0 / verify v9.0.0 UNCHANGED; only edge moves (9.10→10.1.0 major) + server 0.5.102→0.5.106. Clean bump: full suite ZERO-xfail (208 passed, 1 hardware-HSM env skip) with no rework. CC unchanged (1.0-rc2, commit 5818a75). PRIOR 15.1.0 — BUMPED 13.4.1 → 15.1.0 — CIRISServer v0.5.102 triple-major (trace-flow unblock edge#312 + triple-maj). Clean bump: full suite ZERO-xfail (205 passed) with no rework — persist 13→15 + verify 8→9 + edge 9.10 are backward-compatible across every driven surface. CC unchanged (1.0-rc2, commit 5818a75). PRIOR 13.4.1 — BUMPED 13.2.0 → 13.4.1 — CIRISServer v0.5.87 triple. CLOSES the last real xfail: CC 3.2 single-owner ADMISSION gate now enforced (CIRISPersist#378 shipped → a 2nd distinct owner-binding is rejected) → test_551 all green. Suite is now ZERO-xfail (205 passed). Hardened test_050 durable-send with a bring-up retry (rare init_edge_runtime hiccup under full-suite load on 13.4.x, #354 class). PRIOR 13.2.0 — BUMPED 13.0.1 → 13.2.0 — CIRISServer v0.5.82 minor triple (co-scrub #174 + delegation fixes #176). FLIPS: test_550 detection prefix-wildcard now enforced (CIRISPersist#379 shipped → novel detection:{newkind}:* refused); test_551 owner_of_json purpose-filtered resolver shipped (CC 3.2, part of #378) → owner-of-single-owner green. CC unchanged (1.0-rc2). PRIOR 13.0.1 — BUMPED 12.5.0 → 13.0.1 — CC 1.0-rc2 floor (the CIRISServer v0.5.80 mesh-seed triple: persist v13.0.1 / edge v9.1.0 / verify v8.7.0). MAJOR 12→13. SHIPS three gaps the harness filed: emit_attestation cross-subject attest (CIRISPersist#368 — witness attests age_assurance ABOUT a subject; witness SELF-emission now rejected federation_age_assurance_self_emission_rejected) → test_351 cross-subject flips green; install_storage_budget_v1 + get_installed_storage_budget_json pin-install (CIRISPersist#370) → test_530 pin-never-defeats-revocation flips green; moderator federation-apply gate (CIRISPersist#369) → test_271 flips green. New: age_band_fine_json (4-band), detection discriminator CC 3.4.8, single-owner invariant CC 3.2 (owner_of purpose-filtered). HARNESS: test_350/351 age model reworked; new test_550 (detection) / test_551 (single-owner). PRIOR 12.5.0 — CC 1.0-rc1 floor

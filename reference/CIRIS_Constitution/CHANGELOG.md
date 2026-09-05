@@ -3,6 +3,199 @@
 All notable changes to the CIRIS Constitution. CC is one document with one version line;
 each cut is validated against its sources under the skeptical rubric before it lands.
 
+## 1.0-rc4 — the actor/substrate line, ledgers as content, and every row resolving
+
+**Evidence lockdown — every row resolves or names an open ticket.** All eight pins re-vendored at heads (persist v40.0.0, edge v20.0.0, verify v14.1.0, agent v2.9.48, server 0.5.196, RATCHET, coherence-ratchet; conformance already current). The two closed manifest-tracking tickets (CIRISConformance#59, CIRISServer#155) are retired as pointers — 139 rows rewritten from section-level placeholders to the symbols and node ids the pinned manifests actually publish, under a strict rule: a manifest row naming a *different* claim id is that claim's evidence, never this one's. Seven rows graduate on real artifacts (the ledger pair on persist's `src/ledgers/standard.rs`, reverse-quorum on `test_271`/`test_272`, age-assurance, registry-canonical, affiliations, cohabitation); none demote — the sibling manifests back every decimal Server and Conformance do not reach. Thirty-nine rows remain `staged`, all on open tickets: the per-repo evidence asks (CIRISConformance#90, CIRISServer#536, CIRISPersist#803) plus #9, #40, #43, #71, #88, #93. `CLM-noise-N5` moves to 6.1.2, where RC3 put the rule and where conformance publishes the test. Nine toc title drifts repaired. CC 2.1 no longer names an `accountability:mode_shift` dimension — a mode shift is a superseding `delegates_to` on the delegation plane, and accountability is structural (the D23 design), so the family was never one to mint. CC 1.13.4 gains the kinds-of-change map shared with RATCHET: the 27 compliance dimensions are the Record's vocabulary, each *about* one or more of the eleven kinds; Manner and Circumstances are thin on purpose (context, carried by envelope fields), and the deep kinds want instruments, not a 28th dimension.
+
+**CC 3.4.7.3 — the actor/substrate separation (#95, ruled).** CC enforced one direction of the
+node/agency split and was silent on its converse: a node-only key may not *receive* agency, but
+nothing stopped an actor key from *being* the infrastructure — and the live agent topology fused
+both onto one key, so `owner_of()` resolved a person to an actor where a node was asked for. Worse,
+the escape was legal: CC 4.4.3.4.3's conformance rule fired only on `node`-**only** recipients, so
+adding `agent` to a node's role-set repealed the invariant — **the loophole was spelled as a
+simplification**. Ruled in six clauses: `node` is exclusive of `agent`/`user` (A); the gate reads
+**set membership**, never purity (B) — both required, since A stops a fused key being minted and B
+protects against the ones that already exist; the actor↔node relation is **entailed, never
+asserted** (C) — neither party has standing, so the pairing derives from two human-signed edges and
+cannot be forged by either side; the common-human predicate `∃h. h=owner_of(node) ∧ h ∈
+stewards_of(agent)` (D), existential because node ownership is single-valued while stewardship is
+multi-parent, fail-closed on unresolvable; the enforcement seam is the **node's** (E), because
+infrastructure holding no agency is exactly what can be trusted to refuse it — an actor gating
+itself is the constrained party checking its own constraint; and fused keys are **non-conformant,
+not deprecated** (F), forward-only so history stands, and still refused agency meanwhile.
+Amended in the same cut (CIRISPersist v38.6.0, ffa6608): `stewards_of` is the **custody** set, never the conferral set — for a key that can accept for itself the delegation half counts only where the envelope declares custody (#87), so an unmarked delegation is a job and MUST NOT satisfy Clause D; and the cardinality is the occurrence half plus **one** custody claim, a second distinct claim being refused at bind time. That withdraws this section's first, too-broad statement that co-stewardship expresses multi-tenant hosting: only two shapes are admissible, and the deferred space is most of multi-tenancy rather than an exotic corner. Also repaired: the
+"infrastructure must not have agency" rule was cited **four times** at CC 1.13.5 — the
+operational-language gate, which says nothing about agency, and which a substrate implementation
+had already inherited into its own doc comments. 3.4.7.3 is now that rule's numbered home and all
+four citations repoint to it. `CLM-actor-substrate` / `CLM-common-human` staged.
+
+**CC 1.13.6 — the durable trace anchors on the act, not the deliberation (normative).** An assurance
+finding the substrate passed *by behaving as designed*: an aged `THOUGHT_START` with no
+`ACTION_RESULT` is purged, and nothing in the compliance surface said that was deliberate. The
+defect was documentation, so the repair is a stated position. Traces anchor on the terminal
+`ACTION_RESULT` — no action, no trace — because accountability attaches to acts, and because
+retained deliberation would be a permanent archive of unexecuted thought carrying the
+conversation's humans at their most exposed while carrying no accountability weight (CC 1.9 requires
+an agent free to consider and reject). The safety argument is reduced to one attackable invariant:
+*absence of an `ACTION_RESULT` asserts no external effect occurred* — so the sweep can only ever
+discard deliberation that produced nothing, and any counterexample is a defect in the emission path,
+never in the purge. Stated as a **named wager** (#84 discipline) with its falsification condition and
+its dye test — a totality test over effect-producing paths, explicitly *not* a retention test on
+thoughts — filed at #93, plus a rate-observability requirement on the purge and an honest residual
+on interrupted-path forensics. `CLM-trace-anchor` staged.
+
+**CC 3.3.10.1 — in-grammar ledgers: owner-serialized content, cohort-witnessed conservation (#92).**
+The ballot machinery extended to value, on a three-track prior-art sweep (theory, channels/mints,
+mutual-credit practice). Total order lives in the owner's hash chain, never the grammar (CC 3.2
+single-owner ⇒ consensus number 1, Guerraoui PODC 2019 — which also corrects the stance's dated
+"no totally-ordered ledger" premise; the real exclusions are named in-text). Nine normative
+clauses: identity/unit binding, dense hash-chained entries, delegate serialization, witness-anchored
+heads with the cadence stated as the equivocation-exposure window (SUNDR's 2004 "time stamp box";
+CT's failed voluntary gossip is why the anchor is an obligation), checkpoints riding §19.7 descent
+(the regulator-endorsed summarize-and-delete shape), promotion-with-proof, the deterministic
+byte-equal conservation fold (Sardex's zero-sum invariant; PeerReview's transferable evidence),
+fork-as-adjudicated-slashing with mandatory restore-then-resync (the eltoo critique answered —
+available because the witness set is cooperative), and the non-claims (no atomicity, no
+member-vs-member privacy, no cross-cohort conservation — netting + net rail settlement, the
+CLS ~96% pattern). 1+4 lockdown holds: rides scores + subject_kind + evidence_refs + supersedes +
+cohort_scope. Staged claim rows on #92 / CIRISPersist#754. The attempted-systems record lands
+verified: Holochain's 8-year gestation vs NetzBon-on-Taler's two; SSB/Hypercore fork-death
+answered by L8's mandatory resync and L3's Keybase-shaped in-chain delegation; Sardex's
+load-bearing brokers hooked to the named-moderator invariant; Circles' rail-boundary death
+shaping the netting guidance. Closed with the kernel note: each application is the club-bounded
+sibling of its famous problem, the novelty budget spent once on the deployed two-plane kernel.
+CC 5.4.6 Position additionally adopts the lightnet/darknet name the transport implementation
+already carries, closing edge's dangling citation. *Lightnet settles; darknet transacts.*
+
+**CC 5.4.6 — a directed announce inherits the prohibition (#91, ruled).** The first RC4 revision.
+The clause binds the emission, not the addressing mode: on Reticulum transport no directed announce
+satisfies the purposive sentence — multi-hop path learning *is* outsider observation (path state a
+subpoena reaches), and the epoch-bound derivation forces either a roster-wide re-announce wave on
+every Add/Remove or a removed member keeping every peer's addressing indefinitely. The flat MUST NOT
+was never broadcast-era shorthand — the same section bans the targeted, non-broadcast per-destination
+query in the same breath. The trade on offer was a structural, claimable guarantee for a
+traffic-analysis-statistical one — a claim base CEG/RET declines to make (CC 1.13.3.1; the goal
+stands, the Anonymous Tier is its opt-in). The leak reading's sound insight is kept in-text:
+in-group MLS distribution of addressing material was never prohibited. Multi-hop scoped reach is an
+amendment-plane design question with its bar stated in-clause.
+
+## 1.0-rc3 — the external-review remediation, the trust-root ratifications, and an honest matrix
+
+RC3 closes the open issue set. Where an issue asked for a ruling, this cut gives one; where an
+issue was wrong, the disposition says so. Provenance, review archaeology and superseded text live
+in the GitHub issues and on Zenodo — not in this document.
+
+**Part VI — the math corrections (#50, #45, #26, #34, #35, #6).** §6.2 is demoted from
+justification to **capacity analysis under chosen constraints**: the collapse geometry cuts honest
+and deceptive regions alike, so the asymmetry lives in the choice of constraints, not in a
+theorem's gift. The reviewer's contradiction is real and is fixed at the root — J = k_eff·λ_op·σ is
+a *throughput index* monotone in diversity, maximised at ρ̄ = 0, and it **MUST NOT** be cited as the
+corridor's basis. **No operating corridor is stated at all**: the campaign's own k ≥ 4 positive floor means the
+poles-are-zero basis does not hold in the regime CC needs, so §6.2 declines to re-found a corridor,
+voids any band appearing in a derived document, and an implementation MUST NOT gate on one. The σ recurrence was a conformance
+bug — not step-invariant for interior signals, yet carrying a MUST that implementations agree at
+Δt ∈ {1, 25, 400} days, which is unsatisfiable as written; the event-time form is now the rule, and
+conformance MUST include a strictly-interior signal, since those three deltas cannot discriminate
+the two forms. The §6.1 fountain sentence is corrected (RaptorQ is all-or-nothing at block level;
+graceful degradation belongs to the layered codec) and the noise-floor default re-founds on the
+layered-codec fidelity metric. #6 is addressed without being closed: the MUST now binds relative to
+a pinned adversary model, and the side-informed limb is marked unverifiable-pending-instrument.
+
+**CCA is no longer cited as authority.** CCA v5 withdraws its own validations — k_eff hardware
+checks reclassified as identity checks, institutional application re-scored below chance, collapse
+asymmetry "assumed, not derived". No "CCA-validated" label attaches to any claim in §6.2; v5 is
+cited for the surviving Möbius/ceiling core only.
+
+**Part VIII — the traceability matrix stops flattering itself (#50 item 7).**
+`remainder_scales_with_k_eff` is re-graded to *theorem-given-model, remainder only*: it bounds the
+remainder order of an assumed decay law with substrate-specific free constants. It does not
+establish the decay law, and nothing in the corpus establishes the collapse asymmetry. Kish and the
+ceiling are *identity*; J = F is *identity*. §8.6.1 is populated with the borrowed instruments, and
+the priority claim is retired positively: **the claim is application, not discovery.**
+
+**Part I — the keeper thesis (#32), scoped to what is evidenced.** A recognition-grade preamble
+paragraph, and "what M-1 does not contain": no aggregation rule, no ranking of losses, no
+superlative derivable. M-1 does not launder witness into theorem.
+
+**Trust, consent and contextual integrity (#48, #46, #47, #49, #40, #44).** Trust-root operational
+semantics ratified: two named conferral planes, un-trust as one deletable acceptance edge with
+everything downstream failing closed emergently, and **liveness as a reported signal that MUST NOT
+be ANDed into validity** — a root is valid until revoked, superseding an RC2 reading that would
+have darkened the mesh at once. Consent-before-scoring for `capacity:*` is **ratified**
+(CC 3.4.5): family-scoped, community-addressed (root-addressed consent is consent to an
+unenumerable set), enforced at federation-tier admission on a live `consent:scope:analyze` grant,
+with the role-gated abuse-response families exempt because an abuser never consents — the rule the
+shipped substrate already enforces, so the spec and the mesh agree. The fourteen verify attestation
+families are dispositioned per family (none consent-gated: they verify artifacts, not agents). The
+**read boundary** remains reserved design space, tracked at CIRISConstitution#49.
+`hard_case:deletion_window_breach` is evidence, never a verdict; no affirmative `deletion_proof`
+artifact, which a producer could emit while retaining the bytes. The swap test becomes a
+mandatory drafting gate, and bootstrap is handled by *building* the declared-asymmetry register
+rather than leaving a silent exemption.
+
+**Wire hygiene (#41, #38, #37, #30, #42, #43, #39).** The CC 2.3.2.1 canonical-subject preimage is
+pinned byte-level (all five golden vectors verified to reproduce; no digest changes). A 1 MiB
+canonical-bytes bound lands at CC 2.6.1.3, enforced at every write path — Part V's fixed 1.4 KB
+envelope is a traffic-analysis rule that chunks rather than refuses, so it bounded nothing at
+admission. One canonical spelling is frozen for the hybrid construction, chosen on repo evidence
+rather than preference, together with the class rule that prevents the next collision. `C_CIRIS`
+becomes `min(...)`: the five-factor product scored positive whenever an even number of factors were
+negative, inverting the anti-Goodhart rationale it exists to serve. Family counts are now
+**generated, not asserted** — `manifests/namespace_registry.json` is the registry of record, and the
+generator's hard-coded expectation is removed so the number cannot go stale again.
+
+**Declined or deferred, on the record.** Dead-clauses-keep-their-killers (#49-A4) — declined;
+errata live in git, GitHub and Zenodo. The proof-centipede witness format (#36) — deferred to 1.1;
+ratifying a paragraph does not make a format real. The `lp()` re-spelling of the canonical subject
+(#41 comment) — declined; it crosses the CC 6.1.3 seam and re-spells every ratified digest to buy a
+property the colon-ban already gives. The severance window on the halt fire path (#40 comment) —
+declined; it hands the halted party an escape at the instant the brake is pulled.
+
+**Deferred to the post-1.0 candidate backlog, on the record (the #36 principle: ratify the format that survived, not the one specified).** #32's asks 2-5 — the six consent-foundation `lean:` claim rows, the `need:survival:*` reserved domain with the one-card mandate, and the totalitarian-case proxy-promotion composition — are deferred with successor issues; only the keeper thesis (ask 1) landed in this cut. #57 (mesh-config authorship) is **reserved, not designed**: CC 4.2.1 now forbids an implementation deriving the authority from silence, and the model ratifies on the issue's sketch. #58 (graded enforcement tiers), #59 (reverse-quorum objection form), #60 (volume standing + `revoked_after`) are deferred with their proposal sketches recorded on the issues — each has no implementation whose survival could be ratified, and #60's own caveat (a naive rate cap is a censorship primitive absent a reserved admission class) is the reason not to ratify it from the armchair. #49-A1 (the `capacity:*` read boundary) is deferred at CC 3.4.5 with the non-conformance rationale stated in-text.
+
+**Not discharged, and marked as such.** #49-A2's anti-forking binding did not survive drafting:
+CC 1.15.5 states covenant identity recognition-grade and explicitly declines the binding (no
+lineage dimension family exists, moderation records are relative and positional, and nothing
+bounds keys per owner — a whole-or-nothing rule would quantify over a unit the subject itself
+partitions); the wire-level design is tracked at #49 and the claims row is `staged` against it. #50 item 8 — commissioning
+external reviewers with standing to kill sections — is not a document change and remains open; it
+is the one item nobody inside this ecosystem can substitute for.
+
+### Machine-generation disclosure becomes mandatory (#9, EU AI Act Art. 50(2))
+
+**CC 3.4.14 `synthesis-disclosure` (new, normative).** Marking AI-generated content is no longer a
+planned interoperability profile — it is a MUST, discharging EU AI Act Art. 50(2)/(4) (applicable
+2026-08-02) with **zero new wire surface**. The rule rests on what CEG already does: attest a source.
+R1 makes `content_class:generated` / `content_class:generated_modified` mandatory on every
+Contribution carrying generated or materially-altered content, from any attester; R2 binds the
+agent-produced case to an `identity_type` containing `agent`, so machine origin is readable from the
+signed envelope rather than from a self-declared flag; R3 requires the marking to survive egress to
+non-CEG channels, with an unmarkable channel recorded as a `hard_case:*` exception rather than
+silently dropped; R4 carves out assistive operations (a disclosure that fires on every spell-check is
+not a signal); R5 puts the duty on the generator, keeps false marking on the existing false-attestation
+evidence floor, and leaves verdicts with the WA quorum. `generated_modified` is a canonical addition to
+`content_class`'s existing open vocabulary (documentation-only per CC 4.5.1.1), and CC 3.3.12's
+`content_class` is clarified as not multimedia-scoped — it reaches text.
+
+**CC 8.4.2 C2PA profile — ADOPT → adopted, emit limb normative.** The profile's `MAY` is promoted to
+`MUST` for generated media as the media-egress form of CC 3.4.14 R3; the AI-generation disclosure
+named descriptively in the CC 3.3.13 multimedia Source structs is marked mandatory with a fail-secure
+default (absent/unknown on an agent-attested Contribution resolves to *disclosed as generated*).
+
+**Compliance-mapping corrections.** The CC 4.5.2 regulatory table filed training-data transparency
+under EU AI Act Art. 50; that is Art. 53(1)(d) (GPAI) — the row is split and both are now pointed at
+the primitives that actually carry them. The CC 8.3 conformance row for Art. 50 moves from
+*Informative* to *Evidence-bearing (staged)* — the normative rule is cut; the emit is unshipped and
+tracked at CIRISConstitution#9.
+
+**Conformance pin.** For the text outputs the platform generates — the only synthetic content any
+shipped path produces — the Art. 50(2) machine-readable marking is the **shipped attestation
+surface itself** (`is_bot` on every agent message + the admission-enforced signed
+`identity_type: agent` binding), marking by construction rather than add-on. The **C2PA emit** is
+the media-egress interop limb: no shipped path generates synthetic media, so it is pre-staged, not
+overdue — its claims rows are `staged` against CIRISConstitution#9 until a generation path exists
+for it to mark. Normative coverage holds at 100% (134/134 sections).
+
 ## 1.0-rc2 — evidence registry, two new invariants, and the coherence math finalized
 
 Consolidates the post-review work into the release candidate.

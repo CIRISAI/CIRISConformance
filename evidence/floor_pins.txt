@@ -8,9 +8,12 @@
 # is reproducible. Bumping the floor here (+ regenerating) is a deliberate
 # registry update — see evidence/README.md.
 #
-# CC 1.0-rc2 floor — the CIRISServer v0.5.176 coherent set (2026-08-16).
-# Read off CIRISServer main's Cargo.toml, which is the integrator's own
-# statement of what cohabits.
+# CC 1.0-rc4 floor — the CIRISServer v0.5.197 coherent set (2026-09-05).
+# Read off CIRISServer v0.5.197's own Cargo.toml, which is the integrator's
+# statement of what cohabits. The substrate members are pinned by the
+# DEREFERENCED tag sha (persist v40.0.0 / edge v20.1.1), the same shas
+# matrices/current.yaml records, so a moved tag cannot silently change the
+# floor the registry was derived against.
 #
 # WHY TWO SHAPES: ciris-persist and ciris-edge stopped publishing desktop
 # wheels mid-drift (last: persist 22.0.1 on 2026-07-30, edge 15.0.0 on
@@ -19,10 +22,13 @@
 # CIRISVerify's Python project lives at `bindings/python`, not the repo root,
 # so a `git+` install of it fails outright. See matrices/current.yaml.
 #
-# This bump supersedes the rc2 floor recorded through 2026-08-02
-# (persist 17.5.2 / verify 10.3.0 / edge 13.1.2), which had fallen several
-# majors behind everything shipped — CIRISConformance#84.
-ciris-server==0.5.176
-ciris-verify==13.3.1
-git+https://github.com/CIRISAI/CIRISPersist@v32.3.0
-git+https://github.com/CIRISAI/CIRISEdge@v17.4.1
+# This bump supersedes the v0.5.176 floor of 2026-08-16 (persist v32.3.0 /
+# verify 13.3.1 / edge v17.4.1). Trigger: ciris-server's PyPI index retains
+# ~5 releases and 0.5.176 aged off, so this file's pip-install failed in CI
+# (CIRISConformance#91). Wire breaks crossed on the way: persist v39.0.0
+# retired `attestation_promote` for `enter_mesh` + `widen_audience`, and
+# v40.0.0 moved the widening's own instant to a signed `widened_at`.
+ciris-server==0.5.197
+ciris-verify==14.1.0
+git+https://github.com/CIRISAI/CIRISPersist@b7f1a550b42669fd74f8059e6ca7a27bcecc47ae
+git+https://github.com/CIRISAI/CIRISEdge@f7050ceed0673b24e0128506b0e8daa517bdf290

@@ -137,7 +137,14 @@ def _emit(kid, engine, dim):
         {"attestation_type": dim, "attestation_envelope": env, "attested_key_id": kid}))
 
 _attempt("emit_held_role", lambda: _emit(multi_kid, multi_eng, "observed:x"))
-_attempt("emit_unheld_role", lambda: _emit(multi_kid, multi_eng, "accord:invocation"))
+# The unheld role is `lenscore_detector` (CC 3.4.8: any `detection:*` row is a
+# primary emission reserved to that role). Through persist v32 this probe used
+# `accord:*`; at v40 the accord plane checks the TRUST-ROOT charter before role
+# membership and this harness names no accord root, so that emit is refused as
+# `federation_accord_root_unnamed` — a real refusal, but by the root gate, not
+# the set-membership gate this test is about. Recorded, not asserted by role.
+_attempt("emit_unheld_role", lambda: _emit(multi_kid, multi_eng, "detection:manifold:x"))
+_attempt("emit_unheld_accord", lambda: _emit(multi_kid, multi_eng, "accord:invocation"))
 
 # ── Cohabitation is not a self-claim backdoor ──
 _attempt("selfclaim_canonical_scalar", lambda: make("sc", "canonical", "sc")[0])
@@ -207,18 +214,26 @@ def test_set_membership_grants_right_to_emit_per_held_role(roleset):
     held role — and no more.
 
     The `{agent, substrate_persist}` key MAY emit on a held-role surface
-    (`observed:*`) but MUST NOT emit `accord:*` (the `accord_holder` role is not in
-    its set) — rejected by the reserved-prefix emitter gate.
+    (`observed:*`) but MUST NOT emit `detection:*` (the `lenscore_detector` role is
+    not in its set, CC 3.4.8) — rejected by the reserved-prefix emitter gate, by
+    the name of the role it lacks. The `accord:*` emit is refused too, but at
+    persist v40 by the trust-root gate (`federation_accord_root_unnamed`: this
+    harness names no accord root) before role membership is consulted, so it is
+    asserted only as a refusal.
     """
     assert roleset["emit_held_role"]["outcome"] == "ok", (
         f"the cohabiting key could not emit on a held role's surface (observed:*): "
         f"{roleset['emit_held_role']}")
+    assert roleset["emit_unheld_accord"]["outcome"] == "err", (
+        f"an accord:* emit from a key holding no accord_holder was ADMITTED: "
+        f"{roleset['emit_unheld_accord']}")
     assert roleset["emit_unheld_role"]["outcome"] == "err", (
-        f"the cohabiting key emitted accord:* WITHOUT holding accord_holder — set "
-        f"membership is not gating the emitter: {roleset['emit_unheld_role']}")
-    assert "accord_holder" in roleset["emit_unheld_role"]["token"], (
-        f"accord:* was rejected but not by the accord_holder set-membership gate: "
-        f"{roleset['emit_unheld_role']['token']}")
+        f"the cohabiting key emitted detection:* WITHOUT holding lenscore_detector — "
+        f"set membership is not gating the emitter: {roleset['emit_unheld_role']}")
+    assert ("lenscore_detector" in roleset["emit_unheld_role"]["token"]
+            or "reserved_prefix_emitter_mismatch" in roleset["emit_unheld_role"]["token"]), (
+        f"detection:* was rejected but not by the lenscore_detector set-membership "
+        f"gate: {roleset['emit_unheld_role']['token']}")
 
 
 @pytest.mark.requires_persist
