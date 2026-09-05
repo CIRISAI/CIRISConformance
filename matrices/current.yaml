@@ -45,8 +45,8 @@
 # ciris-edge's compiled cdylib via Cargo. ciris-verify is the Python surface
 # that wraps them.
 stack:
-  ciris-server: "0.5.176"
-  ciris-verify: "13.3.1"
+  ciris-server: "0.5.197"
+  ciris-verify: "14.1.0"
 
 # ─── git-tag members ──────────────────────────────────────────────────
 # pip builds these from source, so a CI cell pays a cargo compile for each —
@@ -68,12 +68,12 @@ stack:
 substrate:
   ciris-persist:
     repo: "https://github.com/CIRISAI/CIRISPersist"
-    tag: "v32.3.0"
-    sha: "5d1cd36e3d9fd8131cfc38ff4b023667a8d42b6d"
+    tag: "v40.0.0"
+    sha: "b7f1a550b42669fd74f8059e6ca7a27bcecc47ae"
   ciris-edge:
     repo: "https://github.com/CIRISAI/CIRISEdge"
-    tag: "v17.4.1"
-    sha: "abee3686e2ee5f52282619f5fbce7771d126544a"
+    tag: "v20.1.1"
+    sha: "f7050ceed0673b24e0128506b0e8daa517bdf290"
 
 # ─── Normative members ────────────────────────────────────────────────
 # FSD #86 §4 Class 3: a set that pins the code but not the Constitution
@@ -88,44 +88,46 @@ constitution:
 # One paragraph per member for the CURRENT pin. History: matrices/history/.
 rationale:
   set: >-
-    Catch-up to the rolling head after a ~4-week, ~45-release drift (FSD #86
-    §1.2 measured it: main pinned ciris-server 0.5.131 of 2026-07-20 while
-    CIRISServer main was 0.5.176 of 2026-08-16). The set is read off
-    CIRISServer main's Cargo.toml, which is the integrator's own statement of
-    what cohabits: persist v32.3.0, edge v17.4.1, verify v13.3.1. This bump
-    also changes the SHAPE of the matrix, not just its numbers — persist and
-    edge left PyPI mid-drift, so they move to the git-tag channel above.
+    Retention bump. `ciris-server==0.5.176` aged off PyPI (the index retains
+    only ~5 releases; 0.5.187 is now the oldest available), so every cell
+    failed at pip-install and ALL SIX of CIRISEdge's cohabitation cells went
+    red on its v20.2.0 tag run — the recurring footgun the previous
+    `ciris-server` note names, hit again on schedule. The set is read off
+    CIRISServer v0.5.197's own Cargo.toml, which is the integrator's statement
+    of what cohabits: persist v40.0.0, edge v20.1.1, verify v14.1.0. Every
+    substrate sha below is the DEREFERENCED tag, resolved upstream at bump
+    time rather than copied.
   ciris-server: >-
-    0.5.131 → 0.5.176. Head of the integrator. 0.5.176 is the hosted-login
-    un-break (#421). The old footgun this pin used to hit is now structural
-    rather than incidental: ciris-server's PyPI index retains only ~5
-    releases, so this pin still rots fastest — when all edge cohab cells fail
-    uniformly at pip-install with "No matching distribution for
+    0.5.176 → 0.5.197. Head of the integrator and the newest version still on
+    the index. This is the wheel that reported CIRISEdge#568 (the announce
+    race) and CIRISPersist#804 (origin-aware write budgets) from a live
+    two-node ladder, so it is a set that has actually been run rather than
+    only resolved. The retention footgun is unchanged: when all edge cohab
+    cells fail uniformly at pip-install with "No matching distribution for
     ciris-server==X", bump this line first.
   ciris-verify: >-
-    10.5.0 → 13.3.1. MAJOR 10→13. The only substrate member still on PyPI,
-    and its published version matches the server's Cargo tag exactly
-    (v13.3.1), so the wheel and the compiled-in crate are the same code for
-    the first time in several cycles.
+    13.3.1 → 14.1.0. MAJOR 13→14. Still the only stack member on PyPI, and
+    the published wheel again matches the server's Cargo tag exactly
+    (v14.1.0), so wheel and compiled-in crate stay the same code. Note edge
+    has since moved to verify v14.2.0 (additive — `fedcode` gains
+    `verify_pulled_ml_dsa_65_pubkey`); the set holds at the integrator's
+    v14.1.0, because a member ahead of the integrator is not yet in it.
   ciris-persist: >-
-    17.8.0 → v32.3.0. FIFTEEN majors. Moves to the git-tag channel. Three
-    drifts the harness absorbed: `cohort_add_member`/`cohort_swap_member`
-    gained a required `admit_spec_json` (CIRISPersist#654 — roster growth was
-    reachable from PyO3 with NO authority check, and the roster is both
-    numerator and denominator of the family quorum); `attestation_promote`
-    gained `cohort_scope` (#519 — a promotion now carries its placement, and
-    #589/AV-45 refuses a third-party-naming row at `family`/`community`); and
-    the v2 key-grant wrap token was respelled to underscores while v1 kept
-    hyphens (reported as CIRISPersist#715).
+    v32.3.0 → v40.0.0. EIGHT majors, and the largest single jump this matrix
+    has taken. The arc worth knowing: v39.0.0 retired `attestation_promote`
+    for the two-verb `enter_mesh` + `widen_audience` (the actor's signature
+    survives a tier crossing instead of being replaced by the node's), and
+    v40.0.0 made a widening carry the CLAIM's `asserted_at` verbatim with the
+    placement's own instant moving to a signed `widened_at`. Both are wire
+    breaks the suite drives directly, so expect harness rework rather than a
+    clean bump.
   ciris-edge: >-
-    13.8.0 → v17.4.1. MAJOR 13→17. Moves to the git-tag channel. Note this is
-    the tag CIRISServer pins, NOT edge's repo head (v17.5.0) — the set is
-    what the integrator carries, and a member ahead of the integrator is not
-    yet in the coherent set. Behavioural drift: the Reticulum transport now
-    REQUIRES a hybrid federation signer (CIRISEdge#458 / #393 item 2) — an
-    Ed25519-only node cannot mint the hybrid-signed SignedTransportDestination,
-    so peers would drop its frames unattributed at the E3 gate. Edge refuses
-    the boot rather than letting that surface as silence on the wire.
+    v17.4.1 → v20.1.1. MAJOR 17→20. The tag CIRISServer pins, not edge's head
+    (v20.2.1) — the set is what the integrator carries. Chat is end-to-end
+    encrypted from v19.0.0 (sealed under the pair room's MLS record secret)
+    and every signature is now the full hybrid with no classical-only
+    fallback, so a fixture signing Ed25519-only is refused at source rather
+    than admitted and dropped later.
 
 # Python interpreter version under test. Every member declares
 # `requires-python = ">=3.10"`; the abi3-py310 build (one wheel for all
