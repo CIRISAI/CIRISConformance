@@ -9,6 +9,7 @@ cc_decimal_id	cc_claim_id	conformance_test_id(s)	freeze_gate_vector(s)
 # xfail on edge >= v19 (CIRISEdge#573: the pyo3 signing helper has no PQC half). The
 # drift test still establishes the claim: it harvests the wheel's accept set from the
 # serde error, which fires before signing. Re-widen to the module when #573 lands.
+2.6.1.3	CC-2.6.1.3-envelope-size-freeze-gate	tests/test_581_envelope_size_cap.py	envelope_size_cap/at_cap_admits,envelope_size_cap/cap_plus_one_refused
 2.6.4	CC-2.6.4-wire-vocabulary-two-tier	tests/test_520_wire_vocabulary.py::test_wheel_accept_set_matches_manifest_no_drift,tests/test_520_wire_vocabulary.py::test_retired_variants_rejected_unknown_variant,tests/test_520_wire_vocabulary.py::test_codec_opaque_and_schema_version_pins	WIRE_VOCABULARY.md
 2.6.7	CC-2.6.7-subject-key-ids-lowercase-hex	tests/test_240_reserved_prefix_admission.py::test_subject_key_ids_must_be_lowercase_hex	-
 3.2	CC-3.2-steward-binding-admission	tests/test_360_steward_binding_admission.py::test_node_steward_binding_is_admitted_and_resolves,tests/test_360_steward_binding_admission.py::test_adult_target_user_binding_is_rejected,tests/test_360_steward_binding_admission.py::test_adult_target_steward_bind_is_rejected,tests/test_360_steward_binding_admission.py::test_unverified_age_target_is_rejected,tests/test_360_steward_binding_admission.py::test_witness_attestation_graduates_age_bands	-

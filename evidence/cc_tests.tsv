@@ -7,6 +7,7 @@ cc_decimal_id	cc_claim_id	conformance_test_id(s)	freeze_gate_vector(s)	status
 2.1	CC-2.1-1plus4-frozen	tests/test_560_1plus4_freeze.py	JCS_1PLUS4	green
 2.1.1	CC-2.1.1-forward-compatibility	tests/test_576_forward_compat.py	-	green
 2.6.1.2	CC-2.6.1.2-per-field	tests/test_577_per_field_catalog.py	-	green
+2.6.1.3	CC-2.6.1.3-envelope-size-freeze-gate	tests/test_581_envelope_size_cap.py	envelope_size_cap/at_cap_admits,envelope_size_cap/cap_plus_one_refused	green
 2.6.1.4	CC-2.6.1.4-worked-canonicalization-attack	tests/test_575_worked_canonicalization.py	-	green
 2.6.4	CC-2.6.4-wire-vocabulary-two-tier	tests/test_520_wire_vocabulary.py::test_wheel_accept_set_matches_manifest_no_drift,tests/test_520_wire_vocabulary.py::test_retired_variants_rejected_unknown_variant,tests/test_520_wire_vocabulary.py::test_codec_opaque_and_schema_version_pins	WIRE_VOCABULARY.md	green
 2.6.7	CC-2.6.7-subject-key-ids-lowercase-hex	tests/test_240_reserved_prefix_admission.py::test_subject_key_ids_must_be_lowercase_hex	-	green
