@@ -302,29 +302,6 @@ def confer_from_trust_root(root, subject, scope):
 """
 
 
-# CIRISEdge#573 — the pyo3 conformance helper `build_signed_inbound_envelope`
-# still builds an Ed25519-only software signer, but edge v19.0.0 made every
-# signature the FULL hybrid, so the helper refuses at `sign_envelope` on the
-# very wheel that ships it. This is the exact token persist's signer raises.
-_HELPER_NO_PQC_HALF = "has no ML-DSA-65 (PQC) half"
-_HELPER_NO_PQC_REASON = (
-    "CIRISEdge#573: `build_signed_inbound_envelope` signs Ed25519-only, but every "
-    "signature is the full hybrid since edge v19.0.0 — the conformance helper cannot "
-    "mint an envelope on its own wheel; the inbound path is undrivable from Python "
-    "until the helper carries (or borrows) an ML-DSA-65 half")
-
-
-def xfail_if_helper_cannot_sign_hybrid(text: str | None) -> None:
-    """Imperatively `pytest.xfail` iff `build_signed_inbound_envelope` refused
-    for lack of a PQC half (CIRISEdge#573).
-
-    Deliberately narrow: it matches ONLY that signer token, so a probe that
-    fails for any other reason still fails loudly. Returns the moment the helper
-    signs hybrid — the tests then run for real, with no marker to remove."""
-    if _HELPER_NO_PQC_HALF in (text or ""):
-        pytest.xfail(_HELPER_NO_PQC_REASON)
-
-
 def xfail_if_pg_edge_runtime_crash(result: "ScriptResult") -> None:
     """Imperatively `pytest.xfail` iff this is the postgres init_edge_runtime abort.
 

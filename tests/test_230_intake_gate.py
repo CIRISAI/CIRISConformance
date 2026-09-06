@@ -32,7 +32,6 @@ import pytest
 from conftest import (
     get_database_url,
     run_python_script,
-    xfail_if_helper_cannot_sign_hybrid,
     xfail_if_pg_edge_runtime_crash,
 )
 
@@ -51,18 +50,20 @@ except ImportError as exc:
 _sender_seed = secrets.token_bytes(32)
 _d = tempfile.mkdtemp()
 _seed = os.path.join(_d, "s"); open(_seed, "wb").write(_sender_seed)
-_pqc = os.path.join(_d, "p"); open(_pqc, "wb").write(secrets.token_bytes(32))
+_sender_pqc_seed = secrets.token_bytes(32)
+_pqc = os.path.join(_d, "p"); open(_pqc, "wb").write(_sender_pqc_seed)
 _idp = os.path.join(_d, "t.id"); open(_idp, "wb").write(b"\x00" * 64)
 cp.reset_engine()
 k = "node-" + secrets.token_hex(8)
 # The engine carries BOTH halves. edge v19.0.0 (CIRISEdge#562, adopting persist
 # v39): "every signature is the FULL hybrid — no classical-only fallback";
-# `sign_envelope` refuses a signer without its ML-DSA-65 half, so the
-# Ed25519-only pairing this probe used through edge v17 (`ed25519_fallback`)
-# can no longer mint the envelope at all. The intake gate — trust threshold
-# over a VERIFIED inbound — is what is under test, and it runs after verify on
-# bytes handed to `dispatch_inbound_bytes` directly, so the signer's shape is
-# not the subject; the hybrid signer is simply the only one that signs.
+# `sign_envelope` refuses a signer without its ML-DSA-65 half. The helper
+# below takes the SAME 32-byte ML-DSA-65 seed persist derives the registered
+# pubkey from (edge v20.3.0, CIRISEdge#573 — the seed is taken, never derived
+# by convention), so the envelope verifies against the row register_self
+# published. The intake gate — trust threshold over a VERIFIED inbound — is
+# what is under test; it runs after verify on bytes handed to
+# `dispatch_inbound_bytes` directly.
 engine = cp.Engine(DB_URL, k, local_key_id=k, local_key_path=_seed,
                    local_pqc_key_id=k + "-pqc", local_pqc_key_path=_pqc)
 kid = engine.register_self_federation_key("agent", "intake-ref", None, None, None)
@@ -87,7 +88,8 @@ def dispatch():
     # (payload = base64 opaque bytes).
     env = edge.build_signed_inbound_envelope(
         kid, _sender_seed, dest, "OpaqueEvent",
-        json.dumps({"kind": 7, "payload": base64.b64encode(b"intake").decode()}))
+        json.dumps({"kind": 7, "payload": base64.b64encode(b"intake").decode()}),
+        _sender_pqc_seed)
     # dispatch_inbound_bytes returns a dict {"outcome": ...} directly.
     return edge.dispatch_inbound_bytes(env, "http").get("outcome")
 
@@ -119,7 +121,6 @@ def _intake_script(database_url: str) -> str:
 def intake_gate():
     result = run_python_script(_intake_script(get_database_url()))
     xfail_if_pg_edge_runtime_crash(result)  # CIRISPersist#354 (postgres native abort)
-    xfail_if_helper_cannot_sign_hybrid(result.stderr)
     payload = result.parsed_stdout()
     if payload.get("_error") == "absent":
         pytest.fail("edge.build_signed_inbound_envelope is missing — the intake-gate "
