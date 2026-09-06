@@ -45,8 +45,8 @@
 # ciris-edge's compiled cdylib via Cargo. ciris-verify is the Python surface
 # that wraps them.
 stack:
-  ciris-server: "0.5.197"
-  ciris-verify: "14.1.0"
+  ciris-server: "0.5.198"
+  ciris-verify: "14.2.0"
 
 # ─── git-tag members ──────────────────────────────────────────────────
 # pip builds these from source, so a CI cell pays a cargo compile for each —
@@ -68,12 +68,12 @@ stack:
 substrate:
   ciris-persist:
     repo: "https://github.com/CIRISAI/CIRISPersist"
-    tag: "v40.0.0"
-    sha: "b7f1a550b42669fd74f8059e6ca7a27bcecc47ae"
+    tag: "v41.2.0"
+    sha: "52f659257a480f3956824f3241b60fca4a5ece39"
   ciris-edge:
     repo: "https://github.com/CIRISAI/CIRISEdge"
-    tag: "v20.1.1"
-    sha: "f7050ceed0673b24e0128506b0e8daa517bdf290"
+    tag: "v20.3.0"
+    sha: "905a50ed1dd0230173ddfb7c726b3eb8f7a83ded"
 
 # ─── Normative members ────────────────────────────────────────────────
 # FSD #86 §4 Class 3: a set that pins the code but not the Constitution
@@ -88,69 +88,45 @@ constitution:
 # One paragraph per member for the CURRENT pin. History: matrices/history/.
 rationale:
   set: >-
-    Retention bump. `ciris-server==0.5.176` aged off PyPI (the index retains
-    only ~5 releases; 0.5.187 is now the oldest available), so every cell
-    failed at pip-install and ALL SIX of CIRISEdge's cohabitation cells went
-    red on its v20.2.0 tag run — the recurring footgun the previous
-    `ciris-server` note names, hit again on schedule. The set is read off
-    CIRISServer v0.5.197's own Cargo.toml, which is the integrator's statement
-    of what cohabits: persist v40.0.0, edge v20.1.1, verify v14.1.0. Every
-    substrate sha below is the DEREFERENCED tag, resolved upstream at bump
-    time rather than copied.
+    Catch-up to the integrator's next cut, one day after the retention bump.
+    Read off CIRISServer v0.5.198's own Cargo.toml: persist v41.2.0, edge
+    v20.3.0, verify v14.2.0. CIRISAgent v2.10.0-stable pins this same
+    ciris-server, so the floor the agent ships on and the floor this matrix
+    tests are one set again. Every substrate sha below is the DEREFERENCED
+    tag, resolved upstream at bump time rather than copied.
   ciris-server: >-
-    0.5.176 → 0.5.197. Head of the integrator and the newest version still on
-    the index. This is the wheel that reported CIRISEdge#568 (the announce
-    race) and CIRISPersist#804 (origin-aware write budgets) from a live
-    two-node ladder, so it is a set that has actually been run rather than
-    only resolved. The retention footgun is unchanged: when all edge cohab
-    cells fail uniformly at pip-install with "No matching distribution for
-    ciris-server==X", bump this line first.
+    0.5.197 → 0.5.198. "The write knows who is writing": attestation writes
+    carry an ORIGIN axis so the flood shield stops metering a node's own owner
+    (persist v41.0.0), the announce bundle collapses per agent key
+    (CIRISServer#541), and persist v41.2.0 admits TaskStatus `rejected`
+    (CIRISAgent#1077). Retention note, corrected: PyPI's index for
+    ciris-server currently holds twelve versions (0.5.187…0.5.198), so the
+    earlier "~5 releases" figure was the low-water mark, not the policy — the
+    footgun is real but slower than that note claimed; bump this line first
+    when all cells fail uniformly at pip-install.
   ciris-verify: >-
-    13.3.1 → 14.1.0. MAJOR 13→14. Still the only stack member on PyPI, and
-    the published wheel again matches the server's Cargo tag exactly
-    (v14.1.0), so wheel and compiled-in crate stay the same code. Note edge
-    has since moved to verify v14.2.0 (additive — `fedcode` gains
-    `verify_pulled_ml_dsa_65_pubkey`); the set holds at the integrator's
-    v14.1.0, because a member ahead of the integrator is not yet in it.
+    14.1.0 → 14.2.0. Additive — `fedcode` carries a PQC commitment so a
+    code-admitted key is registrable (CIRISVerify#272). Still the only stack
+    member on PyPI, and the published wheel matches the server's Cargo tag.
   ciris-persist: >-
-    v32.3.0 → v40.0.0. EIGHT majors, and the largest single jump this matrix
-    has taken. The arc worth knowing: v39.0.0 retired `attestation_promote`
-    for the two-verb `enter_mesh` + `widen_audience` (the actor's signature
-    survives a tier crossing instead of being replaced by the node's), and
-    v40.0.0 made a widening carry the CLAIM's `asserted_at` verbatim with the
-    placement's own instant moving to a signed `widened_at`. Both are wire
-    breaks the suite drives directly, and the harness absorbed them: test_574
-    / test_576 / test_579 now drive `describe_crossing` → `enter_mesh` →
-    `widen_audience` (typed `crossed` / `already_in_mesh` / `already_widened`
-    outcomes stand in for the old True→False flip; test_574 additionally
-    asserts the widening carries the prior's `asserted_at` verbatim plus a
-    signed `widened_at`). Also absorbed on the way: v34/v35 removed the
-    classical DEK wrap (test_250 now asserts the minter is GONE and that the
-    retired spellings are refused BY NAME at the decode door, against a
-    wrong-key control); v36 typed `retire_key_grants` as
-    `{outcome, retired[, failed]}` (test_130); and at v40 an `accord:*` emit
-    from a key naming no accord root is refused by the trust-root gate
-    (`federation_accord_root_unnamed`) before role membership is consulted,
-    so test_580's unheld-role probe moved to `detection:*` /
-    `lenscore_detector` to keep hitting the set-membership gate it is about.
+    v40.0.0 → v41.2.0. MAJOR 40→41: the write-origin axis — v39 routed local
+    publication through the same door a hostile remote row arrives at, so
+    `put_attestation` grew a `WriteOrigin` and each named door states its act.
+    A Rust-API break; the Python doors this suite drives (`emit_attestation_self`,
+    `attestation_insert_local`, `enter_mesh`, `widen_audience`) are unchanged
+    in shape. v41.1.0 made `precedence::retired_ids` drop a retraction whose
+    target it cannot resolve; v41.2.0 widened the TaskStatus vocabulary.
   ciris-edge: >-
-    v17.4.1 → v20.1.1. MAJOR 17→20. The tag CIRISServer pins, not edge's head
-    (v20.2.1) — the set is what the integrator carries. Chat is end-to-end
-    encrypted from v19.0.0 (sealed under the pair room's MLS record secret)
-    and every signature is now the full hybrid with no classical-only
-    fallback, so a fixture signing Ed25519-only is refused at source rather
-    than admitted and dropped later. Harness impact: every probe engine now
-    carries its ML-DSA-65 half (test_140, test_230, test_520); the
-    `ed25519_fallback` pairing those probes documented is gone with the
-    fallback. Edge's OWN pyo3 conformance helper was not moved with it —
-    `build_signed_inbound_envelope` still builds an Ed25519-only signer and
-    refuses on its own wheel (CIRISEdge#573), so test_230 and test_520's
-    accept probe carry an imperative xfail keyed on that exact signer token
-    until it lands. The `WIRE_VOCABULARY.md` this set's edge speaks is the
-    CC 1.0-rc4 manifest (26 Tier-1 variants; `EphemeralResponse` joined in
-    CC 0.7 §2.9), re-vendored under reference/ in the same bump because
-    test_520 derives its wheel expectation from it.
-
+    v20.1.1 → v20.3.0. Ships CIRISEdge#573, this harness's report: the pyo3
+    conformance helper `build_signed_inbound_envelope` now takes an optional
+    `pqc_seed_bytes` (the seed is TAKEN, never derived by convention) and
+    signs the full hybrid, and `derive_ml_dsa_65_pubkey_base64` yields the
+    matching registration pubkey. The harness passes the same 32-byte seed
+    persist's `local_pqc_key_path` holds, so the envelope verifies against the
+    row register_self published — the four #573 xfails are gone and the
+    CC 2.6.4 registry row is a module again. Also v20.3.0: the dial leaves
+    the round (CIRISEdge#568), the AV-28 quorum assertion reports while the
+    trust root transitions (#575), leviculum v0.25.0.
 # Python interpreter version under test. Every member declares
 # `requires-python = ">=3.10"`; the abi3-py310 build (one wheel for all
 # 3.10+) is the canonical shape. We exercise the floor (3.10) + a current
@@ -165,25 +141,6 @@ python_versions:
 # issue closes, remove from this list AND remove the xfail marker —
 # strict=True will then flag any silent regression.
 known_failures:
-  - id: "CIRISEdge#573"
-    url: "https://github.com/CIRISAI/CIRISEdge/issues/573"
-    title: >-
-      Edge's own pyo3 conformance helper `build_signed_inbound_envelope` still
-      builds an Ed25519-only software signer, but every signature is the FULL
-      hybrid since edge v19.0.0 — the helper refuses at `sign_envelope` on the
-      wheel that ships it, so the inbound path is undrivable from Python. Fix
-      shape filed: accept a `pqc_seed_bytes` (mirroring
-      `tests/trust_short_circuit.rs::FedKey::pqc_signer`) or sign with the
-      runtime's own `extract_local_signer(engine)`.
-    affects:
-      - tests/test_230_intake_gate.py::test_verified_inbound_is_received
-      - tests/test_230_intake_gate.py::test_low_trust_source_is_short_circuited
-      - tests/test_230_intake_gate.py::test_threshold_zero_readmits
-      - tests/test_520_wire_vocabulary.py::test_tier1_and_opaque_variants_accepted
-    # These fail inside the probe (fixture / accept map), so they carry
-    # conftest's imperative `xfail_if_helper_cannot_sign_hybrid`, keyed on the
-    # exact `has no ML-DSA-65 (PQC) half` signer token — any other refusal still
-    # fails loudly, and they resume with nothing to remove.
   - id: "CIRISPersist#811"
     url: "https://github.com/CIRISAI/CIRISPersist/issues/811"
     title: >-

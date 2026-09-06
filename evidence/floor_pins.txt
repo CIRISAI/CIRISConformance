@@ -8,10 +8,10 @@
 # is reproducible. Bumping the floor here (+ regenerating) is a deliberate
 # registry update — see evidence/README.md.
 #
-# CC 1.0-rc4 floor — the CIRISServer v0.5.197 coherent set (2026-09-05).
-# Read off CIRISServer v0.5.197's own Cargo.toml, which is the integrator's
+# CC 1.0-rc4 floor — the CIRISServer v0.5.198 coherent set (2026-09-06).
+# Read off CIRISServer v0.5.198's own Cargo.toml, which is the integrator's
 # statement of what cohabits. The substrate members are pinned by the
-# DEREFERENCED tag sha (persist v40.0.0 / edge v20.1.1), the same shas
+# DEREFERENCED tag sha (persist v41.2.0 / edge v20.3.0), the same shas
 # matrices/current.yaml records, so a moved tag cannot silently change the
 # floor the registry was derived against.
 #
@@ -22,13 +22,12 @@
 # CIRISVerify's Python project lives at `bindings/python`, not the repo root,
 # so a `git+` install of it fails outright. See matrices/current.yaml.
 #
-# This bump supersedes the v0.5.176 floor of 2026-08-16 (persist v32.3.0 /
-# verify 13.3.1 / edge v17.4.1). Trigger: ciris-server's PyPI index retains
-# ~5 releases and 0.5.176 aged off, so this file's pip-install failed in CI
-# (CIRISConformance#91). Wire breaks crossed on the way: persist v39.0.0
-# retired `attestation_promote` for `enter_mesh` + `widen_audience`, and
-# v40.0.0 moved the widening's own instant to a signed `widened_at`.
-ciris-server==0.5.197
-ciris-verify==14.1.0
-git+https://github.com/CIRISAI/CIRISPersist@b7f1a550b42669fd74f8059e6ca7a27bcecc47ae
-git+https://github.com/CIRISAI/CIRISEdge@f7050ceed0673b24e0128506b0e8daa517bdf290
+# This bump supersedes the v0.5.197 floor of 2026-09-05 (persist v40.0.0 /
+# verify 14.1.0 / edge v20.1.1) one day later: edge v20.3.0 ships the
+# CIRISEdge#573 fix this harness reported, persist v41 adds the write-origin
+# axis, and CIRISAgent v2.10.0 pins this same server. Prior: the v0.5.176
+# floor aged off PyPI (CIRISConformance#91).
+ciris-server==0.5.198
+ciris-verify==14.2.0
+git+https://github.com/CIRISAI/CIRISPersist@52f659257a480f3956824f3241b60fca4a5ece39
+git+https://github.com/CIRISAI/CIRISEdge@905a50ed1dd0230173ddfb7c726b3eb8f7a83ded
