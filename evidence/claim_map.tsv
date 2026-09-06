@@ -20,6 +20,7 @@ cc_decimal_id	cc_claim_id	conformance_test_id(s)	freeze_gate_vector(s)
 3.4.13	CC-3.4.13-age-band-cross-subject-witness-graduation	tests/test_351_age_band_ratchet.py::test_cross_subject_witness_graduation	-
 4.4.3.2.8	CC-4.4.3.2.8-affiliations-cohort-scope	tests/test_262_affiliation_cohort_scope.py	-
 4.4.3.2.8	CC-4.4.3.2.8-affiliations-membership-lifecycle	tests/test_263_affiliation_membership_lifecycle.py	-
+4.5.1.1	CC-4.5.1.1-field-processor-matrix-every-wheel	tests/test_583_field_conformance_manifest.py	field_processor_matrix
 4.5.4	CC-4.5.4-moderator-existence-admission	tests/test_271_moderator_existence_gate.py::test_live_moderator_resolves_for_moderated_capability,tests/test_271_moderator_existence_gate.py::test_moderator_loss_resolves_to_absence,tests/test_271_moderator_existence_gate.py::test_stewardless_community_refused_at_admission,tests/test_271_moderator_existence_gate.py::test_empty_roster_community_resolves_no_moderator	-
 4.5.13	CC-4.5.13-moderator-existence-federation-apply-gate	tests/test_271_moderator_existence_gate.py::test_moderator_existence_federation_apply_gate_enforced	-
 4.5.13	CC-4.5.13-infohazard-consent-primitive	tests/test_272_infohazard_consent_gate.py::test_consent_to_view_attestation_is_admitted,tests/test_272_infohazard_consent_gate.py::test_content_class_marking_is_open_to_every_attester	-
