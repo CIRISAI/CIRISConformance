@@ -258,6 +258,20 @@ def delivery_fabric(tmp_path_factory):
         except Exception as exc:  # noqa: BLE001 — diagnostics only
             return f"(ss unavailable: {exc})"
 
+    def _teardown(procs):
+        # Kill AND reap: a killed node still holds its SQLite connection until
+        # the process has actually exited, and the retry reopens the same file
+        # — reaping first keeps a handled port race from resurfacing as an
+        # unrelated lock or migration failure on the next attempt.
+        for q in procs.values():
+            if q.poll() is None:
+                q.kill()
+        for q in procs.values():
+            try:
+                q.communicate(timeout=15)
+            except subprocess.TimeoutExpired:
+                q.kill(); q.communicate(timeout=15)
+
     def _stand_up_fabric():
         for r in ("n1", "n2", "n3", "n4"):
             for suf in ("ready",):
@@ -293,6 +307,7 @@ def delivery_fabric(tmp_path_factory):
             if procs["n2"].poll() is not None:
                 _, err = procs["n2"].communicate()
                 if "Address already in use" in err:
+                    _teardown(procs)
                     raise _PortRace("n2", ports["n2"], err)
                 pytest.fail(f"node n2 exited before ready: {err[-1200:]}")
             time.sleep(0.2)
@@ -311,8 +326,7 @@ def delivery_fabric(tmp_path_factory):
             for r, p in procs.items():
                 if p.poll() is not None and not os.path.exists(paths[f"{r}.ready"]):
                     _, err = p.communicate()
-                    for q in procs.values():
-                        if q.poll() is None: q.kill()
+                    _teardown(procs)
                     if "Address already in use" in err:
                         raise _PortRace(r, ports[r], err)
                     pytest.fail(f"node {r} exited before ready: {err[-1200:]}")
