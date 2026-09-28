@@ -45,8 +45,8 @@
 # ciris-edge's compiled cdylib via Cargo. ciris-verify is the Python surface
 # that wraps them.
 stack:
-  ciris-server: "0.5.198"
-  ciris-verify: "14.2.0"
+  ciris-server: "0.5.217"
+  ciris-verify: "16.1.0"
 
 # ─── git-tag members ──────────────────────────────────────────────────
 # pip builds these from source, so a CI cell pays a cargo compile for each —
@@ -68,12 +68,12 @@ stack:
 substrate:
   ciris-persist:
     repo: "https://github.com/CIRISAI/CIRISPersist"
-    tag: "v41.2.0"
-    sha: "52f659257a480f3956824f3241b60fca4a5ece39"
+    tag: "v48.0.0"
+    sha: "59283e3e4cb54bc90f92eb110d81246be8e9ee64"
   ciris-edge:
     repo: "https://github.com/CIRISAI/CIRISEdge"
-    tag: "v20.3.0"
-    sha: "905a50ed1dd0230173ddfb7c726b3eb8f7a83ded"
+    tag: "v31.0.0"
+    sha: "d53056a9e6cb4d93e5356135d6c8a05f2ad788ed"
 
 # ─── Normative members ────────────────────────────────────────────────
 # FSD #86 §4 Class 3: a set that pins the code but not the Constitution
@@ -88,45 +88,58 @@ constitution:
 # One paragraph per member for the CURRENT pin. History: matrices/history/.
 rationale:
   set: >-
-    Catch-up to the integrator's next cut, one day after the retention bump.
-    Read off CIRISServer v0.5.198's own Cargo.toml: persist v41.2.0, edge
-    v20.3.0, verify v14.2.0. CIRISAgent v2.10.0-stable pins this same
-    ciris-server, so the floor the agent ships on and the floor this matrix
-    tests are one set again. Every substrate sha below is the DEREFERENCED
-    tag, resolved upstream at bump time rather than copied.
+    Catch-up after three weeks of drift (2026-09-06 → 2026-09-27): nineteen
+    server releases, seven persist majors, eleven edge majors. Read off
+    CIRISServer v0.5.217's own Cargo.toml: persist v48.0.0, edge v31.0.0,
+    verify v16.1.0. CIRISAgent v2.12.1-stable pins this same ciris-server.
+    Not a retention bump — 0.5.198 is still on the index (it holds
+    0.5.196…0.5.217) — but edge's cohabitation lane, which injects persist's
+    HEAD over this matrix, has been red on every tag since v21.0.0
+    (CIRISConformance#98), and the fixes are the same ones this floor needs.
+    Heads are already past this set (persist v49.0.0 firewalls
+    ciris-verify>=17.1, edge v32); the set holds at the integrator's pin.
+    Every substrate sha below is the DEREFERENCED tag, resolved upstream at
+    bump time rather than copied.
   ciris-server: >-
-    0.5.197 → 0.5.198. "The write knows who is writing": attestation writes
-    carry an ORIGIN axis so the flood shield stops metering a node's own owner
-    (persist v41.0.0), the announce bundle collapses per agent key
-    (CIRISServer#541), and persist v41.2.0 admits TaskStatus `rejected`
-    (CIRISAgent#1077). Retention note, corrected: PyPI's index for
-    ciris-server currently holds twelve versions (0.5.187…0.5.198), so the
-    earlier "~5 releases" figure was the low-water mark, not the policy — the
-    footgun is real but slower than that note claimed; bump this line first
-    when all cells fail uniformly at pip-install.
+    0.5.198 → 0.5.217. Nineteen releases; the ones that moved this lane:
+    0.5.209 adopted edge v24/persist v44 (blob-native chat, the secure blob
+    surface), 0.5.214 adopted persist v46.3.1 (a claimed node reads its own
+    config:* again — CIRISServer#624; the unclaimed first-boot case of
+    CIRISServer#547 still reproduces on 0.5.217), 0.5.217 is the media write
+    gate (#642–#644). NOTE the server's own publish gate calls this
+    repository's workflow WITHOUT overriding persist/edge, so its green on
+    0.5.217 tested the server wheel against the v0.5.198 matrix; edge's lane
+    is the honest signal.
   ciris-verify: >-
-    14.1.0 → 14.2.0. Additive — `fedcode` carries a PQC commitment so a
-    code-admitted key is registrable (CIRISVerify#272). Still the only stack
-    member on PyPI, and the published wheel matches the server's Cargo tag.
+    14.2.0 → 16.1.0. Two majors (v15.0.0 with persist v42, v16.0.0 with
+    persist v46/47). persist's wheel firewalls the pair (v42: >=15,<16;
+    v48: >=16.1.0,<17), so verify and persist MUST move in one commit or pip
+    hits ResolutionImpossible. Still the only stack member on PyPI.
   ciris-persist: >-
-    v40.0.0 → v41.2.0. MAJOR 40→41: the write-origin axis — v39 routed local
-    publication through the same door a hostile remote row arrives at, so
-    `put_attestation` grew a `WriteOrigin` and each named door states its act.
-    A Rust-API break; the Python doors this suite drives (`emit_attestation_self`,
-    `attestation_insert_local`, `enter_mesh`, `widen_audience`) are unchanged
-    in shape. v41.1.0 made `precedence::retired_ids` drop a retraction whose
-    target it cannot resolve; v41.2.0 widened the TaskStatus vocabulary.
+    v41.2.0 → v48.0.0. SEVEN majors. What the harness absorbed: v42.0.0
+    closed CIRISPersist#811 (the steward predicate narrowed — test_361's
+    strict xfail turned red on schedule and came off; fabric owners now bind
+    with the custody marker `responsible_for` or their community members are
+    refused `federation_unstewarded_community_member`); v45.0.0 requires
+    `size` on every holder claim (test_110); v48.0.0 (#860) grows a
+    community/affiliations roster on a WIDENING PLANE — the AdmitSpec signs
+    `CommunityMembershipWidening.signing_envelope()` `{community_key_id,
+    member_key_id, joined_at, effective_at, role?}`, never the grown record
+    (conftest.admit_spec; test_263) — and (#901) adds the holder-hardware leg
+    to `trust_root_valid`: a KEY root's self-charter signer must carry
+    Layer-A-valid hardware evidence on its key record, so the
+    CIRISConformance#87 ceremony root is now registered through
+    `put_public_key` WITH persist's own mock-StrongBox evidence
+    (conftest.AttestedRoot); a plain self-registered root is invalid and
+    confers nothing. Family growth still signs the grown record at v48
+    (v49 moves it to the plane too — deliberately not pre-adopted).
   ciris-edge: >-
-    v20.1.1 → v20.3.0. Ships CIRISEdge#573, this harness's report: the pyo3
-    conformance helper `build_signed_inbound_envelope` now takes an optional
-    `pqc_seed_bytes` (the seed is TAKEN, never derived by convention) and
-    signs the full hybrid, and `derive_ml_dsa_65_pubkey_base64` yields the
-    matching registration pubkey. The harness passes the same 32-byte seed
-    persist's `local_pqc_key_path` holds, so the envelope verifies against the
-    row register_self published — the four #573 xfails are gone and the
-    CC 2.6.4 registry row is a module again. Also v20.3.0: the dial leaves
-    the round (CIRISEdge#568), the AV-28 quorum assertion reports while the
-    trust root transitions (#575), leviculum v0.25.0.
+    v20.3.0 → v31.0.0. ELEVEN majors, every one an adopt of the persist
+    major beside it (v21↔42 … v31↔48) plus blob-native chat (v24), N-member
+    rooms (v25), the un-fused replication registry (v26). No Python-surface
+    move the suite drives changed shape; the intake-gate and wire-vocabulary
+    probes (`build_signed_inbound_envelope` with `pqc_seed_bytes`, CIRISEdge#573)
+    pass unchanged. Edge's head is v32.1.0 (adopts persist v49 + verify 17.1).
 # Python interpreter version under test. Every member declares
 # `requires-python = ">=3.10"`; the abi3-py310 build (one wheel for all
 # 3.10+) is the canonical shape. We exercise the floor (3.10) + a current
@@ -141,16 +154,19 @@ python_versions:
 # issue closes, remove from this list AND remove the xfail marker —
 # strict=True will then flag any silent regression.
 known_failures:
-  - id: "CIRISPersist#811"
-    url: "https://github.com/CIRISAI/CIRISPersist/issues/811"
+  - id: "CIRISPersist#936"
+    url: "https://github.com/CIRISAI/CIRISPersist/issues/936"
     title: >-
-      `is_steward_bound` still counts a plain capability conferral after the
-      sole owner-binding is revoked — the predicate did not narrow with the
-      `steward_bindings_of` fold (CIRISConstitution#87 "conferral is not
-      stewardship" pairs them; persist documents the biconditional). A node
-      whose only custody edge is withdrawn reads steward-bound to nobody.
+      v48 add_community_member: an exact UNSIGNED re-add of an already-active
+      member on the widening plane is refused `federation_federation_tier_unverified`
+      — the `already` check skips the fold short-circuit the changelog says it
+      keeps, so the put door verifies an empty spec first. The signed retry
+      returns False as documented; only the authority-free exact retry regressed.
     affects:
-      - tests/test_361_minor_stewardship_liveness.py::test_conferral_does_not_keep_a_node_steward_bound_predicate
+      - tests/test_263_affiliation_membership_lifecycle.py::test_affiliation_unsigned_exact_readd_is_a_noop
+  # CLOSED — CIRISPersist#811 (persist v42.0.0 narrowed `is_steward_bound` to the
+  # owner-binding predicate; test_361's strict xfail XPASSed on the first run
+  # against it and came off — CIRISConformance#98).
   # CLOSED — CIRISConformance#87 (the trust-root conferral fixture). The harness
   # now performs the real three-row ceremony (charter / accept / confer, see
   # conftest.TRUST_ROOT_CEREMONY_SRC), so every witness-reserved and detector

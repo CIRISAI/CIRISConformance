@@ -264,7 +264,71 @@ _PG_EDGE_CRASH_REASON = (
 # future persist reorders register_self, the witness emits below start refusing
 # with the emitter-mismatch token again and this comment is where to look.
 TRUST_ROOT_CEREMONY_SRC = r"""
-import hashlib as _hashlib, json as _json
+import base64 as _base64, datetime as _datetime, hashlib as _hashlib, json as _json, os as _os, secrets as _secrets, tempfile as _tempfile
+
+
+# persist v48.0.0 (CIRISPersist#901) — a valid root is as attested as its
+# holders: `trust_root_valid` judges every charter holder's `federation_keys`
+# record for Layer-A-valid hardware evidence (present, canonical, class
+# accepted, fields present; no nonce age for non-accord rows). A root chartered
+# by a software-only key is invalid, so its conferrals confer nothing. This is
+# the mock Android-StrongBox evidence persist's own fixtures register with —
+# the ONE shape that lets a root stand up without real hardware. The nonce is
+# quantized to the hour so a re-put is byte-identical.
+def mock_strongbox_evidence():
+    now = _datetime.datetime.now(_datetime.timezone.utc).replace(minute=0, second=0, microsecond=0)
+    return {"platform_attestation": {"Android": {
+                "key_attestation_chain": [[48, 130, 1, 0], [48, 130, 2, 0]],
+                "play_integrity_token": "eyJhbGciOiJIUzI1NiJ9.fake.token",
+                "strongbox_backed": True}},
+            "nonce_captured_at": now.isoformat().replace("+00:00", "Z")}
+
+
+class AttestedRoot:
+    # A trust-root identity whose key record carries hardware evidence.
+    # `register_self_federation_key` always writes `attestation_evidence: None`
+    # and a registered record cannot be upgraded (`federation_conflict`), so the
+    # root is registered ONCE through `put_public_key` with a subject-bound
+    # registration envelope (CIRISPersist#659: key_id / identity_type / both
+    # pubkeys), canonicalized by the produce gate and hybrid-signed by the root.
+    # `make_engine(key_alias, ed25519_seed_path, pqc_seed_path)` is the caller's
+    # Engine constructor, so this class knows nothing about the backend URL.
+    def __init__(self, make_engine, itype="agent", ref="trust-root"):
+        d = _tempfile.mkdtemp()
+        self.s = _os.path.join(d, "s"); open(self.s, "wb").write(_secrets.token_bytes(32))
+        self.p = _os.path.join(d, "p"); open(self.p, "wb").write(_secrets.token_bytes(32))
+        self.k = "root-" + _secrets.token_hex(8)
+        self.itype, self._make = itype, make_engine
+        self.kid = None
+        e = self.engine()
+        self.kid = e.local_derived_key_id()
+        agg = _json.loads(e.local_identity_aggregate())
+        env = {"key_id": self.kid, "identity_type": itype,
+               "pubkey_ed25519_base64": agg["ed25519_pubkey_b64"],
+               "pubkey_ml_dsa_65_base64": agg["ml_dsa_65_pubkey_b64"]}
+        canonical = e.canonicalize_envelope(_json.dumps(env))
+        sigs = e.local_sign_hybrid(canonical)
+        now = _datetime.datetime.now(_datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+        record = {"key_id": self.kid,
+                  "pubkey_ed25519_base64": agg["ed25519_pubkey_b64"],
+                  "pubkey_ml_dsa_65_base64": agg["ml_dsa_65_pubkey_b64"],
+                  "algorithm": "hybrid", "identity_type": itype, "identity_ref": ref,
+                  "valid_from": now, "valid_until": None,
+                  "registration_envelope": env,
+                  "original_content_hash": _hashlib.sha256(canonical).hexdigest(),
+                  "scrub_signature_classical": _base64.b64encode(sigs["classical_sig"]).decode(),
+                  "scrub_signature_pqc": _base64.b64encode(sigs["pqc_sig"]).decode(),
+                  "scrub_key_id": self.kid, "scrub_timestamp": now, "pqc_completed_at": now,
+                  "persist_row_hash": "", "capability_roles": [],
+                  "attestation_evidence": mock_strongbox_evidence()}
+        e.put_public_key(_json.dumps({"record": record}))
+
+    def engine(self):
+        cp.reset_engine()
+        eng = self._make(self.k, self.s, self.p)
+        if self.kid:
+            _bind_node_identity(eng, self.itype)
+        return eng
 
 
 def _bind_node_identity(engine, itype):
@@ -289,7 +353,9 @@ def _trust_edge(ident, attested_kid, dimension, extra):
 
 def confer_from_trust_root(root, subject, scope):
     # Stand up `root` as a chartered trust root this node accepts, and confer
-    # `scope` on `subject` from it. Returns the three attestation ids.
+    # `scope` on `subject` from it. Returns the three attestation ids. On
+    # persist >= v48 `root` must be an AttestedRoot (see above) or the charter
+    # holder is unattested and the root is invalid.
     commitment = _hashlib.sha256(_json.dumps(
         sorted([root.kid + "-successor"]), separators=(",", ":")).encode()).hexdigest()
     return {
@@ -543,15 +609,32 @@ def roster_member(key_id, joined_at, role=None):
 def admit_spec(cohort, group_key_id, member):
     """The AdmitSpec authorizing `member`'s addition to `group_key_id`.
 
-    Mirrors `authorize_{family,community}_growth`: read the stored record, push
-    the member, sign `signing_envelope()` (the record minus the server-computed
-    `persist_row_hash`). Reading the record back rather than reusing the dict we
-    wrote means the preimage is built from what persist actually stored.
+    Two preimages, by plane (persist v48.0.0, CIRISPersist#860):
+
+    - **family** — the GROWN record: read the stored record, push the member,
+      sign `signing_envelope()` (the record minus the server-computed
+      `persist_row_hash`), mirroring `authorize_family_growth`. Reading the
+      record back rather than reusing the dict we wrote means the preimage is
+      built from what persist actually stored.
+    - **community / affiliations** — the WIDENING row: a room's roster is the
+      fold of its record plus an append-only widening plane, and the record is
+      never rewritten to grow (a rewritten record is a fork at every peer). The
+      authority signs `CommunityMembershipWidening::signing_envelope()` —
+      `{community_key_id, member_key_id, joined_at, effective_at, role?}` with
+      `effective_at = joined_at` (the local door pins it so) and `role` ABSENT
+      when None. A scrub over the grown record is refused with the signature
+      reason (`federation_federation_tier_unverified`).
     """
-    grown = dict(_stored_group(cohort, group_key_id))
-    grown["members"] = list(grown.get("members") or []) + [member]
-    grown.pop("persist_row_hash", None)
-    return json.dumps(_sign_envelope(grown))
+    if _COHORT_PLANE[cohort] == "family":
+        grown = dict(_stored_group(cohort, group_key_id))
+        grown["members"] = list(grown.get("members") or []) + [member]
+        grown.pop("persist_row_hash", None)
+        return json.dumps(_sign_envelope(grown))
+    widening = {"community_key_id": group_key_id, "member_key_id": member["key_id"],
+                "joined_at": member["joined_at"], "effective_at": member["joined_at"]}
+    if member.get("role") is not None:
+        widening["role"] = member["role"]
+    return json.dumps(_sign_envelope(widening))
 
 
 def revoke_spec(cohort, group_key_id, removed_key_id, effective_at,

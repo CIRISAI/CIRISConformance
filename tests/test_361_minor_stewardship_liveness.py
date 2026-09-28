@@ -103,7 +103,10 @@ S2 = Ident("steward2", "user", "adult-steward-2")  # a second adult user — con
 # CIRISConformance#87 — stand up a trust root and confer the witness-reserved
 # capability from it (persist v30.2.0+): holding `witness` is necessary, never
 # sufficient. Drives the real three-row ceremony (see conftest).
-ROOT = Ident("root", "agent", "trust-root")
+# persist v48 (CIRISPersist#901): the charter holder must carry hardware evidence
+# on its key record, so the root is an AttestedRoot (see conftest), never a plain Ident.
+ROOT = AttestedRoot(lambda k, s, p: cp.Engine(DB_URL, k, local_key_id=k, local_key_path=s,
+                                          local_pqc_key_id=k + "-pqc", local_pqc_key_path=p))
 _TRUST_ROOT_CEREMONY = confer_from_trust_root(ROOT, W, "infra:attest_assurance")
 
 report = {"S": S.kid, "S2": S2.kid, "M": M.kid, "N": N.kid, "N2": N2.kid}
@@ -161,9 +164,9 @@ e = S.engine()
 report["node_revoked_is_steward_bound"] = e.is_steward_bound_json(N.kid)
 report["node_revoked_bindings_of"] = json.loads(e.steward_bindings_of_json(N.kid))
 
-# ── Fail-secure with a SURVIVING conferral (CIRISPersist#811) ──
+# ── Fail-secure with a SURVIVING conferral (CIRISPersist#811, fixed v42.0.0) ──
 # Custody from S plus a plain conferral from S2; withdraw the custody. The fold
-# empties (a conferral is not custody); the predicate MUST agree — CC 3.2 rc4
+# empties (a conferral is not custody) and the predicate agrees — CC 3.2 rc4
 # pairs them on the same owner-binding predicate, and persist documents
 # `is_steward_bound(k) ⟺ !steward_bindings_of(k).is_empty()`.
 appt_n2 = S.engine().steward_bind(N2.kid, ["infra:transport"], CUSTODY)
@@ -268,18 +271,17 @@ def test_conferral_does_not_keep_a_node_steward_bound_fold(liveness):
 
 
 @pytest.mark.requires_persist
-@pytest.mark.xfail(strict=True, reason=
-    "CIRISPersist#811: `is_steward_bound` still counts a plain conferral after the sole "
-    "owner-binding is revoked — the predicate did not narrow with the fold (CC 3.2 rc4 pairs "
-    "them; persist documents the biconditional). Turns red the moment the predicate is narrowed.")
 def test_conferral_does_not_keep_a_node_steward_bound_predicate(liveness):
     """CC 3.2 (CIRISConstitution#87): the PREDICATE agrees with the fold — a node whose
     only custody edge is withdrawn is steward-less, whatever conferrals survive.
 
     Same N2 as the fold test: after S's owner-binding is revoked, with S2's
     conferral still live, `is_steward_bound(N2)` MUST read false. On persist
-    v40.0.0 it reads true (CIRISPersist#811) while the fold is already empty — a
-    steward-less state the substrate can create but not describe.
+    v40.0.0 it read true (CIRISPersist#811) while the fold was already empty — a
+    steward-less state the substrate could create but not describe. v42.0.0
+    narrowed the predicate (`is_steward_bound`, `steward_binding_chain` and the
+    fold now share one `steward_edge_filter()`); the strict xfail this test
+    carried turned red on schedule and came off.
     """
     r = liveness
     assert r["n2_revoked_bindings_of"] == [], r
