@@ -181,14 +181,21 @@ _OWNER_PREAMBLE = (
     "cp.reset_engine(); k = REF + '-' + secrets.token_hex(8)\n"
     "eng = cp.Engine(DB_URL, k, local_key_id=k, local_key_path=s, local_pqc_key_id=k+'-pqc', local_pqc_key_path=p)\n"
     "owner = eng.register_self_federation_key('user', REF, None, None, None)\n"
+    # persist v42.0.0 (CIRISPersist#811, CC 3.2 rc4 'conferral is not stewardship'):
+    # a community member is steward-bound by an OWNER-BINDING edge only. A plain
+    # steward_bind is a capability conferral and no longer binds, so the room
+    # write refuses `federation_unstewarded_community_member`. `responsible_for`
+    # is persist's engine-side custody purpose (the ownership:responsible_party
+    # dimension), the same token test_360/361/573 drive.
+    "CUSTODY = 'responsible_for'\n"
 )
 
 _OWNER3 = _OWNER_PREAMBLE + (
-    "eng.steward_bind(R['n4'], ['infra:transport'])\n"
+    "eng.steward_bind(R['n4'], ['infra:transport'], CUSTODY)\n"
     "open(DONE3, 'w').write('ok'); print('OWNER3 done', file=sys.stderr); sys.exit(0)\n"
 )
 _OWNER2 = _OWNER_PREAMBLE + (
-    "eng.steward_bind(R['n3'], ['infra:transport'])\n"
+    "eng.steward_bind(R['n3'], ['infra:transport'], CUSTODY)\n"
     "while not os.path.exists(DONE3): time.sleep(0.2)\n"
     "eng.put_community_json(json.dumps({'community_key_id': owner, 'community_name': 'D',\n"
     "    'members': [{'key_id': owner, 'joined_at': NOW, 'role': 'founder'},\n"
@@ -197,7 +204,7 @@ _OWNER2 = _OWNER_PREAMBLE + (
     "open(DONE2, 'w').write(json.dumps({'direct': owner})); print('OWNER2 done', file=sys.stderr); sys.exit(0)\n"
 )
 _OWNER1 = _OWNER_PREAMBLE + (
-    "eng.steward_bind(R['n1'], ['infra:transport']); eng.steward_bind(R['n2'], ['infra:transport'])\n"
+    "eng.steward_bind(R['n1'], ['infra:transport'], CUSTODY); eng.steward_bind(R['n2'], ['infra:transport'], CUSTODY)\n"
     "for occ in (R['n1'], R['n2']):\n"
     "    eng.put_identity_occurrence_json(json.dumps({'identity_key_id': owner, 'occurrence_key_id': occ,\n"
     "        'device_class': 'agent', 'asserted_at': NOW, 'persist_row_hash': ''}))\n"
@@ -230,60 +237,103 @@ def delivery_fabric(tmp_path_factory):
         for suf in ("ready", "cmd", "done"):
             paths[f"{role}.{suf}"] = str(d / f"{role}.{suf}.json")
 
-    # Full mesh: every node listens on its own port and dials the other three, so
-    # every sender→receiver pair has a direct interface (a hub-and-spoke topology
-    # leaves N1↔N3 etc. with no link). Pre-allocate the four ports.
-    ports = {r: str(_free_port()) for r in ("n1", "n2", "n3", "n4")}
+    # CIRISConformance#97 — the pick-a-free-port race. `_free_port()` probes a
+    # port, releases it, and hands the number to a child that binds it later;
+    # anything on the host can take it in between, and on a busy CI runner it
+    # did (CIRISServer's publish gate, 2026-09-06). A collision in ONE node
+    # cannot be repaired in place — every peer was launched with the other
+    # three ports as its dial set (full mesh) — so the whole fabric is torn
+    # down and re-picked, a bounded number of times, and the last failure
+    # says which port and who held it, so the next occurrence is an
+    # attribution rather than a mystery.
+    class _PortRace(Exception):
+        def __init__(self, role, port, err):
+            super().__init__(role, port, err)
+            self.role, self.port, self.err = role, port, err
 
-    def boots_for(role):
-        return [ports[r] for r in ("n1", "n2", "n3", "n4") if r != role]
+    def _holder_of(port):
+        try:
+            out = subprocess.run(["ss", "-ltnp"], capture_output=True, text=True, timeout=5).stdout
+            return "\n".join(l for l in out.splitlines() if f":{port} " in l) or "(no listener found)"
+        except Exception as exc:  # noqa: BLE001 — diagnostics only
+            return f"(ss unavailable: {exc})"
 
-    procs = {}
+    def _stand_up_fabric():
+        for r in ("n1", "n2", "n3", "n4"):
+            for suf in ("ready",):
+                try: os.remove(paths[f"{r}.{suf}"])
+                except FileNotFoundError: pass
+        procs = {}
+        # Full mesh: every node listens on its own port and dials the other three, so
+        # every sender→receiver pair has a direct interface (a hub-and-spoke topology
+        # leaves N1↔N3 etc. with no link). Pre-allocate the four ports.
+        ports = {r: str(_free_port()) for r in ("n1", "n2", "n3", "n4")}
 
-    def launch(role):
-        procs[role] = subprocess.Popen(
-            [sys.executable, "-c",
-             textwrap.dedent(_node(paths, role, listen_port=ports[role], boot_ports=boots_for(role)))],
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        def boots_for(role):
+            return [ports[r] for r in ("n1", "n2", "n3", "n4") if r != role]
 
-    # Serialize the FIRST engine so it migrates the fresh sqlite file alone
-    # (concurrent first-migration races with "duplicate column"); the rest open
-    # the already-migrated DB.
-    launch("n2")
-    # persist transport bring-up (CIRISPersist#320) is FIXED on the CC 1.0-rc1
-    # floor — init_edge_runtime(enable_transport=True) returns in ~ms and n2
-    # becomes ready — so a node that never readies (or exits early) is again a
-    # HARD failure, not an xfail-absorbed deadlock.
-    n2_deadline = time.time() + 40
-    while time.time() < n2_deadline and not os.path.exists(paths["n2.ready"]):
-        if procs["n2"].poll() is not None:
-            _, err = procs["n2"].communicate()
-            pytest.fail(f"node n2 exited before ready: {err[-1200:]}")
-        time.sleep(0.2)
-    if not os.path.exists(paths["n2.ready"]):
-        procs["n2"].kill()
-        pytest.fail("node n2 never became ready within 40s")
-    for role in ("n1", "n3", "n4"):
-        launch(role)
+        procs = {}
 
-    # Collect all four identities → publish the roster (the priming barrier).
-    deadline = time.time() + 40
-    roster = []
-    while time.time() < deadline and len(roster) < 4:
-        roster = [json.loads(open(paths[f"{r}.ready"]).read())
-                  for r in ("n1", "n2", "n3", "n4") if os.path.exists(paths[f"{r}.ready"])]
-        for r, p in procs.items():
-            if p.poll() is not None and not os.path.exists(paths[f"{r}.ready"]):
-                _, err = p.communicate()
-                for q in procs.values():
-                    if q.poll() is None: q.kill()
-                pytest.fail(f"node {r} exited before ready: {err[-1200:]}")
-        time.sleep(0.3)
-    if len(roster) < 4:
-        for p in procs.values():
-            if p.poll() is None: p.kill()
-        pytest.fail(f"only {len(roster)}/4 fabric nodes became ready")
-    open(paths["roster"], "w").write(json.dumps(roster))
+        def launch(role):
+            procs[role] = subprocess.Popen(
+                [sys.executable, "-c",
+                 textwrap.dedent(_node(paths, role, listen_port=ports[role], boot_ports=boots_for(role)))],
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+
+        # Serialize the FIRST engine so it migrates the fresh sqlite file alone
+        # (concurrent first-migration races with "duplicate column"); the rest open
+        # the already-migrated DB.
+        launch("n2")
+        # persist transport bring-up (CIRISPersist#320) is FIXED on the CC 1.0-rc1
+        # floor — init_edge_runtime(enable_transport=True) returns in ~ms and n2
+        # becomes ready — so a node that never readies (or exits early) is again a
+        # HARD failure, not an xfail-absorbed deadlock.
+        n2_deadline = time.time() + 40
+        while time.time() < n2_deadline and not os.path.exists(paths["n2.ready"]):
+            if procs["n2"].poll() is not None:
+                _, err = procs["n2"].communicate()
+                if "Address already in use" in err:
+                    raise _PortRace("n2", ports["n2"], err)
+                pytest.fail(f"node n2 exited before ready: {err[-1200:]}")
+            time.sleep(0.2)
+        if not os.path.exists(paths["n2.ready"]):
+            procs["n2"].kill()
+            pytest.fail("node n2 never became ready within 40s")
+        for role in ("n1", "n3", "n4"):
+            launch(role)
+
+        # Collect all four identities → publish the roster (the priming barrier).
+        deadline = time.time() + 40
+        roster = []
+        while time.time() < deadline and len(roster) < 4:
+            roster = [json.loads(open(paths[f"{r}.ready"]).read())
+                      for r in ("n1", "n2", "n3", "n4") if os.path.exists(paths[f"{r}.ready"])]
+            for r, p in procs.items():
+                if p.poll() is not None and not os.path.exists(paths[f"{r}.ready"]):
+                    _, err = p.communicate()
+                    for q in procs.values():
+                        if q.poll() is None: q.kill()
+                    if "Address already in use" in err:
+                        raise _PortRace(r, ports[r], err)
+                    pytest.fail(f"node {r} exited before ready: {err[-1200:]}")
+            time.sleep(0.3)
+        if len(roster) < 4:
+            for p in procs.values():
+                if p.poll() is None: p.kill()
+            pytest.fail(f"only {len(roster)}/4 fabric nodes became ready")
+        open(paths["roster"], "w").write(json.dumps(roster))
+
+        return procs, roster
+
+    for _attempt in range(1, 4):
+        try:
+            procs, roster = _stand_up_fabric()
+            break
+        except _PortRace as race:
+            if _attempt == 3:
+                pytest.fail(f"node {race.role} lost its Reticulum port {race.port} to another process "
+                            f"three times running (CIRISConformance#97); last holder: "
+                            f"{_holder_of(race.port)}\n{race.err[-800:]}")
 
     # Owner setup: three sequential owner processes (one live engine each), in
     # dependency order O3 → O2 → O1.

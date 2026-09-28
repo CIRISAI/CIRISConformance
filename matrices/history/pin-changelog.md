@@ -12,6 +12,20 @@ line it was lifted from.
 
 Captured at CIRISConformance 3ab8b75 (the v0.5.131 / v13.8.0 triple).
 
+## The v0.5.198 cycle — was pinned `ciris-server 0.5.198`
+
+Captured at CIRISConformance 024919e, displaced by the v0.5.217 catch-up. Verbatim as it read in `current.yaml`:
+
+**set** — Catch-up to the integrator's next cut, one day after the retention bump. Read off CIRISServer v0.5.198's own Cargo.toml: persist v41.2.0, edge v20.3.0, verify v14.2.0. CIRISAgent v2.10.0-stable pins this same ciris-server, so the floor the agent ships on and the floor this matrix tests are one set again. Every substrate sha below is the DEREFERENCED tag, resolved upstream at bump time rather than copied.
+
+**ciris-server** — 0.5.197 → 0.5.198. "The write knows who is writing": attestation writes carry an ORIGIN axis so the flood shield stops metering a node's own owner (persist v41.0.0), the announce bundle collapses per agent key (CIRISServer#541), and persist v41.2.0 admits TaskStatus `rejected` (CIRISAgent#1077). Retention note, corrected: PyPI's index for ciris-server currently holds twelve versions (0.5.187…0.5.198), so the earlier "~5 releases" figure was the low-water mark, not the policy — the footgun is real but slower than that note claimed; bump this line first when all cells fail uniformly at pip-install.
+
+**ciris-verify** — 14.1.0 → 14.2.0. Additive — `fedcode` carries a PQC commitment so a code-admitted key is registrable (CIRISVerify#272). Still the only stack member on PyPI, and the published wheel matches the server's Cargo tag.
+
+**ciris-persist** — v40.0.0 → v41.2.0. MAJOR 40→41: the write-origin axis — v39 routed local publication through the same door a hostile remote row arrives at, so `put_attestation` grew a `WriteOrigin` and each named door states its act. A Rust-API break; the Python doors this suite drives (`emit_attestation_self`, `attestation_insert_local`, `enter_mesh`, `widen_audience`) are unchanged in shape. v41.1.0 made `precedence::retired_ids` drop a retraction whose target it cannot resolve; v41.2.0 widened the TaskStatus vocabulary.
+
+**ciris-edge** — v20.1.1 → v20.3.0. Ships CIRISEdge#573, this harness's report: the pyo3 conformance helper `build_signed_inbound_envelope` now takes an optional `pqc_seed_bytes` (the seed is TAKEN, never derived by convention) and signs the full hybrid, and `derive_ml_dsa_65_pubkey_base64` yields the matching registration pubkey. The harness passes the same 32-byte seed persist's `local_pqc_key_path` holds, so the envelope verifies against the row register_self published — the four #573 xfails are gone and the CC 2.6.4 registry row is a module again. Also v20.3.0: the dial leaves the round (CIRISEdge#568), the AV-28 quorum assertion reports while the
+
 ## The v0.5.197 cycle — was pinned `ciris-server 0.5.197`
 
 Captured at CIRISConformance 7457a7c, displaced by the v0.5.198 catch-up. Verbatim as it read in `current.yaml`:

@@ -60,6 +60,15 @@ def roster():
     return sorted(m["key_id"] for m in
                   json.loads(engine.cohort_active_members_json("affiliations", founder)))
 
+# persist v42.0.0 (CIRISPersist#811, CC 3.2 rc4 "conferral is not stewardship"):
+# every community member MUST be steward-bound by an OWNER-BINDING edge — a
+# plain conferral no longer binds — or the room write is refused
+# `federation_unstewarded_community_member`. The founder (a `user`) takes
+# custody of both member nodes with persist's engine-side custody purpose,
+# the same token test_340's fabric owners and test_573 drive.
+for member_kid in (ALICE, BOB):
+    engine.steward_bind(member_kid, ["infra:transport"], "responsible_for")
+
 def step(label, fn):
     try:
         report[label] = {"ok": True, "result": fn()}
@@ -67,17 +76,26 @@ def step(label, fn):
         report[label] = {"ok": False, "error": str(exc)}
 
 # add — genuine add then idempotent re-add on the affiliations cohort.
-# The adds carry a real AdmitSpec (CIRISPersist#654); the re-add carries none,
-# because persist short-circuits an already-rostered member before the
-# authorship gate. `affiliations` shares the community roster, so the preimage
-# is the grown Community record (CC 4.4.3.2.8 / CIRISPersist#308).
+# The adds carry a real AdmitSpec (CIRISPersist#654). `affiliations` shares the
+# community roster, so the preimage is the community WIDENING row (persist
+# v48.0.0, CIRISPersist#860 — the room's record is never rewritten to grow;
+# CC 4.4.3.2.8 / CIRISPersist#308).
 _alice = roster_member(ALICE, NOW)
 _bob = roster_member(BOB, NOW)
 step("add_alice", lambda: engine.cohort_add_member(
     "affiliations", founder, json.dumps(_alice),
     admit_spec("affiliations", founder, _alice)))
 step("after_add", roster)
+# persist v48.0.0: the idempotent re-add on the widening plane. A SIGNED exact
+# retry returns False (the fold sees the member active; no row is written). The
+# UNSIGNED exact retry — the pre-v48 contract, which v48's changelog says it
+# keeps — is refused `federation_federation_tier_unverified` because the
+# `already` check skips the fold short-circuit and the put door verifies the
+# empty spec first (CIRISPersist#936). Both are recorded; the signed one keeps
+# the CC 4.4.3.2.8 idempotency claim green, the unsigned one is the tripwire.
 step("readd_alice", lambda: engine.cohort_add_member(
+    "affiliations", founder, json.dumps(_alice), admit_spec("affiliations", founder, _alice)))
+step("readd_alice_unsigned", lambda: engine.cohort_add_member(
     "affiliations", founder, json.dumps(_alice), "{}"))
 
 # add bob, then immediate-revoke bob → forward secrecy drops him now
@@ -171,3 +189,19 @@ def test_affiliation_future_dated_revoke_is_rejected(affiliation_lifecycle):
     assert r["after_future_revoke_alice"]["ok"] is True, r
     assert r["alice"] in r["after_future_revoke_alice"]["result"], (
         f"a rejected future-dated revoke wrongly dropped the member: {r}")
+
+
+@pytest.mark.requires_persist
+@pytest.mark.xfail(strict=True, reason=
+    "CIRISPersist#936: on v48's widening plane an exact UNSIGNED re-add of an already-active "
+    "member is refused federation_federation_tier_unverified — the `already` check skips the fold "
+    "short-circuit the v48 changelog says it keeps, so the put door verifies an empty spec first. "
+    "Turns red the moment the short-circuit moves back in front of the authorship gate.")
+def test_affiliation_unsigned_exact_readd_is_a_noop(affiliation_lifecycle):
+    """CC §4.4.3.2.8 idempotency, the authority-free half: re-adding an already-active
+    member with NO authority signature is a no-op (`False`), not a refusal — the
+    pre-v48 contract, kept by name in v48's changelog. The signed retry beside it
+    (`readd_alice`) is what keeps the claim green meanwhile."""
+    r = affiliation_lifecycle
+    assert r["readd_alice_unsigned"]["ok"] is True and r["readd_alice_unsigned"]["result"] is False, (
+        f"an unsigned exact re-add was not the documented no-op: {r['readd_alice_unsigned']}")

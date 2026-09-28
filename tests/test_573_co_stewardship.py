@@ -105,7 +105,10 @@ N = Ident("node", "agent", "co-stewarded-node")  # the co-stewarded node
 # CIRISConformance#87 — stand up a trust root and confer the witness-reserved
 # capability from it (persist v30.2.0+): holding `witness` is necessary, never
 # sufficient. Drives the real three-row ceremony (see conftest).
-ROOT = Ident("root", "agent", "trust-root")
+# persist v48 (CIRISPersist#901): the charter holder must carry hardware evidence
+# on its key record, so the root is an AttestedRoot (see conftest), never a plain Ident.
+ROOT = AttestedRoot(lambda k, s, p: cp.Engine(DB_URL, k, local_key_id=k, local_key_path=s,
+                                          local_pqc_key_id=k + "-pqc", local_pqc_key_path=p))
 _TRUST_ROOT_CEREMONY = confer_from_trust_root(ROOT, W, "infra:attest_assurance")
 
 r = {"S1": S1.kid, "S2": S2.kid, "N": N.kid}

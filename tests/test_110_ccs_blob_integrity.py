@@ -53,6 +53,13 @@ def _payload(sha):
         "body": {"inline": b64},
         "media_type": None,
         "attestation": {
+            # persist v45.0.0 (CIRISPersist#871, CC 5.3.2.5): every holder
+            # claim carries `size`, bound into the signed bytes and checked
+            # BEFORE the digest — a puller caps its read at the declared
+            # length. The claim wire (`PutBlobAttestationWire`) refuses a
+            # claim without a positive integer size, so the hash-mismatch gate
+            # under test is only reachable with it present.
+            "size": len(body),
             "attesting_key_id": key_id,
             "attestation_id": str(uuid.uuid4()),
             "original_content_hash_hex": sha,

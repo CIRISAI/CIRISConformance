@@ -118,7 +118,10 @@ DET_ROLES = Ident("rls", "agent", "roles-ref", roles=["lenscore_detector"])  # r
 # top of `lenscore_detector ∈ identity_type`. Confer it on ALL THREE candidate
 # keys so the remaining discriminator is exactly the identity_type membership:
 # the roles= kwarg key stays refused WITH the conferral in hand.
-ROOT = Ident("root", "agent", "trust-root")
+# persist v48 (CIRISPersist#901): the charter holder must carry hardware evidence
+# on its key record, so the root is an AttestedRoot (see conftest), never a plain Ident.
+ROOT = AttestedRoot(lambda k, s, p: cp.Engine(DB_URL, k, local_key_id=k, local_key_path=s,
+                                          local_pqc_key_id=k + "-pqc", local_pqc_key_path=p))
 _TRUST_ROOT_CEREMONY = {name: confer_from_trust_root(ROOT, det, "infra:detect")
                             for name, det in (("bare", DET_BARE), ("fold", DET_FOLD), ("roles", DET_ROLES))}
 
