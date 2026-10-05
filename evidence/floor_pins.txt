@@ -8,10 +8,10 @@
 # is reproducible. Bumping the floor here (+ regenerating) is a deliberate
 # registry update — see evidence/README.md.
 #
-# CC 1.0-rc5 floor — the CIRISServer v0.5.217 coherent set (2026-09-27).
-# Read off CIRISServer v0.5.217's own Cargo.toml, which is the integrator's
+# CC 1.0-rc6 floor — the final-genesis set, CIRISServer v0.5.221 (2026-10-05).
+# Read off CIRISServer v0.5.221's own Cargo.toml, which is the integrator's
 # statement of what cohabits. The substrate members are pinned by the
-# DEREFERENCED tag sha (persist v48.0.0 / edge v31.0.0), the same shas
+# DEREFERENCED tag sha (persist v53.1.2 / edge v40.0.2), the same shas
 # matrices/current.yaml records, so a moved tag cannot silently change the
 # floor the registry was derived against.
 #
@@ -22,11 +22,14 @@
 # CIRISVerify's Python project lives at `bindings/python`, not the repo root,
 # so a `git+` install of it fails outright. See matrices/current.yaml.
 #
-# This bump supersedes the v0.5.198 floor of 2026-09-06 (persist v41.2.0 /
-# verify 14.2.0 / edge v20.3.0) after three weeks of drift; the set is what
-# CIRISAgent v2.12.1 ships on. persist v48's wheel firewalls
-# ciris-verify>=16.1.0,<17, so verify and persist move together here.
-ciris-server==0.5.217
-ciris-verify==16.1.0
-git+https://github.com/CIRISAI/CIRISPersist@59283e3e4cb54bc90f92eb110d81246be8e9ee64
-git+https://github.com/CIRISAI/CIRISEdge@d53056a9e6cb4d93e5356135d6c8a05f2ad788ed
+# This bump supersedes the v0.5.217 floor of 2026-09-27 (persist v48.0.0 /
+# verify 16.1.0 / edge v31.0.0): the final-genesis triple, five persist majors
+# on (v49 moves family growth onto the widening plane; v53 labels trust rows
+# and names record predecessors). persist v53's wheel firewalls
+# ciris-verify>=19,<20, so verify and persist move together here. Persist is
+# one patch ahead of the server's v53.1.1 (no wire change; edge v40.0.2's floor
+# is >=53.1.1,<54) — the same set matrices/current.yaml pins (CIRISConformance#100).
+ciris-server==0.5.221
+ciris-verify==19.0.0
+git+https://github.com/CIRISAI/CIRISPersist@113bd0ac8a6978e9facc526f257cab4b39bd2d0e
+git+https://github.com/CIRISAI/CIRISEdge@e7baa9375b4c4b025975710ea1f505cbe24c94a2

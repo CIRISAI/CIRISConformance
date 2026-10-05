@@ -45,14 +45,29 @@ _FUTURE = "2099-01-01T00:00:00.000Z"
 # then drives the full add/revoke/swap lifecycle and reports each roster state.
 # alice/bob/carol/dave kids are injected as context from prior member nodes.
 _FOUNDER_BODY = r"""
+# persist v52.0.0 (CIRISPersist#955): nobody joins without their own signed
+# acceptance, and a founding record admits only the members who signed it. So
+# the family is founded with its founder alone (role `founder`, `founder_only` —
+# this module is about the add/revoke/swap lifecycle, not quorum; test_264 owns
+# quorum), and alice + bob join by proposal → acceptance → widening. Members are
+# minted in this script so each can sign its own acceptance (conftest preamble).
+_members = {name: mint_member(name) for name in ("alice", "bob", "carol", "dave")}
+ALICE, BOB, CAROL, DAVE = (_members[n]["kid"] for n in ("alice", "bob", "carol", "dave"))
 fam = {
     "family_key_id": kid, "family_name": "conformance-fam",
-    "members": [{"key_id": ALICE, "joined_at": NOW},
-                {"key_id": BOB, "joined_at": NOW}],
-    "founded_at": NOW, "consensus_protocol": "majority",
+    "members": [{"key_id": kid, "joined_at": NOW, "role": "founder"}],
+    "founded_at": NOW, "consensus_protocol": "founder_only",
     "consensus_protocol_entrenched": False, "persist_row_hash": "",
 }
 engine.put_family_json(json.dumps(fam))
+for name in ("alice", "bob"):
+    consent_to_join("family", kid, _members[name])
+    _m = roster_member(_members[name]["kid"], NOW)
+    engine.cohort_add_member("family", kid, json.dumps(_m), admit_spec("family", kid, _m))
+# carol and dave accept up front, so the unsigned add below is refused for want
+# of AUTHORITY, not for want of consent.
+consent_to_join("family", kid, _members["carol"])
+consent_to_join("family", kid, _members["dave"])
 
 def roster():
     return sorted(m["key_id"] for m in
@@ -78,12 +93,18 @@ report["after_unsigned_add"] = roster()
 report["add_carol"] = engine.cohort_add_member(
     "family", kid, json.dumps(_carol), admit_spec("family", kid, _carol))
 report["after_add"] = roster()
-# The re-add carries NO authority: persist short-circuits an already-rostered
-# member to False before the authorship gate ("nothing to authorize"), so a
-# no-op genuinely needs none. Passing a signature here would assert a preimage
-# persist never computes.
+# The idempotent re-add, both forms. A SIGNED exact retry returns False (the
+# fold sees carol active; no row is written). The UNSIGNED exact retry is the
+# documented no-op on the community plane since persist v51.2.0
+# (CIRISPersist#936) but is still refused on the FAMILY plane v49 added
+# (CIRISPersist#990) — recorded, and asserted as a strict xfail.
 report["readd_carol"] = engine.cohort_add_member(
-    "family", kid, json.dumps(_carol), "{}")
+    "family", kid, json.dumps(_carol), admit_spec("family", kid, _carol))
+try:
+    report["readd_carol_unsigned"] = engine.cohort_add_member(
+        "family", kid, json.dumps(_carol), "{}")
+except Exception as exc:  # noqa: BLE001 — the substrate's decision is the result
+    report["readd_carol_unsigned"] = str(exc)
 
 # remove — immediate revoke drops bob
 engine.cohort_revoke_member(
@@ -119,16 +140,13 @@ report["stage"] = "done"
 
 @pytest.fixture(scope="module")
 def cohort_lifecycle(federation_module):
-    """Register four member nodes, then run the founder lifecycle node."""
+    """Run the founder lifecycle node; it mints its four members itself so each
+    can sign its own membership acceptance (CIRISPersist#955)."""
     node = federation_module
-    alice = node("report['kid'] = kid", identity_ref="alice")["kid"]
-    bob = node("report['kid'] = kid", identity_ref="bob")["kid"]
-    carol = node("report['kid'] = kid", identity_ref="carol")["kid"]
-    dave = node("report['kid'] = kid", identity_ref="dave")["kid"]
     return node(
         _FOUNDER_BODY,
         identity_ref="founder",
-        ALICE=alice, BOB=bob, CAROL=carol, DAVE=dave,
+        IDENTITY_TYPE="user",
         NOW=_NOW, FUTURE=_FUTURE,
     )
 
@@ -165,7 +183,7 @@ def test_add_member_is_observable_and_idempotent(cohort_lifecycle):
     assert r["readd_carol"] is False, ("re-adding an existing member must be an "
                                        f"idempotent no-op (False): {r}")
     # carol appears in the active roster only after the add.
-    assert set(r["after_add"]) - set(r["initial"]) and len(r["after_add"]) == 3, r
+    assert set(r["after_add"]) - set(r["initial"]) and len(r["after_add"]) == len(r["initial"]) + 1, r
 
 
 @pytest.mark.requires_persist
@@ -212,3 +230,15 @@ def test_member_side_read_reflects_active_membership(cohort_lifecycle):
     assert r["families_for_bob"] == [], (
         "a revoked member still resolves to an active family membership — the "
         f"CC 4.4.3.4.4 caller-admission read would over-grant: {r}")
+
+
+@pytest.mark.requires_persist
+@pytest.mark.xfail(strict=True, reason=
+    "CIRISPersist#990: on the family widening plane (persist v49+) an exact UNSIGNED re-add of "
+    "an already-active member is refused federation_federation_tier_unverified — #936 fixed the "
+    "community arm in v51.2.0, not the family twin. Turns red when the family arm matches.")
+def test_unsigned_exact_readd_is_a_noop(cohort_lifecycle):
+    """CC #249 G1 idempotency, the authority-free half: re-adding an already-active
+    family member with NO authority signature is a no-op (`False`), not a refusal —
+    as it is on the community plane since persist v51.2.0."""
+    assert cohort_lifecycle["readd_carol_unsigned"] is False, cohort_lifecycle["readd_carol_unsigned"]

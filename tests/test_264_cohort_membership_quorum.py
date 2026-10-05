@@ -91,14 +91,33 @@ carol = mk("q-carol", user=True)
 founder = mk("q-founder", user=True)
 
 # A 3-member community at strict-majority quorum:2/3 → prior threshold == 2.
-ef = oe("q-founder")
-ef.put_community_json(json.dumps({
+# persist v52.0.0 (CIRISPersist#955): a founding record admits exactly the
+# members who SIGNED it — the authority (founder) plus a co-signature from every
+# other listed member, over the same `Community::signing_envelope()` (the record
+# minus `persist_row_hash`). `put_community_json` carries them as top-level
+# `authority_key_id` / `scrub_signature_*` + a `cosignatures` list (v50.0.0,
+# CIRISPersist#926). Timestamps are spelled the way persist re-serializes them,
+# or the preimage would not be the one it verifies.
+_T = _canonical_ts(NOW)
+_record = {
     "community_key_id": founder, "community_name": "conformance-quorum",
-    "members": [{"key_id": founder, "joined_at": NOW, "role": "founder"},
-                {"key_id": alice, "joined_at": NOW},
-                {"key_id": bob, "joined_at": NOW}],
-    "founded_at": NOW, "consensus_protocol": "quorum:2/3", "persist_row_hash": "",
-}))
+    "members": [{"key_id": founder, "joined_at": _T, "role": "founder"},
+                {"key_id": alice, "joined_at": _T},
+                {"key_id": bob, "joined_at": _T}],
+    "founded_at": _T, "consensus_protocol": "quorum:2/3",
+}
+
+def _founding_sig(ref):
+    e = oe(ref)
+    sigs = e.local_sign_hybrid(e.canonicalize_envelope(json.dumps(_record)))
+    return {"authority_key_id": fk(ref),
+            "scrub_signature_classical": base64.b64encode(sigs["classical_sig"]).decode(),
+            "scrub_signature_pqc": base64.b64encode(sigs["pqc_sig"]).decode()}
+
+_payload = dict(_record, persist_row_hash="", cosignatures=[_founding_sig("q-alice"), _founding_sig("q-bob")])
+_payload.update(_founding_sig("q-founder"))
+ef = oe("q-founder")
+ef.put_community_json(json.dumps(_payload))
 
 # Build the change envelope: new roster adds carol → quorum:3/4 for the new count.
 env = ef.cohort_build_membership_change_envelope(

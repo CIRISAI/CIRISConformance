@@ -49,6 +49,13 @@ _FUTURE = "2099-01-01T00:00:00.000Z"
 # rather than crashing the node before it can report.
 _FOUNDER_BODY = r"""
 founder = kid  # owner-bound via IDENTITY_TYPE="user"
+# persist v52.0.0 (CIRISPersist#955): every roster growth needs the member's own
+# signed acceptance of a live proposal, so the members are minted in this script
+# (conftest preamble) and each accepts before its widening. `agent` keys: the
+# founder's custody bind below is refused onto a `user` (CC 3.2).
+_members = {name: mint_member(name, "agent") for name in ("alice", "bob")}
+ALICE, BOB = _members["alice"]["kid"], _members["bob"]["kid"]
+report["alice"], report["bob"] = ALICE, BOB
 
 engine.put_community_json(json.dumps({
     "community_key_id": founder, "community_name": "conformance-affil-life",
@@ -82,23 +89,22 @@ def step(label, fn):
 # CC 4.4.3.2.8 / CIRISPersist#308).
 _alice = roster_member(ALICE, NOW)
 _bob = roster_member(BOB, NOW)
+consent_to_join("affiliations", founder, _members["alice"])
 step("add_alice", lambda: engine.cohort_add_member(
     "affiliations", founder, json.dumps(_alice),
     admit_spec("affiliations", founder, _alice)))
 step("after_add", roster)
-# persist v48.0.0: the idempotent re-add on the widening plane. A SIGNED exact
-# retry returns False (the fold sees the member active; no row is written). The
-# UNSIGNED exact retry — the pre-v48 contract, which v48's changelog says it
-# keeps — is refused `federation_federation_tier_unverified` because the
-# `already` check skips the fold short-circuit and the put door verifies the
-# empty spec first (CIRISPersist#936). Both are recorded; the signed one keeps
-# the CC 4.4.3.2.8 idempotency claim green, the unsigned one is the tripwire.
+# The idempotent re-add on the widening plane, both forms: a SIGNED exact retry
+# and an UNSIGNED one each return False — the fold sees the member active and no
+# row is written. (persist v48 refused the unsigned form; v51.2.0 restored the
+# no-op, CIRISPersist#936.)
 step("readd_alice", lambda: engine.cohort_add_member(
     "affiliations", founder, json.dumps(_alice), admit_spec("affiliations", founder, _alice)))
 step("readd_alice_unsigned", lambda: engine.cohort_add_member(
     "affiliations", founder, json.dumps(_alice), "{}"))
 
 # add bob, then immediate-revoke bob → forward secrecy drops him now
+consent_to_join("affiliations", founder, _members["bob"])
 step("add_bob", lambda: engine.cohort_add_member(
     "affiliations", founder, json.dumps(_bob),
     admit_spec("affiliations", founder, _bob)))
@@ -122,19 +128,15 @@ report["stage"] = "done"
 
 @pytest.fixture(scope="module")
 def affiliation_lifecycle(federation_module):
-    """Register two member nodes, then run the owner-bound founder lifecycle node."""
+    """Run the owner-bound founder lifecycle node; it mints its two members
+    itself so each can sign its own membership acceptance (CIRISPersist#955)."""
     node = federation_module
-    alice = node("report['kid'] = kid", identity_ref="alice")["kid"]
-    bob = node("report['kid'] = kid", identity_ref="bob")["kid"]
-    payload = node(
+    return node(
         _FOUNDER_BODY,
         identity_ref="founder",
         IDENTITY_TYPE="user",
-        ALICE=alice, BOB=bob, NOW=_NOW, FUTURE=_FUTURE,
+        NOW=_NOW, FUTURE=_FUTURE,
     )
-    payload["alice"] = alice
-    payload["bob"] = bob
-    return payload
 
 
 @pytest.mark.requires_persist
@@ -192,16 +194,12 @@ def test_affiliation_future_dated_revoke_is_rejected(affiliation_lifecycle):
 
 
 @pytest.mark.requires_persist
-@pytest.mark.xfail(strict=True, reason=
-    "CIRISPersist#936: on v48's widening plane an exact UNSIGNED re-add of an already-active "
-    "member is refused federation_federation_tier_unverified — the `already` check skips the fold "
-    "short-circuit the v48 changelog says it keeps, so the put door verifies an empty spec first. "
-    "Turns red the moment the short-circuit moves back in front of the authorship gate.")
 def test_affiliation_unsigned_exact_readd_is_a_noop(affiliation_lifecycle):
     """CC §4.4.3.2.8 idempotency, the authority-free half: re-adding an already-active
     member with NO authority signature is a no-op (`False`), not a refusal — the
-    pre-v48 contract, kept by name in v48's changelog. The signed retry beside it
-    (`readd_alice`) is what keeps the claim green meanwhile."""
+    pre-v48 contract, kept by name in v48's changelog. v48 broke it (the
+    `already` check skipped the fold short-circuit); persist v51.2.0 restored it
+    (CIRISPersist#936), and the strict xfail this test carried came off."""
     r = affiliation_lifecycle
     assert r["readd_alice_unsigned"]["ok"] is True and r["readd_alice_unsigned"]["result"] is False, (
         f"an unsigned exact re-add was not the documented no-op: {r['readd_alice_unsigned']}")

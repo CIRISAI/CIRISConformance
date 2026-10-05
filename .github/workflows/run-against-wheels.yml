@@ -123,6 +123,10 @@ jobs:
       # The harness reads this; sqlite default keeps the env variable
       # set unconditionally so test failures attribute correctly.
       CIRIS_CONFORMANCE_DATABASE_URL: ${{ inputs.backend == 'postgres' && 'postgres://postgres:postgres@localhost:5432/conformance' || 'sqlite::memory:' }}
+      # A native panic in a subprocess (rc=-6) carries its backtrace, so the
+      # frames name the crate and call (CIRISPersist#354: tokio's "no reactor
+      # running" at net/addr.rs:219 on the postgres lane, cause unpinned).
+      RUST_BACKTRACE: "1"
     steps:
       - name: clone CIRISConformance @ ${{ inputs.matrix-ref }}
         uses: actions/checkout@v4
