@@ -86,13 +86,10 @@ step("add_alice", lambda: engine.cohort_add_member(
     "affiliations", founder, json.dumps(_alice),
     admit_spec("affiliations", founder, _alice)))
 step("after_add", roster)
-# persist v48.0.0: the idempotent re-add on the widening plane. A SIGNED exact
-# retry returns False (the fold sees the member active; no row is written). The
-# UNSIGNED exact retry — the pre-v48 contract, which v48's changelog says it
-# keeps — is refused `federation_federation_tier_unverified` because the
-# `already` check skips the fold short-circuit and the put door verifies the
-# empty spec first (CIRISPersist#936). Both are recorded; the signed one keeps
-# the CC 4.4.3.2.8 idempotency claim green, the unsigned one is the tripwire.
+# The idempotent re-add on the widening plane, both forms: a SIGNED exact retry
+# and an UNSIGNED one each return False — the fold sees the member active and no
+# row is written. (persist v48 refused the unsigned form; v51.2.0 restored the
+# no-op, CIRISPersist#936.)
 step("readd_alice", lambda: engine.cohort_add_member(
     "affiliations", founder, json.dumps(_alice), admit_spec("affiliations", founder, _alice)))
 step("readd_alice_unsigned", lambda: engine.cohort_add_member(
@@ -192,16 +189,12 @@ def test_affiliation_future_dated_revoke_is_rejected(affiliation_lifecycle):
 
 
 @pytest.mark.requires_persist
-@pytest.mark.xfail(strict=True, reason=
-    "CIRISPersist#936: on v48's widening plane an exact UNSIGNED re-add of an already-active "
-    "member is refused federation_federation_tier_unverified — the `already` check skips the fold "
-    "short-circuit the v48 changelog says it keeps, so the put door verifies an empty spec first. "
-    "Turns red the moment the short-circuit moves back in front of the authorship gate.")
 def test_affiliation_unsigned_exact_readd_is_a_noop(affiliation_lifecycle):
     """CC §4.4.3.2.8 idempotency, the authority-free half: re-adding an already-active
     member with NO authority signature is a no-op (`False`), not a refusal — the
-    pre-v48 contract, kept by name in v48's changelog. The signed retry beside it
-    (`readd_alice`) is what keeps the claim green meanwhile."""
+    pre-v48 contract, kept by name in v48's changelog. v48 broke it (the
+    `already` check skipped the fold short-circuit); persist v51.2.0 restored it
+    (CIRISPersist#936), and the strict xfail this test carried came off."""
     r = affiliation_lifecycle
     assert r["readd_alice_unsigned"]["ok"] is True and r["readd_alice_unsigned"]["result"] is False, (
         f"an unsigned exact re-add was not the documented no-op: {r['readd_alice_unsigned']}")

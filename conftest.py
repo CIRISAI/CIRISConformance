@@ -621,28 +621,24 @@ def roster_member(key_id, joined_at, role=None):
 def admit_spec(cohort, group_key_id, member):
     """The AdmitSpec authorizing `member`'s addition to `group_key_id`.
 
-    Two preimages, by plane (persist v48.0.0, CIRISPersist#860):
+    Every rostered cohort now grows on an append-only WIDENING plane: the
+    record is never rewritten to grow (a rewritten record is a fork at every
+    peer), and the roster is the fold of the record plus its widenings and
+    revocations. Communities and affiliations moved in persist v48.0.0
+    (CIRISPersist#860); families followed in v49.0.0 (`FamilyMembershipWidening`,
+    the 18th envelope kind). The authority signs the widening row's
+    `signing_envelope()` —
 
-    - **family** — the GROWN record: read the stored record, push the member,
-      sign `signing_envelope()` (the record minus the server-computed
-      `persist_row_hash`), mirroring `authorize_family_growth`. Reading the
-      record back rather than reusing the dict we wrote means the preimage is
-      built from what persist actually stored.
-    - **community / affiliations** — the WIDENING row: a room's roster is the
-      fold of its record plus an append-only widening plane, and the record is
-      never rewritten to grow (a rewritten record is a fork at every peer). The
-      authority signs `CommunityMembershipWidening::signing_envelope()` —
-      `{community_key_id, member_key_id, joined_at, effective_at, role?}` with
-      `effective_at = joined_at` (the local door pins it so) and `role` ABSENT
-      when None. A scrub over the grown record is refused with the signature
-      reason (`federation_federation_tier_unverified`).
+        {<group>_key_id, member_key_id, joined_at, effective_at, role?}
+
+    with `<group>` = `family` or `community` by plane, `effective_at =
+    joined_at` (the local door pins it so), and `role` ABSENT when None. A
+    scrub over the grown record is refused with the signature reason
+    (`federation_federation_tier_unverified`). v49's optional `cosignatures`
+    are not needed here: the founder is the group's sole standing authority.
     """
-    if _COHORT_PLANE[cohort] == "family":
-        grown = dict(_stored_group(cohort, group_key_id))
-        grown["members"] = list(grown.get("members") or []) + [member]
-        grown.pop("persist_row_hash", None)
-        return json.dumps(_sign_envelope(grown))
-    widening = {"community_key_id": group_key_id, "member_key_id": member["key_id"],
+    group_field = "family_key_id" if _COHORT_PLANE[cohort] == "family" else "community_key_id"
+    widening = {group_field: group_key_id, "member_key_id": member["key_id"],
                 "joined_at": member["joined_at"], "effective_at": member["joined_at"]}
     if member.get("role") is not None:
         widening["role"] = member["role"]

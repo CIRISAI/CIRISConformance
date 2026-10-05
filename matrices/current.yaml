@@ -135,17 +135,9 @@ python_versions:
 # corresponding tests carry @pytest.mark.xfail(strict=True). When an
 # issue closes, remove from this list AND remove the xfail marker —
 # strict=True will then flag any silent regression.
-known_failures:
-  - id: "CIRISPersist#936"
-    url: "https://github.com/CIRISAI/CIRISPersist/issues/936"
-    title: >-
-      v48 add_community_member: an exact UNSIGNED re-add of an already-active
-      member on the widening plane is refused `federation_federation_tier_unverified`
-      — the `already` check skips the fold short-circuit the changelog says it
-      keeps, so the put door verifies an empty spec first. The signed retry
-      returns False as documented; only the authority-free exact retry regressed.
-    affects:
-      - tests/test_263_affiliation_membership_lifecycle.py::test_affiliation_unsigned_exact_readd_is_a_noop
+known_failures: []
+  # CLOSED — CIRISPersist#936 (persist v51.2.0 restored the exact unsigned re-add
+  # as the idempotent no-op on the widening plane; test_263's strict xfail came off).
   # CLOSED — CIRISPersist#811 (persist v42.0.0 narrowed `is_steward_bound` to the
   # owner-binding predicate; test_361's strict xfail XPASSed on the first run
   # against it and came off — CIRISConformance#98).

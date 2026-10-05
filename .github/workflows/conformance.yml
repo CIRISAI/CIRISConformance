@@ -55,6 +55,10 @@ jobs:
           - { python: "3.12", backend: postgres, runner: ubuntu-24.04-arm }
     env:
       CIRIS_CONFORMANCE_DATABASE_URL: ${{ matrix.backend == 'postgres' && 'postgres://postgres:postgres@localhost:5432/conformance' || 'sqlite::memory:' }}
+      # A native panic in a probe subprocess (rc=-6) carries its backtrace, so the
+      # frames name the crate and call (CIRISServer#705 / CIRISPersist#354 — the
+      # postgres cross-runtime abort). Mirrors run-against-wheels.yml.
+      RUST_BACKTRACE: "1"
     steps:
       - uses: actions/checkout@v4
 
@@ -176,6 +180,10 @@ jobs:
     runs-on: ubuntu-latest
     env:
       CIRIS_CONFORMANCE_DATABASE_URL: "sqlite::memory:"
+      # A native panic in a probe subprocess (rc=-6) carries its backtrace, so the
+      # frames name the crate and call (CIRISServer#705 / CIRISPersist#354 — the
+      # postgres cross-runtime abort). Mirrors run-against-wheels.yml.
+      RUST_BACKTRACE: "1"
     steps:
       - uses: actions/checkout@v4
 
@@ -229,6 +237,10 @@ jobs:
     runs-on: ubuntu-latest
     env:
       CIRIS_CONFORMANCE_DATABASE_URL: "sqlite::memory:"
+      # A native panic in a probe subprocess (rc=-6) carries its backtrace, so the
+      # frames name the crate and call (CIRISServer#705 / CIRISPersist#354 — the
+      # postgres cross-runtime abort). Mirrors run-against-wheels.yml.
+      RUST_BACKTRACE: "1"
     steps:
       - uses: actions/checkout@v4
 
@@ -263,6 +275,10 @@ jobs:
     runs-on: ubuntu-latest
     env:
       CIRIS_CONFORMANCE_DATABASE_URL: "sqlite::memory:"
+      # A native panic in a probe subprocess (rc=-6) carries its backtrace, so the
+      # frames name the crate and call (CIRISServer#705 / CIRISPersist#354 — the
+      # postgres cross-runtime abort). Mirrors run-against-wheels.yml.
+      RUST_BACKTRACE: "1"
     steps:
       - uses: actions/checkout@v4
 
