@@ -80,9 +80,9 @@ substrate:
 # commit is not describing a coherent system, it is describing the part that
 # happened to be installable. Promoted here from prose in the pin comments.
 constitution:
-  version: "1.0-rc2"
+  version: "1.0-rc6"
   repo: "https://github.com/CIRISAI/CIRISConstitution"
-  commit: "5818a75"
+  commit: "3c3e63f"
 
 # ─── Why this set ─────────────────────────────────────────────────────
 # One paragraph per member for the CURRENT pin. History: matrices/history/.

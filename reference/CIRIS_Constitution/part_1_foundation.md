@@ -38,7 +38,7 @@ The namespace is open: anyone may publish a rule set and admit a new prefix. The
 |---|---|---|
 | **T1** | Is the prefix part of a published, hash-pinned, version-controlled rule set, distinct from per-attestation verdicts? | Rules + verdicts separated in writing |
 | **T2** | Does the prefix name a **mechanism** (correlation, count, time-window, schema-conformance) rather than a **subjective quality** (deception, harm, virtue, trustworthiness, sin)? | Mechanism-descriptive prefix name |
-| **T3** | Can past verdicts be re-checked against the rule version they ran against? | Version-pinning in `evidence_refs[]` |
+| **T3** | Can past verdicts be re-checked against the rule version they ran against? | Version-pinning: the dimension's trailing `:v{N}` names the rule version ([CC 3.1.7](part_3_the_namespace.md) R3); `evidence_refs[]` pins the calibration artifacts |
 | **T4** | Is the prefix wired so its attestations are **never sole evidence** for `slashing:*`? | Adjudication separation |
 
 T2 is the most slip-prone gate, because judgment-words feel natural where mechanism-words should go. A prefix that fails T2 gets renamed to the mechanism it actually checks: the canonical case is `detection:emergent_deception:*` (a subjective quality) renamed to `detection:correlated_action:*` (a measurable mechanism). The full anti-pattern catalogue lives at [CC 4.1](#41-anti-patterns).
@@ -101,7 +101,7 @@ Autonomy is only real if it remains revocable — consent that cannot be withdra
 
 ## 1.7 `minimal-and-adequate` — The 1+4 minimal-and-adequate claim
 
-The federation has exactly **one workhorse attestation primitive + four structural composers** at the **structural layer**. That is a genuine, narrow invariant — the *graph-operation* set is closed at five (`scores` + `delegates_to` / `supersedes` / `withdraws` / `recants`). It is **not** a claim that the whole grammar is five things.
+The federation has exactly **one workhorse attestation primitive + four structural composers** at the **structural layer**. That is a genuine, narrow invariant — the *graph-operation* set is closed at five (`scores` + `delegates_to` / `supersedes` / `withdraws` / `recants`). It is **not** a claim that the whole grammar is five things. Nor are the five the only values the row-type slot admits: a short, closed list of **carrier** rows — rows that make no claim about anyone and only move bytes or keys — shares the plane, is enumerated at [CC 2.4](part_2_the_grammar.md), and adds no graph operation; every other value is refused at admission.
 
 **Scope of the claim (read this before citing "1+4").** What follows is an **inductive adequacy result, not a closure theorem.** The sixteen paths below show the structural set is *expressive across the surfaces tested*; they do **not** prove it generates *every* expressible structured claim. We have not defined the class of structured claims and proven 1+4 generates exactly it — until someone does, "1+4 is adequate" means "adequate across the sixteen surfaces examined," nothing stronger. The refutation bar ("exhibit a claim that cannot be composed") is, honestly, near-unfalsifiable while *composition itself* is unbounded — so absence of a counterexample is weak evidence, and these paths should be read as accumulating confidence, not as proof.
 
@@ -160,7 +160,7 @@ The principles above are the federation's *why*. The sections that follow are th
 
 ### 1.13.1 `ubuntu` — The Ubuntu commitment — relational-anthropology substrate *(informative)*
 
-Per `CIRISAgent/ContemplativeTraditions/Ubuntu.lean::F_ubuntu_primary_tradition_commitment` and [`../MISSION.md`](../../MISSION.md) §1.5:
+Per `CIRISAgent/ContemplativeTraditions/Ubuntu.lean::F_ubuntu_primary_tradition_commitment` and [`../MISSION.md`](https://github.com/CIRISAI/CIRISRegistry/blob/main/MISSION.md) §1.5:
 
 > *Umuntu ngumuntu ngabantu* — a person is a person through other persons. Persons are not atomic; the relation IS the person.
 
@@ -219,6 +219,7 @@ Suppressing `holds_bytes:sha256:*` for `cohort_scope: self | family` content giv
 | Malicious member | cannot forge others' attestations; removal is forward-secret | can leak content they were entitled to; metadata as above |
 | Compromised substrate node | cannot decrypt self/family content (no DEK); CEG-native replication carries signed provenance | can observe directory metadata + traffic patterns it routes |
 | Equivocating producer | **mitigated** — per-stream STH ([CC 5.3.3.3](#5333-per-stream-log--stream-root)) + consistency proofs ([CC 5.3.1.1](#5311-consistency-proof-requirement)): cannot show different chunk-K to different viewers nor rewrite mid-stream | — |
+| Equivocating founder (trust-root lineage) | **mitigated** — witnessed lineage heads ([CC 3.2](part_3_the_namespace.md) T6, [CC 5.3.1](part_5_transport_substrate.md)): two witnessed heads for one lineage are `hard_case:lineage_equivocation`, never a silent first-seen fork; exposure bounded by the charter's `witness_cadence`; a stale prefix cannot be attached to ([CC 3.2](part_3_the_namespace.md) T4a) | a founder set that colludes with every witness of its own lineage; an attached node's view between cadence ticks |
 
 **Operator guidance:** cohort-scoped confidentiality and anonymity-to-outsiders are on by **default** ([CC 1.13.3.4](#1334-default-anonymity)). If a deployment *additionally* requires unobservability against a **global passive adversary** at federation scope (e.g., under a totalitarian-threat model), it MUST layer the Anonymous Tier; base CEG/RET is not sufficient for that strongest model. State both the default protection and its residual limit in any user-facing privacy representation.
 

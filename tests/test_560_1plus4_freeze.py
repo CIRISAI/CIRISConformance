@@ -74,11 +74,11 @@ _GOLDEN_JCS_HEX = {
     "delegates_to": (
         "7b226174746573746174696f6e5f74797065223a2264656c6567617465735f746f222c2261"
         "747465737465645f6b65795f6964223a226b42222c22617474657374696e675f6b65795f69"
-        "64223a226b41222c2264656c6567617465645f73636f7065223a5b22636f6e73656e745f72"
-        "65766f636174696f6e225d2c2264656c65676174696f6e5f707572706f7365223a226f776e"
-        "65725f62696e64696e67222c2264656c65676174696f6e5f76616c69645f66726f6d223a22"
-        "323032362d30312d30315430303a30303a30305a222c2264656c65676174696f6e5f76616c"
-        "69645f756e74696c223a22323032372d30312d30315430303a30303a30305a227d"
+        "64223a226b41222c2264656c65676174696f6e5f707572706f7365223a226f776e65725f62"
+        "696e64696e67222c2264656c65676174696f6e5f76616c69645f66726f6d223a2232303236"
+        "2d30312d30315430303a30303a30305a222c2264656c65676174696f6e5f76616c69645f75"
+        "6e74696c223a22323032372d30312d30315430303a30303a30305a222c2273636f7065223a"
+        "5b22636f6e73656e745f7265766f636174696f6e225d7d"
     ),
     "supersedes": (
         "7b226174746573746174696f6e5f74797065223a2273757065727365646573222c22617474"
@@ -132,12 +132,15 @@ def as_bytes(x):
 
 
 # The five frozen 1+4 envelopes — byte-identical to the test module's copy.
+# delegates_to carries its scope set as the CC 2.1 `scope` member (CC 1.0-rc6
+# CC 2.4.1: "pre-rc5 text called it `delegated_scope`"); persist has read
+# `scope` since v8.7.0. The golden vector was re-cut for the rename.
 VECS = {
     "scores": {"attestation_type": "scores", "attesting_key_id": "kA",
                "attested_key_id": "kB", "dimension": "identity:human",
                "score": 1.0, "confidence": 0.9, "context": "ctx"},
     "delegates_to": {"attestation_type": "delegates_to", "attesting_key_id": "kA",
-                     "attested_key_id": "kB", "delegated_scope": ["consent_revocation"],
+                     "attested_key_id": "kB", "scope": ["consent_revocation"],
                      "delegation_purpose": "owner_binding",
                      "delegation_valid_from": "2026-01-01T00:00:00Z",
                      "delegation_valid_until": "2027-01-01T00:00:00Z"},

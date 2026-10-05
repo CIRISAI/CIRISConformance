@@ -23,9 +23,11 @@ the reserved authorizations apply, so each MUST be refused. **Real gate as of
 persist 10.4.0** (the reserved-prefix half of **CIRISPersist#288** closed): the
 substrate now enforces the prefix↔identity_type rules and refuses each with a
 distinct typed reason. (Through persist 10.2.2 all three were wrongly accepted.)
-The residual split out of #288 — `subject_key_ids[]` elements MUST be lowercase
-hex (CC 2.6.3 / §0.6) — closed in **persist 10.5.0** (**CIRISPersist#293**): the
-emit path now applies the §0.6 hex rule, so an uppercase-hex entry is refused.
+The residual split out of #288 — uppercase hex in `subject_key_ids[]` (CC 2.6.3 /
+§0.6) — closed in **persist 10.5.0** (**CIRISPersist#293**): the emit path now
+applies the §0.6 hex rule, so an uppercase-hex entry is refused. Since CC 1.0-rc6
+the field is explicitly two-form (a verbatim `<label>-<fingerprint>` key_id, or a
+tagged `canonical:{hashalg}:{hex}`), and both positive forms are driven too.
 Both gates here are now real green gates.
 
 The scope gate that IS enforced — a `cohort_scope: family` attestation missing
@@ -34,6 +36,8 @@ its required `family_id` is refused (`federation_write_scope_refused`, CC 2.3.1)
 """
 
 from __future__ import annotations
+
+import re
 
 import pytest
 
@@ -95,6 +99,32 @@ report["system_prefix"] = emit(
 _UPPER = "FF7C5632DAE6EF3AE7F6283BD35268BC7910332414AA8A1C35A1645CA0295F61"
 report["subject_key_ids_upper_hex"] = emit(
     {"attestation_type": "scores:x", "subject_key_ids": [_UPPER],
+     "attestation_envelope": {}})
+# CC 1.0-rc6 CC 2.6.1.1.1 / 2.3.2.1: `subject_key_ids[]` is the one TWO-FORM field.
+# An element naming a federation key carries its key_id VERBATIM — the CC 2.6.8
+# `<label>-<fingerprint>` form (or a legacy 64-hex id); an element naming a
+# canonical-hash subject is the TAGGED `canonical:{hashalg}:{hex}` string, whose
+# `{hex}` segment alone obeys the CC 2.6.3 lowercase rule. Both positive forms are
+# driven here so the gate is shown to refuse uppercase hex, not to refuse
+# everything that is not hex.
+# `kid` is what register_self_federation_key returned — persist derives it, it is
+# not the `k` label passed in. Recompute the CC 2.6.8 form independently
+# (`<label>-` + the first 10 lowercase base32 chars of SHA-256 over the Ed25519
+# public key, unpadded) and assert the id IS that form before using it, so this
+# positive leg cannot pass on a legacy or arbitrary id.
+import base64 as _b64, hashlib as _hl
+_pub = _b64.b64decode(json.loads(engine.local_identity_aggregate())["ed25519_pubkey_b64"])
+_fp = _b64.b32encode(_hl.sha256(_pub).digest()).decode().lower().rstrip("=")[:10]
+report["labelled_key_id"] = kid
+report["labelled_key_id_derived"] = k + "-" + _fp
+report["subject_key_ids_labelled_key_id"] = emit(
+    {"attestation_type": "scores:x", "subject_key_ids": [kid],
+     "attestation_envelope": {}})
+report["subject_key_ids_tagged_canonical"] = emit(
+    {"attestation_type": "scores:x", "subject_key_ids": ["canonical:sha256:" + "ab" * 32],
+     "attestation_envelope": {}})
+report["subject_key_ids_tagged_upper_hex"] = emit(
+    {"attestation_type": "scores:x", "subject_key_ids": ["canonical:sha256:" + "AB" * 32],
      "attestation_envelope": {}})
 
 # CC 2.3 / scope authority — a non-member node cannot write to a family/community
@@ -169,14 +199,36 @@ def test_reserved_prefixes_refused_from_agent_key(admission):
 
 
 @pytest.mark.requires_persist
-def test_subject_key_ids_must_be_lowercase_hex(admission):
-    """CC 2.6.3 / §0.6: an uppercase-hex subject_key_ids entry is refused at admission.
+def test_subject_key_ids_two_forms_hex_segment_lowercase(admission):
+    """CC 1.0-rc6 CC 2.6.1.1.1 / 2.3.2.1 / 2.6.3: `subject_key_ids[]` admits its two
+    forms and refuses uppercase hex in either.
 
-    Real gate as of **persist 10.5.0** (CIRISPersist#293 closed, the residual split
-    out of #288): `emit_attestation_self` now applies the §0.6 lowercase-hex rule to
-    `subject_key_ids[]` elements, so an uppercase-hex entry is refused
-    (`federation_invalid_argument`). Through persist 10.4.0 it was wrongly admitted.
+    - a federation key named by its `key_id` VERBATIM — the CC 2.6.8
+      `<label>-<fingerprint>` form — is admitted (an identifier, not a byte field:
+      the hex rule does not re-encode it);
+    - a canonical-hash subject in the TAGGED `canonical:sha256:{hex}` form is
+      admitted; the `canonical:{hashalg}:` prefix is exempt from the no-separators
+      rule;
+    - uppercase hex is refused, bare (persist 10.5.0, CIRISPersist#293) or as the
+      tagged form's `{hex}` segment (`federation_invalid_argument`).
+
+    Until rc6 this test and its registry claim said every element MUST be
+    lowercase hex, which misstated the labelled form (Codex review on #101).
     """
+    assert admission["labelled_key_id"] == admission["labelled_key_id_derived"], (
+        f"the probe's key id is not the CC 2.6.8 <label>-<fingerprint> form derived "
+        f"from its Ed25519 public key: {admission['labelled_key_id']!r} vs "
+        f"{admission['labelled_key_id_derived']!r}")
+    assert re.fullmatch(r"[a-z0-9-]+-[a-z2-7]{10}", admission["labelled_key_id"]), admission["labelled_key_id"]
+    assert admission["subject_key_ids_labelled_key_id"] == "accepted", (
+        f"a verbatim <label>-<fingerprint> key_id in subject_key_ids was refused "
+        f"(CC 2.6.1.1.1 rc6): {admission['subject_key_ids_labelled_key_id']}")
+    assert admission["subject_key_ids_tagged_canonical"] == "accepted", (
+        f"a tagged canonical:sha256: subject was refused (CC 2.3.2.1): "
+        f"{admission['subject_key_ids_tagged_canonical']}")
     assert admission["subject_key_ids_upper_hex"] != "accepted", (
         f"uppercase-hex subject_key_ids admitted (CC 2.6.3): "
         f"{admission['subject_key_ids_upper_hex']}")
+    assert admission["subject_key_ids_tagged_upper_hex"] != "accepted", (
+        f"uppercase hex in a tagged canonical subject admitted (CC 2.6.3 governs the "
+        f"{{hex}} segment): {admission['subject_key_ids_tagged_upper_hex']}")

@@ -234,10 +234,18 @@ def run_python_script(
 # after run_python_script: on the postgres crash signature it imperatively xfails
 # (real gate preserved on sqlite AND on postgres when the abort doesn't fire),
 # tracked to the issue; the gate flips back the moment persist stops aborting.
+# The two known texts of the one defect: the cross-runtime abort as CIRISServer#705
+# observed it, and the tokio reactor panic CIRISPersist#354 first recorded.
+_PG_EDGE_CRASH_SIGNATURES = (
+    "Rust cannot catch foreign exceptions",
+    "no reactor running",
+)
 _PG_EDGE_CRASH_REASON = (
-    "persist 12.2.0 + postgres: init_edge_runtime background tokio task panicked in "
-    "net/addr and aborted the subprocess (rc=%s). sqlite + persist 11.0.0 both fine. "
-    "Tracked: CIRISPersist#354.")
+    "postgres backend: a panic in persist's postgres pool connect, polled on edge's "
+    "runtime thread, crosses the two wheels' separate Rust std libraries ('Rust cannot "
+    "catch foreign exceptions') and aborts the subprocess (rc=%s). Intermittent; the "
+    "sqlite axis is unaffected and a rerun clears it. Tracked: CIRISServer#705 "
+    "(upstream fixes asked of persist and edge); history CIRISPersist#354.")
 
 
 # ── CIRISConformance#87 — the trust-root capability conferral ceremony ────────
@@ -372,11 +380,15 @@ def xfail_if_pg_edge_runtime_crash(result: "ScriptResult") -> None:
     """Imperatively `pytest.xfail` iff this is the postgres init_edge_runtime abort.
 
     Signature: postgres backend + the subprocess died on a signal (negative
-    returncode — SIGABRT -6 / SIGSEGV -11) with no parseable stdout. Call BEFORE
-    `parsed_stdout()` in any fixture that brings up an edge runtime."""
+    returncode — SIGABRT -6 / SIGSEGV -11) with no parseable stdout AND its stderr
+    carries one of the known panic texts below. The stderr match is what keeps a
+    NEW postgres-only crash from being silently absorbed: without it any signal
+    death with empty stdout would xfail. Call BEFORE `parsed_stdout()` in any
+    fixture that brings up an edge runtime."""
     if (get_backend_label() == "postgres"
             and result.returncode < 0
-            and not result.stdout.strip()):
+            and not result.stdout.strip()
+            and any(sig in (result.stderr or "") for sig in _PG_EDGE_CRASH_SIGNATURES)):
         pytest.xfail(_PG_EDGE_CRASH_REASON % result.returncode)
 
 

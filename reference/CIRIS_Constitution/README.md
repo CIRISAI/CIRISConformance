@@ -6,8 +6,13 @@ Most AI-governance writing splits in two: ethics with no teeth (principles no ma
 
 It reads like a standard, not a manifesto, and it is deliberately layered: read Part I (the ethics) and stop, jump straight to the wire grammar, or cite any single concept by a stable address. Rejecting a later Part costs you nothing in the earlier ones.
 
-**This tree:** CC 1.0-rc4 · **Status:** release candidate — cut 2026-09-03 (six RC4 revisions — the announce ruling, in-grammar ledgers, the trace anchor, the actor/substrate separation — and the evidence lockdown: every claim row resolves to a pinned artifact or names an open ticket; supersedes 1.0-rc3) · **Source fidelity:** validated (0 REJECT) · **License:** AGPL-3.0-or-later
+**This tree:** CC 1.0-rc6 · **Status:** release candidate, cut 2026-10-02 and released as guidance — the text the substrate implements against; 312 claim rows established on pinned artifacts, 54 staged on open tickets in the repositories that own the code, 10 normative, 0 unresolved (see CHANGELOG for the criterion and the three clauses carried); opened 2026-09-28 as the trust-root release; rc5 was cut 2026-09-27 as guidance (the evidence re-pin release); rc4 was cut 2026-09-03 (six RC4 revisions — the announce ruling, in-grammar ledgers, the trace anchor, the actor/substrate separation — and the evidence lockdown: every claim row resolves to a pinned artifact or names an open ticket; supersedes 1.0-rc3) · **Source fidelity:** validated (0 REJECT) · **License:** AGPL-3.0-or-later
 **Stewarded by** Eric Moore — perpetual, no expiry ([`constitution/STEWARDSHIP.md`](constitution/STEWARDSHIP.md)).
+
+**PDF permalinks — two fixed names, either one is safe to link:**
+[`ciris_constitution.pdf`](https://github.com/CIRISAI/CIRISConstitution/raw/v1.0-rc6/ciris_constitution.pdf) is the fixed name the built PDF has always carried, kept as a byte copy of the newest build on whatever branch you are reading. [`CIRISConstitution-latest.pdf`](https://github.com/CIRISAI/CIRISConstitution/raw/v1.0-rc6/CIRISConstitution-latest.pdf) is the same file on `main` and resolves to the newest finalized release. Link `main` rather than a release branch: `https://github.com/CIRISAI/CIRISConstitution/raw/main/ciris_constitution.pdf`.
+
+Every release also keeps its own file (`ciris_constitution-1.0-rc3.pdf`, `-rc4.pdf`, …) so published links do not rot. Pre-release builds carry a build number (`-rc5.<n>.pdf`) and collapse to the bare version on merge.
 
 ## The document in one paragraph (for the technical reader)
 
