@@ -12,6 +12,20 @@ line it was lifted from.
 
 Captured at CIRISConformance 3ab8b75 (the v0.5.131 / v13.8.0 triple).
 
+## The v0.5.217 cycle — was pinned `ciris-server 0.5.217`
+
+Captured at CIRISConformance 04f8818, displaced by the v0.5.221 final-genesis catch-up. Verbatim as it read in `current.yaml`:
+
+**set** — Catch-up after three weeks of drift (2026-09-06 → 2026-09-27): nineteen server releases, seven persist majors, eleven edge majors. Read off CIRISServer v0.5.217's own Cargo.toml: persist v48.0.0, edge v31.0.0, verify v16.1.0. CIRISAgent v2.12.1-stable pins this same ciris-server. Not a retention bump — 0.5.198 is still on the index (it holds 0.5.196…0.5.217) — but edge's cohabitation lane, which injects persist's HEAD over this matrix, has been red on every tag since v21.0.0 (CIRISConformance#98), and the fixes are the same ones this floor needs. Heads are already past this set (persist v49.0.0 firewalls ciris-verify>=17.1, edge v32); the set holds at the integrator's pin. Every substrate sha below is the DEREFERENCED tag, resolved upstream at bump time rather than copied.
+
+**ciris-server** — 0.5.198 → 0.5.217. Nineteen releases; the ones that moved this lane: 0.5.209 adopted edge v24/persist v44 (blob-native chat, the secure blob surface), 0.5.214 adopted persist v46.3.1 (a claimed node reads its own config:* again — CIRISServer#624; the unclaimed first-boot case of CIRISServer#547 still reproduces on 0.5.217), 0.5.217 is the media write gate (#642–#644). NOTE the server's own publish gate calls this repository's workflow WITHOUT overriding persist/edge, so its green on 0.5.217 tested the server wheel against the v0.5.198 matrix; edge's lane is the honest signal.
+
+**ciris-verify** — 14.2.0 → 16.1.0. Two majors (v15.0.0 with persist v42, v16.0.0 with persist v46/47). persist's wheel firewalls the pair (v42: >=15,<16; v48: >=16.1.0,<17), so verify and persist MUST move in one commit or pip hits ResolutionImpossible. Still the only stack member on PyPI.
+
+**ciris-persist** — v41.2.0 → v48.0.0. SEVEN majors. What the harness absorbed: v42.0.0 closed CIRISPersist#811 (the steward predicate narrowed — test_361's strict xfail turned red on schedule and came off; fabric owners now bind with the custody marker `responsible_for` or their community members are refused `federation_unstewarded_community_member`); v45.0.0 requires `size` on every holder claim (test_110); v48.0.0 (#860) grows a community/affiliations roster on a WIDENING PLANE — the AdmitSpec signs `CommunityMembershipWidening.signing_envelope()` `{community_key_id, member_key_id, joined_at, effective_at, role?}`, never the grown record (conftest.admit_spec; test_263) — and (#901) adds the holder-hardware leg to `trust_root_valid`: a KEY root's self-charter signer must carry Layer-A-valid hardware evidence on its key record, so the CIRISConformance#87 ceremony root is now registered through `put_public_key` WITH persist's own mock-StrongBox evidence (conftest.AttestedRoot); a plain self-registered root is invalid and confers nothing. Family growth still signs the grown record at v48 (v49 moves it to the plane too — deliberately not pre-adopted).
+
+**ciris-edge** — v20.3.0 → v31.0.0. ELEVEN majors, every one an adopt of the persist major beside it (v21↔42 … v31↔48) plus blob-native chat (v24), N-member rooms (v25), the un-fused replication registry (v26). No Python-surface move the suite drives changed shape; the intake-gate and wire-vocabulary probes (`build_signed_inbound_envelope` with `pqc_seed_bytes`, CIRISEdge#573) pass unchanged. Edge's head is v32.1.0 (adopts persist v49 + verify 17.1).
+
 ## The v0.5.198 cycle — was pinned `ciris-server 0.5.198`
 
 Captured at CIRISConformance 024919e, displaced by the v0.5.217 catch-up. Verbatim as it read in `current.yaml`:
