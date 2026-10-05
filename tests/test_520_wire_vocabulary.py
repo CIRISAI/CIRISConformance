@@ -57,7 +57,12 @@ from pathlib import Path
 
 import pytest
 
-from conftest import REPO_ROOT, get_database_url, run_python_script
+from conftest import (
+    REPO_ROOT,
+    get_database_url,
+    run_python_script,
+    xfail_if_pg_edge_runtime_crash,
+)
 
 MANIFEST_PATH = REPO_ROOT / "reference" / "CIRIS_Constitution" / "WIRE_VOCABULARY.md"
 
@@ -188,6 +193,9 @@ def _probe_script(database_url: str) -> str:
 @pytest.fixture(scope="module")
 def wire():
     result = run_python_script(_probe_script(get_database_url()))
+    # The postgres cross-runtime abort (CIRISServer#705): this fixture brings up an
+    # edge runtime like 050/140/230 do, and was the only one without the guard.
+    xfail_if_pg_edge_runtime_crash(result)
     payload = result.parsed_stdout()
     if payload.get("_error") == "absent":
         pytest.fail("edge.build_signed_inbound_envelope is missing — the wire-vocabulary "

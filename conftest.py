@@ -235,9 +235,11 @@ def run_python_script(
 # (real gate preserved on sqlite AND on postgres when the abort doesn't fire),
 # tracked to the issue; the gate flips back the moment persist stops aborting.
 _PG_EDGE_CRASH_REASON = (
-    "persist 12.2.0 + postgres: init_edge_runtime background tokio task panicked in "
-    "net/addr and aborted the subprocess (rc=%s). sqlite + persist 11.0.0 both fine. "
-    "Tracked: CIRISPersist#354.")
+    "postgres backend: a panic in persist's postgres pool connect, polled on edge's "
+    "runtime thread, crosses the two wheels' separate Rust std libraries ('Rust cannot "
+    "catch foreign exceptions') and aborts the subprocess (rc=%s). Intermittent; the "
+    "sqlite axis is unaffected and a rerun clears it. Tracked: CIRISServer#705 "
+    "(upstream fixes asked of persist and edge); history CIRISPersist#354.")
 
 
 # ── CIRISConformance#87 — the trust-root capability conferral ceremony ────────
