@@ -1,6 +1,6 @@
 # Part 8 — Appendices
 
-**Decimal range** `8.x` · **41 sections** · **page budget 6pp** · [← master index](../README.md)
+**Decimal range** `8.x` · **41 sections** · **page budget 6pp** · [← master index](README.md)
 
 > Case studies, glossaries, conformance vectors, interop, and the dual-ID table of contents.
 

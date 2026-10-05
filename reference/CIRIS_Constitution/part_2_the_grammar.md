@@ -1,6 +1,6 @@
 # Part 2 — The Grammar
 
-**Decimal range** `2.x` · **42 sections** · **page budget 17pp** · [← master index](../README.md)
+**Decimal range** `2.x` · **42 sections** · **page budget 17pp** · [← master index](README.md)
 
 > The minimal-and-adequate wire grammar: the envelope, the five primitives, conformance, and canonicalization.
 

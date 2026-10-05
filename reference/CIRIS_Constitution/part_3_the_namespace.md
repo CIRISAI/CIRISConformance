@@ -1,6 +1,6 @@
 # Part 3 — The Namespace
 
-**Decimal range** `3.x` · **62 sections** · **page budget 23pp** · [← master index](../README.md)
+**Decimal range** `3.x` · **62 sections** · **page budget 23pp** · [← master index](README.md)
 
 > The dimension namespace, reserved prefixes, the consent family, and the subject_kind catalogue.
 

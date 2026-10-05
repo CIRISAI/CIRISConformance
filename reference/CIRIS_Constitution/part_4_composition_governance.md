@@ -1,6 +1,6 @@
 # Part 4 — Composition & Governance
 
-**Decimal range** `4.x` · **96 sections** · **page budget 26pp** · [← master index](../README.md)
+**Decimal range** `4.x` · **96 sections** · **page budget 26pp** · [← master index](README.md)
 
 > How attestations compose into trust; self-governance, amendment, moderation, and the human halt-authority.
 
