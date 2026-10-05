@@ -37,6 +37,8 @@ its required `family_id` is refused (`federation_write_scope_refused`, CC 2.3.1)
 
 from __future__ import annotations
 
+import re
+
 import pytest
 
 from conftest import get_database_url, run_python_script
@@ -105,6 +107,16 @@ report["subject_key_ids_upper_hex"] = emit(
 # `{hex}` segment alone obeys the CC 2.6.3 lowercase rule. Both positive forms are
 # driven here so the gate is shown to refuse uppercase hex, not to refuse
 # everything that is not hex.
+# `kid` is what register_self_federation_key returned — persist derives it, it is
+# not the `k` label passed in. Recompute the CC 2.6.8 form independently
+# (`<label>-` + the first 10 lowercase base32 chars of SHA-256 over the Ed25519
+# public key, unpadded) and assert the id IS that form before using it, so this
+# positive leg cannot pass on a legacy or arbitrary id.
+import base64 as _b64, hashlib as _hl
+_pub = _b64.b64decode(json.loads(engine.local_identity_aggregate())["ed25519_pubkey_b64"])
+_fp = _b64.b32encode(_hl.sha256(_pub).digest()).decode().lower().rstrip("=")[:10]
+report["labelled_key_id"] = kid
+report["labelled_key_id_derived"] = k + "-" + _fp
 report["subject_key_ids_labelled_key_id"] = emit(
     {"attestation_type": "scores:x", "subject_key_ids": [kid],
      "attestation_envelope": {}})
@@ -203,6 +215,11 @@ def test_subject_key_ids_two_forms_hex_segment_lowercase(admission):
     Until rc6 this test and its registry claim said every element MUST be
     lowercase hex, which misstated the labelled form (Codex review on #101).
     """
+    assert admission["labelled_key_id"] == admission["labelled_key_id_derived"], (
+        f"the probe's key id is not the CC 2.6.8 <label>-<fingerprint> form derived "
+        f"from its Ed25519 public key: {admission['labelled_key_id']!r} vs "
+        f"{admission['labelled_key_id_derived']!r}")
+    assert re.fullmatch(r"[a-z0-9-]+-[a-z2-7]{10}", admission["labelled_key_id"]), admission["labelled_key_id"]
     assert admission["subject_key_ids_labelled_key_id"] == "accepted", (
         f"a verbatim <label>-<fingerprint> key_id in subject_key_ids was refused "
         f"(CC 2.6.1.1.1 rc6): {admission['subject_key_ids_labelled_key_id']}")

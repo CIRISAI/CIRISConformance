@@ -10,7 +10,7 @@ It reads like a standard, not a manifesto, and it is deliberately layered: read 
 **Stewarded by** Eric Moore — perpetual, no expiry ([`constitution/STEWARDSHIP.md`](constitution/STEWARDSHIP.md)).
 
 **PDF permalinks — two fixed names, either one is safe to link:**
-[`ciris_constitution.pdf`](ciris_constitution.pdf) is the fixed name the built PDF has always carried, kept as a byte copy of the newest build on whatever branch you are reading. [`CIRISConstitution-latest.pdf`](CIRISConstitution-latest.pdf) is the same file on `main` and resolves to the newest finalized release. Link `main` rather than a release branch: `https://github.com/CIRISAI/CIRISConstitution/raw/main/ciris_constitution.pdf`.
+[`ciris_constitution.pdf`](https://github.com/CIRISAI/CIRISConstitution/raw/v1.0-rc6/ciris_constitution.pdf) is the fixed name the built PDF has always carried, kept as a byte copy of the newest build on whatever branch you are reading. [`CIRISConstitution-latest.pdf`](https://github.com/CIRISAI/CIRISConstitution/raw/v1.0-rc6/CIRISConstitution-latest.pdf) is the same file on `main` and resolves to the newest finalized release. Link `main` rather than a release branch: `https://github.com/CIRISAI/CIRISConstitution/raw/main/ciris_constitution.pdf`.
 
 Every release also keeps its own file (`ciris_constitution-1.0-rc3.pdf`, `-rc4.pdf`, …) so published links do not rot. Pre-release builds carry a build number (`-rc5.<n>.pdf`) and collapse to the bare version on merge.
 
