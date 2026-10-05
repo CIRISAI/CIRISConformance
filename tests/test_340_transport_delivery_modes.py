@@ -173,7 +173,7 @@ def _node(tmp, role, *, listen_port, boot_ports):
 # 3-steward family + community {N1,N3,N4}. Each member must be steward-bound
 # before a community/family that includes it is written (CC 3.2).
 _OWNER_PREAMBLE = (
-    "import os, json, sys, time, tempfile, secrets\n"
+    "import os, json, sys, time, tempfile, secrets, base64, datetime\n"
     "import ciris_persist as cp\n"
     "R = {r['role']: r['kid'] for r in json.loads(open(ROSTER).read())}\n"
     "d = tempfile.mkdtemp(); s = os.path.join(d, 's'); open(s, 'wb').write(secrets.token_bytes(32))\n"
@@ -188,6 +188,48 @@ _OWNER_PREAMBLE = (
     # is persist's engine-side custody purpose (the ownership:responsible_party
     # dimension), the same token test_360/361/573 drive.
     "CUSTODY = 'responsible_for'\n"
+    # persist v52.0.0 (CIRISPersist#955): a founding record admits exactly the
+    # members who SIGNED it (a node counts as signed when its OWNER signed), and
+    # every later growth needs the member's own acceptance. The three owners run
+    # as separate processes in dependency order, so each leaves its identity in
+    # ID_DIR and a later owner opens it to co-sign or accept on its behalf.
+    "ME = {'k': k, 's': s, 'p': p, 'kid': owner}\n"
+    "open(os.path.join(ID_DIR, REF + '.json'), 'w').write(json.dumps(ME))\n"
+    "def load(ref): return json.loads(open(os.path.join(ID_DIR, ref + '.json')).read())\n"
+    "def use(ident):\n"
+    "    global eng\n"
+    "    cp.reset_engine()\n"
+    "    eng = cp.Engine(DB_URL, ident['k'], local_key_id=ident['k'], local_key_path=ident['s'],\n"
+    "                    local_pqc_key_id=ident['k']+'-pqc', local_pqc_key_path=ident['p'])\n"
+    "    return eng\n"
+    "def sig(ident, rec):\n"
+    "    e = use(ident); g = e.local_sign_hybrid(e.canonicalize_envelope(json.dumps(rec)))\n"
+    "    out = {'authority_key_id': ident['kid'],\n"
+    "           'scrub_signature_classical': base64.b64encode(g['classical_sig']).decode(),\n"
+    "           'scrub_signature_pqc': base64.b64encode(g['pqc_sig']).decode()}\n"
+    "    use(ME); return out\n"
+    "def T(ts): return ts.replace('.000Z', 'Z') if ts.endswith('.000Z') else ts\n"
+    "def found_community(name, member_kids, cosigners, protocol='majority'):\n"
+    "    rec = {'community_key_id': owner, 'community_name': name,\n"
+    "           'members': [{'key_id': owner, 'joined_at': T(NOW), 'role': 'founder'}]\n"
+    "                      + [{'key_id': m, 'joined_at': T(NOW)} for m in member_kids],\n"
+    "           'founded_at': T(NOW), 'consensus_protocol': protocol}\n"
+    "    pl = dict(rec, persist_row_hash='', cosignatures=[sig(c, rec) for c in cosigners])\n"
+    "    pl.update(sig(ME, rec)); use(ME).put_community_json(json.dumps(pl))\n"
+    "def join_family(family, node_kid, node_owner):\n"
+    "    exp = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=7)).strftime('%Y-%m-%dT%H:%M:%S.000Z')\n"
+    "    e = use(ME)\n"
+    "    pid = e.emit_attestation_self(json.dumps({'attestation_type': 'scores', 'cohort_scope': 'family',\n"
+    "        'subject_key_ids': [node_kid], 'expires_at': exp,\n"
+    "        'attestation_envelope': {'dimension': 'membership:proposal:v1', 'group_kind': 'family', 'family_key_id': family}}))\n"
+    "    rows = json.loads(e.list_attestations_by(owner)); rows = rows.get('items', rows) if isinstance(rows, dict) else rows\n"
+    "    och = next(r for r in rows if r['attestation_id'] == pid)['original_content_hash']\n"
+    "    use(node_owner).emit_attestation_self(json.dumps({'attestation_type': 'scores', 'cohort_scope': 'family',\n"
+    "        'attested_key_id': node_kid, 'attestation_envelope': {'dimension': 'membership:acceptance:v1',\n"
+    "        'references_attestation_id': pid, 'group_kind': 'family', 'family_key_id': family, 'proposal_hash': och}}))\n"
+    "    w = {'family_key_id': family, 'member_key_id': node_kid, 'joined_at': T(NOW), 'effective_at': T(NOW)}\n"
+    "    spec = sig(ME, w)\n"
+    "    use(ME).cohort_add_member('family', family, json.dumps({'key_id': node_kid, 'joined_at': T(NOW)}), json.dumps(spec))\n"
 )
 
 _OWNER3 = _OWNER_PREAMBLE + (
@@ -197,10 +239,8 @@ _OWNER3 = _OWNER_PREAMBLE + (
 _OWNER2 = _OWNER_PREAMBLE + (
     "eng.steward_bind(R['n3'], ['infra:transport'], CUSTODY)\n"
     "while not os.path.exists(DONE3): time.sleep(0.2)\n"
-    "eng.put_community_json(json.dumps({'community_key_id': owner, 'community_name': 'D',\n"
-    "    'members': [{'key_id': owner, 'joined_at': NOW, 'role': 'founder'},\n"
-    "                {'key_id': R['n3'], 'joined_at': NOW}, {'key_id': R['n4'], 'joined_at': NOW}],\n"
-    "    'founded_at': NOW, 'consensus_protocol': 'majority', 'persist_row_hash': ''}))\n"
+    # D: owner2 (founder) + n3 (owner2's node) + n4 (owner3's node, so owner3 co-signs).
+    "found_community('D', [R['n3'], R['n4']], [load('owner3')])\n"
     "open(DONE2, 'w').write(json.dumps({'direct': owner})); print('OWNER2 done', file=sys.stderr); sys.exit(0)\n"
 )
 _OWNER1 = _OWNER_PREAMBLE + (
@@ -210,16 +250,17 @@ _OWNER1 = _OWNER_PREAMBLE + (
     "        'device_class': 'agent', 'asserted_at': NOW, 'persist_row_hash': ''}))\n"
     "while not os.path.exists(DONE2): time.sleep(0.2)\n"
     "direct = json.loads(open(DONE2).read())['direct']\n"
-    "eng.put_family_json(json.dumps({'family_key_id': R['n1'], 'family_name': 'F',\n"
-    "    'members': [{'key_id': R['n1'], 'joined_at': NOW}, {'key_id': R['n3'], 'joined_at': NOW},\n"
-    "                {'key_id': R['n4'], 'joined_at': NOW}],\n"
-    "    'founded_at': NOW, 'consensus_protocol': 'majority', 'consensus_protocol_entrenched': False,\n"
+    # F: `put_family_json` takes no co-signatures from Python, so the family is
+    # founded with owner1 (founder) + n1 (owner1's node, signed through its
+    # owner); n3 and n4 join by proposal → their OWNER's acceptance → widening.
+    "use(ME).put_family_json(json.dumps({'family_key_id': R['n1'], 'family_name': 'F',\n"
+    "    'members': [{'key_id': owner, 'joined_at': NOW, 'role': 'founder'}, {'key_id': R['n1'], 'joined_at': NOW}],\n"
+    "    'founded_at': NOW, 'consensus_protocol': 'founder_only', 'consensus_protocol_entrenched': False,\n"
     "    'persist_row_hash': ''}))\n"
-    "eng.put_community_json(json.dumps({'community_key_id': owner, 'community_name': 'C',\n"
-    "    'members': [{'key_id': owner, 'joined_at': NOW, 'role': 'founder'},\n"
-    "                {'key_id': R['n1'], 'joined_at': NOW}, {'key_id': R['n3'], 'joined_at': NOW},\n"
-    "                {'key_id': R['n4'], 'joined_at': NOW}],\n"
-    "    'founded_at': NOW, 'consensus_protocol': 'majority', 'persist_row_hash': ''}))\n"
+    "join_family(R['n1'], R['n3'], load('owner2'))\n"
+    "join_family(R['n1'], R['n4'], load('owner3'))\n"
+    # C: owner1 (founder) + n1 + n3 + n4 — owner2 and owner3 co-sign for their nodes.
+    "found_community('C', [R['n1'], R['n3'], R['n4']], [load('owner2'), load('owner3')])\n"
     "open(SETUP, 'w').write(json.dumps({'community': owner, 'direct': direct}))\n"
     "print('OWNER1 done', file=sys.stderr); sys.exit(0)\n"
 )
@@ -352,8 +393,9 @@ def delivery_fabric(tmp_path_factory):
     # Owner setup: three sequential owner processes (one live engine each), in
     # dependency order O3 → O2 → O1.
     done2, done3 = str(d / "owner2.done"), str(d / "owner3.done")
+    id_dir = d / "owner_ids"; id_dir.mkdir(exist_ok=True)
     owner_hdr = (f"DB_URL={paths['db']!r}\nROSTER={paths['roster']!r}\nSETUP={paths['setup']!r}\n"
-                 f"NOW={_NOW!r}\nDONE2={done2!r}\nDONE3={done3!r}\n")
+                 f"NOW={_NOW!r}\nDONE2={done2!r}\nDONE3={done3!r}\nID_DIR={str(id_dir)!r}\n")
     for ref, body in (("owner3", _OWNER3), ("owner2", _OWNER2), ("owner1", _OWNER1)):
         src = owner_hdr + f"REF={ref!r}\n" + body
         sp = subprocess.Popen([sys.executable, "-c", textwrap.dedent(src)],

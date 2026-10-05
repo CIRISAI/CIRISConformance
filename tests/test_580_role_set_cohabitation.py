@@ -143,7 +143,13 @@ _attempt("emit_held_role", lambda: _emit(multi_kid, multi_eng, "observed:x"))
 # membership and this harness names no accord root, so that emit is refused as
 # `federation_accord_root_unnamed` — a real refusal, but by the root gate, not
 # the set-membership gate this test is about. Recorded, not asserted by role.
-_attempt("emit_unheld_role", lambda: _emit(multi_kid, multi_eng, "detection:manifold:x"))
+# A REGISTERED detector leaf (CC 3.4.8). persist v53 gates the dimension grammar
+# first (CC 3.1.7 R3 / CIRISConstitution#112): an unregistered `detection:*`
+# subkind is refused `federation_namespace_family_unregistered` before the role
+# gate is reached, so the probe must name a leaf the registry holds to test the
+# set-membership gate at all.
+_attempt("emit_unheld_role", lambda: _emit(multi_kid, multi_eng,
+                                           "detection:correlated_action:rights_asymmetry:pop"))
 _attempt("emit_unheld_accord", lambda: _emit(multi_kid, multi_eng, "accord:invocation"))
 
 # ── Cohabitation is not a self-claim backdoor ──

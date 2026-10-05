@@ -534,6 +534,76 @@ _id_type = globals().get("IDENTITY_TYPE", "agent")
 kid = engine.register_self_federation_key(_id_type, IDENTITY_REF, None, None, None)
 report = {"key_id": key_id}
 
+# ─── Membership consent (persist v52.0.0, CIRISPersist#955) ─────────────
+# Nobody joins a family or community without their own signed acceptance of a
+# live proposal — every roster GROWTH needs one, under every consensus
+# protocol including `founder_only` — and a founding record admits exactly the
+# members who signed it. `put_family_json` takes no co-signatures from Python,
+# so a group is founded with its founder ALONE (role `founder`) and every other
+# member joins by proposal → acceptance → widening. The engine's
+# `propose_membership` / `reply_to_membership_proposal` doors are not on the
+# Python surface; both are plain `scores` emits (`membership:proposal:v1`,
+# `membership:acceptance:v1`), reproduced here exactly as
+# `membership_acceptance::{proposal_input, reply_input}` build them.
+#
+# A member must sign its own acceptance, so members are minted INSIDE this
+# script (`mint_member`) with their seeds kept, and the one live engine is
+# switched to them and back. A key minted by another node invocation cannot
+# accept anything here: its seeds died with that process.
+_SELF = {"k": key_id, "s": _seed, "p": _pqc_seed, "kid": kid}
+
+
+def _open_identity(ident):
+    global engine
+    cp.reset_engine()
+    engine = cp.Engine(DB_URL, ident["k"], local_key_id=ident["k"], local_key_path=ident["s"],
+                       local_pqc_key_id=ident["k"] + "-pqc", local_pqc_key_path=ident["p"])
+    return engine
+
+
+def mint_member(ref, itype="user"):
+    """Register a member identity whose seeds this script keeps; returns it with `kid`."""
+    d = tempfile.mkdtemp()
+    ident = {"k": ref + "-" + secrets.token_hex(6),
+             "s": os.path.join(d, "s"), "p": os.path.join(d, "p")}
+    open(ident["s"], "wb").write(secrets.token_bytes(32))
+    open(ident["p"], "wb").write(secrets.token_bytes(32))
+    ident["kid"] = _open_identity(ident).register_self_federation_key(itype, ref, None, None, None)
+    _open_identity(_SELF)
+    return ident
+
+
+def consent_to_join(scope, group_key_id, member, role=None, days=7):
+    """This node proposes `member` into the group; `member` accepts. Returns the
+    proposal id. The widening that seats the member is the caller's (it carries
+    the group authority's AdmitSpec)."""
+    import datetime as _dt
+    expires = (_dt.datetime.now(_dt.timezone.utc) + _dt.timedelta(days=days)).strftime(
+        "%Y-%m-%dT%H:%M:%S.000Z")
+    group_field = "family_key_id" if scope == "family" else "community_key_id"
+    group_kind = "family" if scope == "family" else "community"
+    env = {"dimension": "membership:proposal:v1", "group_kind": group_kind,
+           group_field: group_key_id}
+    if role is not None:
+        env["role"] = role
+    pid = engine.emit_attestation_self(json.dumps({
+        "attestation_type": "scores", "cohort_scope": scope,
+        "subject_key_ids": [member["kid"]], "expires_at": expires,
+        "attestation_envelope": env}))
+    rows = json.loads(engine.list_attestations_by(kid))
+    rows = rows.get("items", rows) if isinstance(rows, dict) else rows
+    proposal_hash = next(r for r in rows if r.get("attestation_id") == pid)["original_content_hash"]
+    reply = {"dimension": "membership:acceptance:v1", "references_attestation_id": pid,
+             "group_kind": group_kind, group_field: group_key_id,
+             "proposal_hash": proposal_hash}
+    if role is not None:
+        reply["role"] = role
+    _open_identity(member).emit_attestation_self(json.dumps({
+        "attestation_type": "scores", "cohort_scope": scope,
+        "attested_key_id": member["kid"], "attestation_envelope": reply}))
+    _open_identity(_SELF)
+    return pid
+
 # ─── Roster-growth authority (persist v31.0.0, CIRISPersist#654) ──────
 # `cohort_add_member` / `cohort_swap_member` / `cohort_revoke_member` take a
 # caller-supplied authority signature. Before #654 roster growth was reachable
