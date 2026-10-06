@@ -153,9 +153,12 @@ setup = json.loads(open(SETUP).read())
 # per-route gates below assert.
 t0 = time.time()
 WINDOW = __WINDOW__  # was 60 — headroom so a slow route still lands under load
-if os.path.exists(CMD):
+# The harness writes every node's command file before setup.done, so it is
+# already here; wait for it anyway rather than treat "not yet" as "no sends".
+while not os.path.exists(CMD): time.sleep(0.2)
+specs = json.loads(open(CMD).read())["sends"]
+if specs:
     time.sleep(5)  # let the primed links settle
-    specs = json.loads(open(CMD).read())["sends"]
     while time.time() < t0 + WINDOW - 8:  # keep re-sending across the window
         for spec in specs:
             try:
@@ -426,6 +429,33 @@ def delivery_fabric(tmp_path_factory):
                             f"three times running (CIRISConformance#97); last holder: "
                             f"{_holder_of(race.port)}\n{race.err[-800:]}")
 
+    kid = {r["role"]: r["kid"] for r in roster}
+    # One directed send per mode: self N1→N2, family N1→N3, community N1→N4 (all
+    # from N1), and direct N3→N4 (the 2-owner community).
+    cmds = {
+        "n1": {"sends": [
+            {"target_kid": kid["n2"], "mode": "self", "text": "self-msg"},
+            {"target_kid": kid["n3"], "mode": "family", "text": "family-msg"},
+            {"target_kid": kid["n4"], "mode": "community", "cid_key": "community", "text": "community-msg"},
+        ]},
+        "n3": {"sends": [
+            {"target_kid": kid["n4"], "mode": "direct", "cid_key": "direct", "text": "direct-msg"},
+        ]},
+    }
+    # Written for EVERY node (receivers get an empty list) and BEFORE the
+    # owner setup publishes setup.done. They used to be written after the
+    # last owner process exited, while each node checked for its command file
+    # ONCE, the instant it saw setup.done — on a slow runner the node won that
+    # race and silently skipped every send, losing a whole sender's routes
+    # (CIRISConformance#103: 0/4 with envelopes_sent_total empty on all nodes).
+    # Write-then-rename so a node never reads a half-written file.
+    for role in ("n1", "n2", "n3", "n4"):
+        tmp = paths[f"{role}.cmd"] + ".tmp"
+        with open(tmp, "w") as fh:
+            fh.write(json.dumps(cmds.get(role, {"sends": []})))
+        os.replace(tmp, paths[f"{role}.cmd"])
+
+
     # Owner setup: three sequential owner processes (one live engine each), in
     # dependency order O3 → O2 → O1.
     done2, done3 = str(d / "owner2.done"), str(d / "owner3.done")
@@ -445,22 +475,6 @@ def delivery_fabric(tmp_path_factory):
         for p in procs.values():
             if p.poll() is None: p.kill()
         pytest.fail("owner setup did not produce setup.done")
-
-    kid = {r["role"]: r["kid"] for r in roster}
-    # One directed send per mode: self N1→N2, family N1→N3, community N1→N4 (all
-    # from N1), and direct N3→N4 (the 2-owner community).
-    cmds = {
-        "n1": {"sends": [
-            {"target_kid": kid["n2"], "mode": "self", "text": "self-msg"},
-            {"target_kid": kid["n3"], "mode": "family", "text": "family-msg"},
-            {"target_kid": kid["n4"], "mode": "community", "cid_key": "community", "text": "community-msg"},
-        ]},
-        "n3": {"sends": [
-            {"target_kid": kid["n4"], "mode": "direct", "cid_key": "direct", "text": "direct-msg"},
-        ]},
-    }
-    for role, cmd in cmds.items():
-        open(paths[f"{role}.cmd"], "w").write(json.dumps(cmd))
 
     # Gather receipts.
     results = {}
