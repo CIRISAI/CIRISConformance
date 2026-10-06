@@ -12,6 +12,20 @@ line it was lifted from.
 
 Captured at CIRISConformance 3ab8b75 (the v0.5.131 / v13.8.0 triple).
 
+## The v0.5.221 cycle — was pinned `ciris-server 0.5.221`
+
+Captured at CIRISConformance 51cad3e, displaced by the v0.5.222 canonical-upgrade bump. Verbatim as it read in `current.yaml`:
+
+**set** — Catch-up to the FINAL GENESIS triple (2026-10-05), read off CIRISServer v0.5.221's own Cargo.toml: persist v53.1.1, edge v40.0.2, verify v19.0.0; persist is pinned one patch ahead at v53.1.2 (released; no wire change over 53.1.1, and edge v40.0.2's floor is >=53.1.1,<54). TRIGGER: the cohabitation lane's intermittent rc=-6 abort (tokio net/addr.rs:219 "no reactor running" on an unnamed thread, CIRISPersist#354) ran on the v48/v31 siblings — before persist v52.0.2 moved pool-miss connects onto persist's own runtime (#705) — while every gate calling this workflow believed it tested the current substrate. Every substrate sha below is the DEREFERENCED tag, resolved upstream at bump time rather than copied.
+
+**ciris-server** — 0.5.217 → 0.5.221. The final genesis: 0.5.220 is the ceremony release (the 3-of-3 final-genesis routes on persist v53.0.1), 0.5.221 adopts persist v53.1.1 with the 2026-10-04 ceremony bundle baked (sha256 db5e8e83…), a v3 bundle imports through persist's door, and log retention archives instead of deleting.
+
+**ciris-verify** — 16.1.0 → 19.0.0. Moves with persist in this one commit (persist's wheel firewalls the pair); 19.0.0 is the verify CIRISServer v0.5.221 carries and is on PyPI.
+
+**ciris-persist** — v48.0.0 → v53.1.2. FIVE majors. What a harness on this set meets: v49 moves FAMILY growth onto the widening plane (as v48 did for communities); v52.0.2 hops pool-miss connects onto persist's runtime (the #705/#354 cohabitation abort); v53 labels the trust-root rows (trust:charter/confers/accepts, CC 3.2 T4a "bundle only"), requires every record version to name the head it succeeds (prev_head_digest, CC T6), keeps self/family content to personal device classes (S1) and adds custody:ack; v53.1 bakes the final genesis and adds the import door. Suite changes ride with this bump where the harness asserts the old shape.
+
+**ciris-edge** — v31.0.0 → v40.0.2. Nine majors, each an adopt of the persist major beside it, plus the reticulum backoff (v39.1), durability (v40.0.1) and the #979 serve-gate tri-state (v40.0.2).
+
 ## The v0.5.217 cycle — was pinned `ciris-server 0.5.217`
 
 Captured at CIRISConformance 04f8818, displaced by the v0.5.221 final-genesis catch-up. Verbatim as it read in `current.yaml`:
