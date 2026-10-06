@@ -74,6 +74,14 @@ pytestmark = pytest.mark.fabric
 _NOW = "2026-06-25T00:00:00.000Z"
 
 
+# The delivery window every node runs for after setup. The gather below waits
+# on ONE deadline derived from it — it used to give each node a flat 90s
+# timeout, shorter than this window (raised 60→100 in #62), so n2, gathered
+# first, was always killed before writing its receipts and the `self` route
+# never counted (found via CIRISConformance#103's diagnostics).
+_WINDOW = 100
+
+
 def _free_port() -> int:
     s = socket.socket()
     s.bind(("127.0.0.1", 0))
@@ -86,7 +94,11 @@ def _free_port() -> int:
 # handle ALIVE, publish its identity, prime every peer once the roster is known,
 # then (if it has a send command) publish per its mode, and report what it got.
 _NODE_SRC = r'''
-import os, json, sys, time, tempfile, secrets
+import os, json, sys, time, tempfile, secrets, logging
+# Edge/persist log through Python logging (pyo3-log) as well as RUST_LOG; send
+# both to this node's stderr file so a lossy run quotes them (#103).
+logging.basicConfig(level=logging.INFO, stream=sys.stderr,
+                    format="%(asctime)s %(levelname)s %(name)s %(message)s")
 import ciris_persist as cp
 from ciris_edge.ciris_edge import init_edge_runtime
 
@@ -140,7 +152,7 @@ setup = json.loads(open(SETUP).read())
 # really delivers to the addressed recipient over live transport — what the
 # per-route gates below assert.
 t0 = time.time()
-WINDOW = 100  # was 60 — headroom so a slow route still lands under load
+WINDOW = __WINDOW__  # was 60 — headroom so a slow route still lands under load
 if os.path.exists(CMD):
     time.sleep(5)  # let the primed links settle
     specs = json.loads(open(CMD).read())["sends"]
@@ -154,9 +166,25 @@ if os.path.exists(CMD):
 
 # Every node stays alive collecting receipts until a common window elapses.
 while time.time() < t0 + WINDOW: time.sleep(0.3)
-open(DONE, "w").write(json.dumps({"role": ROLE, "kid": kid, "got": got}))
+# CIRISConformance#103 — edge's metrics at the end of the window, so a lossy
+# run says WHICH half failed: the sender's durable dispatcher (queue depth,
+# send_failures_total) or the receiver (envelopes_received, verify_failures,
+# withholds). Diagnostics only; a snapshot failure never fails the node.
+try:
+    metrics = edge.metrics_snapshot()
+except Exception as exc:
+    metrics = {"_error": repr(exc)[:200]}
+open(DONE, "w").write(json.dumps({"role": ROLE, "kid": kid, "got": got, "metrics": metrics}, default=str))
 sys.stdout.flush(); os._exit(0)
 '''
+
+
+def _stderr_of(paths, role, tail=6000):
+    try:
+        with open(paths[f"{role}.stderr"], errors="replace") as fh:
+            return fh.read()[-tail:]
+    except OSError:
+        return ""
 
 
 def _node(tmp, role, *, listen_port, boot_ports):
@@ -164,7 +192,7 @@ def _node(tmp, role, *, listen_port, boot_ports):
             f"BOOT_PORTS={','.join(boot_ports)!r}\nREADY={tmp[role + '.ready']!r}\n"
             f"ROSTER={tmp['roster']!r}\nSETUP={tmp['setup']!r}\n"
             f"CMD={tmp[role + '.cmd']!r}\nDONE={tmp[role + '.done']!r}\n")
-    return head + _NODE_SRC
+    return head + _NODE_SRC.replace("__WINDOW__", str(_WINDOW))
 
 
 # Steward setup runs as THREE sequential steward processes (one live engine per
@@ -277,6 +305,7 @@ def delivery_fabric(tmp_path_factory):
     for role in ("n1", "n2", "n3", "n4"):
         for suf in ("ready", "cmd", "done"):
             paths[f"{role}.{suf}"] = str(d / f"{role}.{suf}.json")
+        paths[f"{role}.stderr"] = str(d / f"{role}.stderr.log")
 
     # CIRISConformance#97 — the pick-a-free-port race. `_free_port()` probes a
     # port, releases it, and hands the number to a child that binds it later;
@@ -330,10 +359,17 @@ def delivery_fabric(tmp_path_factory):
         procs = {}
 
         def launch(role):
+            # stderr goes to a FILE, not a pipe: with edge logging at info a
+            # node can write more than a pipe buffer during the 100s window,
+            # and nobody reads the pipe until the window ends — the node would
+            # block on its own log. The file is also what the delivery
+            # assertion quotes (CIRISConformance#103).
+            env = dict(os.environ)
+            env.setdefault("RUST_LOG", "ciris_edge=info")
             procs[role] = subprocess.Popen(
                 [sys.executable, "-c",
                  textwrap.dedent(_node(paths, role, listen_port=ports[role], boot_ports=boots_for(role)))],
-                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                stdout=subprocess.DEVNULL, stderr=open(paths[f"{role}.stderr"], "w"), text=True, env=env)
 
         # Serialize the FIRST engine so it migrates the fresh sqlite file alone
         # (concurrent first-migration races with "duplicate column"); the rest open
@@ -346,7 +382,7 @@ def delivery_fabric(tmp_path_factory):
         n2_deadline = time.time() + 40
         while time.time() < n2_deadline and not os.path.exists(paths["n2.ready"]):
             if procs["n2"].poll() is not None:
-                _, err = procs["n2"].communicate()
+                procs["n2"].communicate(); err = _stderr_of(paths, "n2")
                 if "Address already in use" in err:
                     _teardown(procs)
                     raise _PortRace("n2", ports["n2"], err)
@@ -366,7 +402,7 @@ def delivery_fabric(tmp_path_factory):
                       for r in ("n1", "n2", "n3", "n4") if os.path.exists(paths[f"{r}.ready"])]
             for r, p in procs.items():
                 if p.poll() is not None and not os.path.exists(paths[f"{r}.ready"]):
-                    _, err = p.communicate()
+                    p.communicate(); err = _stderr_of(paths, r)
                     _teardown(procs)
                     if "Address already in use" in err:
                         raise _PortRace(r, ports[r], err)
@@ -428,15 +464,17 @@ def delivery_fabric(tmp_path_factory):
 
     # Gather receipts.
     results = {}
+    gather_deadline = time.time() + _WINDOW + 40
     for role, p in procs.items():
         try:
-            out, err = p.communicate(timeout=90)
+            p.communicate(timeout=max(5, gather_deadline - time.time()))
         except subprocess.TimeoutExpired:
-            p.kill(); out, err = p.communicate()
+            p.kill(); p.communicate()
         if os.path.exists(paths[f"{role}.done"]):
             results[role] = json.loads(open(paths[f"{role}.done"]).read())
         else:
-            results[role] = {"role": role, "got": [], "_stderr": (err or "")[-400:]}
+            results[role] = {"role": role, "got": [], "_no_done": True}
+        results[role]["_stderr"] = _stderr_of(paths, role)
     results["_kid"] = kid
     return results
 
@@ -462,6 +500,30 @@ def _bodies(result_for_role):
 # *restricted* to genuine holders (a non-holder MUST NOT receive). Making per-mode
 # holder-scoping a distinguishable gate needs the scope selector re-exposed —
 # CIRISEdge#265 (still OPEN).
+
+
+_METRIC_KEYS = ("durable_queue_depth", "send_failures_total", "envelopes_sent_total",
+                "envelopes_received_total", "verify_failures_total", "withholds_by_reason",
+                "peer_reachability_ratio", "_error")
+
+
+def _fabric_diagnostics(fabric, stderr_lines=25):
+    """Per-node edge metrics + stderr tail for a lossy run (CIRISConformance#103).
+
+    Edge's ask: one failing run with this output says whether the sender's
+    durable dispatcher or the receiver lost the frames. NOTE every node shares
+    ONE SQLite file (`paths["db"]`) in every cell, the postgres cell included —
+    the outbound queue under test is SQLite."""
+    out = []
+    for role in ("n1", "n2", "n3", "n4"):
+        r = fabric.get(role, {})
+        m = r.get("metrics") or {}
+        picked = {k: m[k] for k in _METRIC_KEYS if m.get(k)}
+        out.append(f"--- {role} got={sorted(_bodies(r))} done={'no' if r.get('_no_done') else 'yes'}")
+        out.append(f"    metrics={json.dumps(picked, sort_keys=True, default=str)}")
+        lines = [l for l in (r.get("_stderr") or "").splitlines() if l.strip()][-stderr_lines:]
+        out.extend("    | " + l[:300] for l in lines)
+    return "\n".join(out)
 
 
 def _delivered_routes(fabric):
@@ -514,4 +576,5 @@ def test_live_transport_delivers(delivery_fabric):
         f"live-transport delivery did not demonstrably work — only {delivered}/4 "
         f"routes arrived {routes}. A robust majority is expected; delivering fewer "
         f"than two means transport delivery is broken, not the single-route "
-        f"CIRISEdge#276 drop (which the >=2 threshold tolerates).")
+        f"CIRISEdge#276 drop (which the >=2 threshold tolerates).\n"
+        f"{_fabric_diagnostics(delivery_fabric)}")
