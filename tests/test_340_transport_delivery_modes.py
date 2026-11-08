@@ -101,6 +101,9 @@ logging.basicConfig(level=logging.INFO, stream=sys.stderr,
                     format="%(asctime)s %(levelname)s %(name)s %(message)s")
 import ciris_persist as cp
 from ciris_edge.ciris_edge import init_edge_runtime
+# edge logs through its own tracing subscriber, not Python logging: without this the
+# stderr file the delivery assertion quotes (#103) is empty.
+import ciris_edge.ciris_edge as _ce; _ce.init_logging("ciris_edge=info")
 
 d = tempfile.mkdtemp(); s = os.path.join(d, "s"); open(s, "wb").write(secrets.token_bytes(32))
 # Hybrid signer: this fabric runs a LIVE Reticulum transport, and edge v17
@@ -115,7 +118,12 @@ cp.reset_engine()
 k = ROLE + "-" + secrets.token_hex(8)
 eng = cp.Engine(DB_URL, k, local_key_id=k, local_key_path=s,
                 local_pqc_key_id=k + "-pqc", local_pqc_key_path=p)
-kid = eng.register_self_federation_key("agent", ROLE, None, None, None)
+# persist v61 refuses a self route under an AGENT-typed key: an agent does not
+# announce at a transit key, it is reached through its node's binding. These four
+# stand in for fabric NODES, which publish their own signed route; without it no
+# dial can authenticate the transit pair and every link is refused at the E1 seal
+# (CC 5.3.3.5).
+kid = eng.register_self_federation_key("node", ROLE, None, None, None)
 boot = ["127.0.0.1:" + p for p in BOOT_PORTS.split(",") if p]
 listen = "127.0.0.1:" + LISTEN_PORT
 edge = init_edge_runtime(eng, idp, listen_addr=listen, bootstrap_peers=boot,
@@ -253,7 +261,7 @@ _OWNER_PREAMBLE = (
     "    pid = e.emit_attestation_self(json.dumps({'attestation_type': 'scores', 'cohort_scope': 'family',\n"
     "        'subject_key_ids': [node_kid], 'expires_at': exp,\n"
     "        'attestation_envelope': {'dimension': 'membership:proposal:v1', 'group_kind': 'family', 'family_key_id': family}}))\n"
-    "    rows = json.loads(e.list_attestations_by(owner)); rows = rows.get('items', rows) if isinstance(rows, dict) else rows\n"
+    "    rows = json.loads(e.list_attestations_by(owner, 1000)); rows = rows.get('items', rows) if isinstance(rows, dict) else rows\n"
     "    och = next(r for r in rows if r['attestation_id'] == pid)['original_content_hash']\n"
     "    use(node_owner).emit_attestation_self(json.dumps({'attestation_type': 'scores', 'cohort_scope': 'family',\n"
     "        'attested_key_id': node_kid, 'attestation_envelope': {'dimension': 'membership:acceptance:v1',\n"
@@ -377,25 +385,33 @@ def delivery_fabric(tmp_path_factory):
         # Serialize the FIRST engine so it migrates the fresh sqlite file alone
         # (concurrent first-migration races with "duplicate column"); the rest open
         # the already-migrated DB.
-        launch("n2")
         # persist transport bring-up (CIRISPersist#320) is FIXED on the CC 1.0-rc1
-        # floor — init_edge_runtime(enable_transport=True) returns in ~ms and n2
+        # floor — init_edge_runtime(enable_transport=True) returns in ~ms and a node
         # becomes ready — so a node that never readies (or exits early) is again a
         # HARD failure, not an xfail-absorbed deadlock.
-        n2_deadline = time.time() + 40
-        while time.time() < n2_deadline and not os.path.exists(paths["n2.ready"]):
-            if procs["n2"].poll() is not None:
-                procs["n2"].communicate(); err = _stderr_of(paths, "n2")
-                if "Address already in use" in err:
+        #
+        # Every node opens the ONE shared SQLite file and writes to it on the way
+        # up (migrate, register its key). Two such writers at once lose the lock
+        # and one exits `federation_backend` at `register_self_federation_key`,
+        # so the nodes come up one at a time, each after the last is ready. They
+        # are still all up, listening, before any dials (the roster barrier).
+        def ready(role):
+            deadline = time.time() + 40
+            while time.time() < deadline and not os.path.exists(paths[f"{role}.ready"]):
+                if procs[role].poll() is not None:
+                    procs[role].communicate(); err = _stderr_of(paths, role)
                     _teardown(procs)
-                    raise _PortRace("n2", ports["n2"], err)
-                pytest.fail(f"node n2 exited before ready: {err[-1200:]}")
-            time.sleep(0.2)
-        if not os.path.exists(paths["n2.ready"]):
-            procs["n2"].kill()
-            pytest.fail("node n2 never became ready within 40s")
-        for role in ("n1", "n3", "n4"):
+                    if "Address already in use" in err:
+                        raise _PortRace(role, ports[role], err)
+                    pytest.fail(f"node {role} exited before ready: {err[-1200:]}")
+                time.sleep(0.2)
+            if not os.path.exists(paths[f"{role}.ready"]):
+                _teardown(procs)
+                pytest.fail(f"node {role} never became ready within 40s")
+
+        for role in ("n2", "n1", "n3", "n4"):
             launch(role)
+            ready(role)
 
         # Collect all four identities → publish the roster (the priming barrier).
         deadline = time.time() + 40

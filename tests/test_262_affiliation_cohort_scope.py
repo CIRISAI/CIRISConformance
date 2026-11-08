@@ -43,21 +43,36 @@ pytestmark = pytest.mark.fabric
 
 _NOW = "2026-06-25T00:00:00.000Z"
 
-# An owner-bound (`user`) founder creates a real community (so any membership
-# steward gate is satisfied) and then drives the cohort-admission boundary for
-# BOTH the known-good `community` scope and the scope under test, `affiliations`.
-# It also probes the crypto-tier resolver for every scope so the test asserts on
-# the substrate's actual tier-resolution decision (CC §4.4.3.2.1 table).
+# An owner-bound (`user`) founder creates a real group record of cohort COHORT (so
+# any membership steward gate is satisfied) and drives the cohort-admission
+# boundary under that scope. It also probes the crypto-tier resolver for every
+# scope so the test asserts on the substrate's actual tier-resolution decision
+# (CC §4.4.3.2.1 table).
+#
+# persist v54.0.0 (CIRISPersist#1034; CC 4.4.3.2.8): an affiliation and a
+# community are DIFFERENT records. The record declares its cohort in
+# `policy_blob.cohort_scope` (absent ⇒ community), immutably, and a door that
+# addresses it under the other cohort is refused
+# `federation_affiliation_cohort_mismatch`. So the control (`community`) and the
+# scope under test (`affiliations`) each get their own founder and record; one
+# record probed under both scopes would be the mismatch, not the admission.
+#
+# persist v61.0.0 (CIRISPersist#1123; CC 4.4.3.2 / CC 4.5.13): `founder_only` is
+# refused for a community above the family (`founder_only_above_family`), so the
+# one-founder community is founded under `majority`; an affiliation keeps
+# `founder_only` (CC 4.4.3.2: admissible for an affiliation under the one-voice
+# countersign rule).
 _FOUNDER_BODY = r"""
 founder = kid  # owner-bound via IDENTITY_TYPE="user" in the preamble
-
-# A real community exists and the founder is steward-bound into it — this isolates
-# the test to the cohort-SCOPE admission, not an incidental membership gate.
-engine.put_community_json(json.dumps({
-    "community_key_id": founder, "community_name": "conformance-affil",
+_record = {
+    "community_key_id": founder, "community_name": "conformance-" + COHORT,
     "members": [{"key_id": founder, "joined_at": NOW, "role": "founder"}],
-    "founded_at": NOW, "consensus_protocol": "founder_only", "persist_row_hash": "",
-}))
+    "founded_at": NOW, "persist_row_hash": "",
+    "consensus_protocol": "founder_only" if COHORT == "affiliations" else "majority",
+}
+if COHORT == "affiliations":
+    _record["policy_blob"] = {"cohort_scope": "affiliations"}
+engine.put_community_json(json.dumps(_record))
 
 def probe(label, fn):
     try:
@@ -65,7 +80,7 @@ def probe(label, fn):
     except Exception as exc:  # noqa: BLE001 — record the substrate's decision verbatim
         report[label] = {"admitted": False, "error": str(exc)}
 
-# Both adds are idempotent re-adds of the founder, who is already on the roster.
+# The add is an idempotent re-add of the founder, who is already on the roster.
 # persist short-circuits that to False BEFORE the CIRISPersist#654 authorship
 # gate ("already on the roster — no-op, nothing to authorize"), so the empty
 # AdmitSpec is the honest argument: there is no grown record to sign over, and
@@ -73,18 +88,12 @@ def probe(label, fn):
 # test here is the cohort-SCOPE discriminator, not the authority gate — that is
 # test_260's subject.
 _founder_member = roster_member(founder, NOW, role="founder")
-
-# Control: `community` is an admitted scope.
-probe("community_add", lambda: engine.cohort_add_member(
-    "community", founder, json.dumps(_founder_member), "{}"))
-
-# Under test: `affiliations` must be admitted symmetrically.
-probe("affiliations_add", lambda: engine.cohort_add_member(
-    "affiliations", founder, json.dumps(_founder_member), "{}"))
-probe("affiliations_active_read",
-      lambda: engine.cohort_active_members_json("affiliations", founder))
-probe("affiliations_groups_read",
-      lambda: engine.cohort_groups_of_json("affiliations", founder))
+probe(COHORT + "_add", lambda: engine.cohort_add_member(
+    COHORT, founder, json.dumps(_founder_member), "{}"))
+probe(COHORT + "_active_read",
+      lambda: engine.cohort_active_members_json(COHORT, founder))
+probe(COHORT + "_groups_read",
+      lambda: engine.cohort_groups_of_json(COHORT, founder))
 
 # CC §4.4.3.2.1 crypto-tier resolution for every cohort scope.
 for scope in ("self", "family", "community", "affiliations", "commons"):
@@ -96,9 +105,14 @@ report["stage"] = "done"
 
 @pytest.fixture(scope="module")
 def affiliation_scope(federation_module):
-    """Run an owner-bound founder node that probes the affiliations cohort scope."""
+    """Run one owner-bound founder per cohort; merge their probe reports."""
     node = federation_module
-    return node(_FOUNDER_BODY, identity_ref="founder", IDENTITY_TYPE="user", NOW=_NOW)
+    community = node(_FOUNDER_BODY, identity_ref="founder-community", IDENTITY_TYPE="user",
+                     NOW=_NOW, COHORT="community")
+    affiliation = node(_FOUNDER_BODY, identity_ref="founder-affiliations", IDENTITY_TYPE="user",
+                       NOW=_NOW, COHORT="affiliations")
+    assert community["stage"] == "done" and affiliation["stage"] == "done", (community, affiliation)
+    return {**community, **{k: v for k, v in affiliation.items() if k.startswith("affiliations_")}}
 
 
 @pytest.mark.requires_persist

@@ -71,9 +71,7 @@ report["stored_present"] = engine.has_blob_json(sha1) and engine.has_blob_json(s
 
 # Holder attestations exist for the actor (the local "whose bytes" answer).
 atts_before = json.loads(engine.list_attestations_for(kid))['items']
-report["holds_bytes_count_before"] = sum(
-    1 for a in atts_before if a.get("attestation_type", "").startswith("holds_bytes:sha256:")
-)
+report["here_claims_before"] = sum(1 for a in atts_before if _is_here_claim(a))
 
 # CIRISPersist#130 probe: does the documented holder API report local holdings?
 report["list_holders_local"] = engine.list_holders_json(sha1)
@@ -136,7 +134,7 @@ def fabric_eviction():
 def test_per_actor_eviction_removes_blobs_and_emits_withdraws(fabric_eviction):
     """§9: evict_actor drops all of an actor's blobs and emits a withdraws each."""
     assert fabric_eviction["stored_present"] is True, fabric_eviction
-    assert fabric_eviction["holds_bytes_count_before"] == 2, fabric_eviction
+    assert fabric_eviction["here_claims_before"] == 2, fabric_eviction
     # The actor holds the 2 base blobs plus the admission-gate probe blob if
     # it was admitted (it is today — the #129 gap; decouple so this stays
     # correct once the gate refuses it).

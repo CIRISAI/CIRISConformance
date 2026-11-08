@@ -57,10 +57,16 @@ _members = {name: mint_member(name, "agent") for name in ("alice", "bob")}
 ALICE, BOB = _members["alice"]["kid"], _members["bob"]["kid"]
 report["alice"], report["bob"] = ALICE, BOB
 
+# persist v54.0.0 (CIRISPersist#1034; CC 4.4.3.2.8): an affiliation is its own
+# record, declared in `policy_blob.cohort_scope`; a record without it is a
+# community, and addressing it as `affiliations` is refused
+# `federation_affiliation_cohort_mismatch`. `founder_only` stays admissible for an
+# affiliation (CC 4.4.3.2; refused only above the family for a community, #1123).
 engine.put_community_json(json.dumps({
     "community_key_id": founder, "community_name": "conformance-affil-life",
     "members": [{"key_id": founder, "joined_at": NOW, "role": "founder"}],
     "founded_at": NOW, "consensus_protocol": "founder_only", "persist_row_hash": "",
+    "policy_blob": {"cohort_scope": "affiliations"},
 }))
 
 def roster():
@@ -153,15 +159,29 @@ def test_affiliation_add_is_observable_and_idempotent(affiliation_lifecycle):
 
 
 @pytest.mark.requires_persist
-def test_affiliation_immediate_revoke_drops_member(affiliation_lifecycle):
-    """CC §4.4.3.2.2 forward secrecy: an immediate revoke drops the member now."""
+def test_affiliation_one_voice_revoke_needs_a_countersign(affiliation_lifecycle):
+    """CC 4.4.3.2.8 (`CLM-affiliation-one-voice-countersign`, persist v61 S2,
+    CIRISPersist#1143): an affiliation with ONE deciding seat does not act against a
+    member alone. This fixture's affiliation has one founder, so the founder's
+    immediate revoke of bob is refused `affiliation_countersign_missing`, and bob
+    stays on the roster: no partial write.
+
+    Before v61 this test asserted the solo revoke dropped bob (CC 4.4.3.2.2 forward
+    secrecy). That half now needs a countersign from a designated official, and the
+    PyO3 `cohort_revoke_member` door's RevokeSpec carries one authority signature,
+    so a countersigned removal is not reachable from Python yet (persist's own
+    I1513 witness drives it at the directory). Tracked: CIRISPersist#1226.
+    """
     r = affiliation_lifecycle
     assert r["stage"] == "done", r
     assert r["add_bob"]["ok"] is True and r["add_bob"]["result"] is True, r
     assert r["bob"] in r["after_add_bob"]["result"], r
-    assert r["revoke_bob"]["ok"] is True, r
-    assert r["bob"] not in r["after_revoke_bob"]["result"], (
-        f"an immediately-revoked affiliations member is still active: {r}")
+    rb = r["revoke_bob"]
+    assert rb["ok"] is False, f"a one-voice affiliation removed a member alone: {r}"
+    assert "affiliation_countersign_missing" in rb["error"], (
+        f"the solo revoke was refused for an unexpected reason: {rb}")
+    assert r["bob"] in r["after_revoke_bob"]["result"], (
+        f"a refused revoke still dropped the member: {r}")
 
 
 @pytest.mark.requires_persist

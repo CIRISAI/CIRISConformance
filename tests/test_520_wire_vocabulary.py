@@ -6,10 +6,10 @@ CC 0.7 promotes the set of message types the substrate recognizes from "whatever
 contract**: `manifests/WIRE_VOCABULARY.md`. It is governed in two tiers (the
 RFC 8126 registration-policy discipline):
 
-- **Tier 1 — closed, CC-ratified `MessageType` variants.** 25 variants whose
+- **Tier 1 — closed, CC-ratified `MessageType` variants.** 24 variants whose
   canonicalization is load-bearing to an ethical primitive (attestations, votes,
   moderation/slashing, deferral, steward directives, key registration, the
-  humanity-accord path, `Withdraws`, goals, build provenance, content/blob
+  humanity-accord path, `Withdraws`, build provenance, content/blob
   fetch). Adding/removing/re-semanticizing one is a wire break riding the CC
   §4.5.1 "Standards Action" amendment path.
 - **Tier 2 — three opaque channels** (`OpaqueRequest` / `OpaqueResponse` /
@@ -18,7 +18,8 @@ RFC 8126 registration-policy discipline):
 
 Plus `DSARRequest` / `DSARResponse`, which §3.3 keeps **Tier-1** (rights-bearing +
 Durable/requires_ack, which the opaque model can't express) — so the wheel's
-closed `MessageType` enum is exactly **25 Tier-1 + 3 opaque + 2 DSAR = 30**.
+closed `MessageType` enum is exactly **24 Tier-1 + 3 opaque + 2 DSAR = 29** (vocabulary
+v1.0.2 retired `GoalDeclaration` / `GoalRetirement`, CC 3.1.9.7).
 
 This is the executable form of the pin. The wheel exposes the closed enum through
 `Edge.build_signed_inbound_envelope(...)` (CIRISEdge#211): a valid wire-string
@@ -47,7 +48,8 @@ hash-pin to gate à la `tests/test_150_rns_dest_hash.py`; this gates the
 accept/reject membership behavior the hash pin will (eventually) protect.
 
 Spec: reference/CIRIS_Constitution/part_2_the_grammar.md §2.6.4 +
-reference/CIRIS_Constitution/WIRE_VOCABULARY.md (CC 0.7, vocabulary v1.0.1).
+reference/CIRIS_Constitution/WIRE_VOCABULARY.md (CC 1.0-rc17 db0d051, vocabulary v1.0.2,
+sha256 38bd4847c1203ae6da7b26c560ee51b577daaab4ef2d7924067995769100829e).
 """
 
 from __future__ import annotations
@@ -83,7 +85,7 @@ def _manifest_sets() -> dict[str, set[str]]:
     sec2 = txt[txt.index("## 2. Tier 1"):txt.index("## 3. Tier 2")]
     sec3 = txt[txt.index("## 3. Tier 2"):]
 
-    tier1 = set(_table_col1_variants(sec2))          # 25 closed Tier-1 variants
+    tier1 = set(_table_col1_variants(sec2))          # 24 closed Tier-1 variants (v1.0.2)
 
     # The three opaque channels — parsed from the §3 ```rust``` block, not
     # hand-listed, so a manifest that changes the opaque set changes the gate.
@@ -97,11 +99,22 @@ def _manifest_sets() -> dict[str, set[str]]:
     # §3.3 migrants CC 0.7 removes from Tier-1 → the wheel MUST reject these.
     migrants = set(_table_col1_variants(sec3))
 
+    # v1.0.2 retirements: the kinds a `**Retired (vX).** `A` and `B` are no longer
+    # wire kinds` note names. §2 says a decoder meeting one MUST reject it as an
+    # unknown kind (GoalDeclaration / GoalRetirement, CC 3.1.9.7: a Goal is a
+    # `goal:{scale}` scores row). Only the subject of that sentence is read, so the
+    # note's other backticked names (`MetaGoalAlignment`, `ContributionSubmit`) are
+    # not mistaken for retirements.
+    retired = set()
+    for m in re.finditer(r"\*\*Retired \([^)]*\)\.\*\*(.*?)are no longer wire kinds", txt, re.S):
+        retired |= set(re.findall(r"`([A-Z][A-Za-z0-9]+)`", m.group(1)))
+
     return {
         "tier1": tier1,
         "opaque": opaque,
         "dsar": dsar if dsar_kept else set(),
         "migrants": migrants,
+        "retired": retired,
     }
 
 
@@ -109,6 +122,7 @@ _SETS = _manifest_sets()
 # The full closed enum the wheel must recognize = Tier-1 ∪ opaque ∪ DSAR.
 _EXPECTED_ACCEPT = _SETS["tier1"] | _SETS["opaque"] | _SETS["dsar"]
 _MIGRANTS = _SETS["migrants"]
+_RETIRED = _SETS["retired"]
 
 
 # ─── Wheel probe ──────────────────────────────────────────────────────
@@ -185,7 +199,7 @@ def _probe_script(database_url: str) -> str:
     header = (
         f"DB_URL = {database_url!r}\n"
         f"ACCEPT_CANDIDATES = {sorted(_EXPECTED_ACCEPT)!r}\n"
-        f"MIGRANT_CANDIDATES = {sorted(_MIGRANTS)!r}\n"
+        f"MIGRANT_CANDIDATES = {sorted(_MIGRANTS | _RETIRED)!r}\n"
     )
     return header + _PROBE_BODY
 
@@ -233,10 +247,29 @@ def test_retired_variants_rejected_unknown_variant(wire):
     and no longer can.
     """
     assert _MIGRANTS, "manifest parse yielded no migrants to assert rejection of"
-    for mt, res in wire["migrants"].items():
+    for mt in sorted(_MIGRANTS):
+        res = wire["migrants"][mt]
         assert res != "accepted", f"retired variant {mt!r} is still accepted by the wheel"
         assert "unknown variant" in res, (
             f"{mt!r} rejected, but not with the serde `unknown variant` signal: {res}")
+
+
+@pytest.mark.cohabitation
+@pytest.mark.requires_persist
+@pytest.mark.requires_edge
+def test_v1_0_2_retired_goal_kinds_rejected_unknown_variant(wire):
+    """Manifest v1.0.2 §2 (CC 3.1.9.7): `GoalDeclaration` / `GoalRetirement` are no
+    longer wire kinds; a decoder meeting either discriminator MUST reject it as an
+    unknown kind. The Goal is the declarer's `goal:{scale}` scores row and rides
+    `ContributionSubmit` like any row.
+    """
+    assert _RETIRED == {"GoalDeclaration", "GoalRetirement"}, _RETIRED
+    assert not (_RETIRED & _EXPECTED_ACCEPT), _RETIRED & _EXPECTED_ACCEPT
+    for mt in sorted(_RETIRED):
+        res = wire["migrants"][mt]
+        assert res != "accepted", f"retired kind {mt!r} is still accepted by the wheel"
+        assert "unknown variant" in res, (
+            f"{mt!r} rejected, but not as an unknown kind: {res}")
 
 
 @pytest.mark.cohabitation

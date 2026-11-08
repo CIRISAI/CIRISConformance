@@ -533,6 +533,14 @@ engine = cp.Engine(DB_URL, key_id, local_key_id=key_id, local_key_path=_seed,
 _id_type = globals().get("IDENTITY_TYPE", "agent")
 kid = engine.register_self_federation_key(_id_type, IDENTITY_REF, None, None, None)
 report = {"key_id": key_id}
+# persist v55.0.0 (CC 3.1.3.3 / CC 2.4): `holds_bytes` is retired. The ONE holding
+# claim is the holder's own `scores` row on `custody:ack:v1`, `custody_state: here`,
+# at the content's own cohort_scope (attesting == attested == the holding device).
+def _is_here_claim(h):
+    env = h.get("attestation_envelope") or {}
+    return (h.get("attestation_type") == "scores"
+            and env.get("dimension") == "custody:ack:v1"
+            and env.get("custody_state") == "here")
 
 # ─── Membership consent (persist v52.0.0, CIRISPersist#955) ─────────────
 # Nobody joins a family or community without their own signed acceptance of a
@@ -590,7 +598,7 @@ def consent_to_join(scope, group_key_id, member, role=None, days=7):
         "attestation_type": "scores", "cohort_scope": scope,
         "subject_key_ids": [member["kid"]], "expires_at": expires,
         "attestation_envelope": env}))
-    rows = json.loads(engine.list_attestations_by(kid))
+    rows = json.loads(engine.list_attestations_by(kid, 1000))
     rows = rows.get("items", rows) if isinstance(rows, dict) else rows
     proposal_hash = next(r for r in rows if r.get("attestation_id") == pid)["original_content_hash"]
     reply = {"dimension": "membership:acceptance:v1", "references_attestation_id": pid,
@@ -870,6 +878,13 @@ if WANT_PQC:
 cp.reset_engine()
 engine = cp.Engine(DB_URL, key_id, **_engine_kwargs)
 pk = engine.local_public_key_b64()
+# persist v55.0.0 (CC 3.1.3.3 / CC 2.4): `holds_bytes` is retired. The ONE holding
+# claim is the holder's own `scores` row on `custody:ack:v1`, `custody_state: here`.
+def _is_here_claim(h):
+    env = h.get("attestation_envelope") or {}
+    return (h.get("attestation_type") == "scores"
+            and env.get("dimension") == "custody:ack:v1"
+            and env.get("custody_state") == "here")
 '''
     return header + body
 
