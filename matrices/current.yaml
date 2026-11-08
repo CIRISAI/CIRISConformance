@@ -45,8 +45,8 @@
 # ciris-edge's compiled cdylib via Cargo. ciris-verify is the Python surface
 # that wraps them.
 stack:
-  ciris-server: "0.5.222"
-  ciris-verify: "19.0.0"
+  ciris-server: "0.5.244"
+  ciris-verify: "22.0.0"
 
 # ─── git-tag members ──────────────────────────────────────────────────
 # pip builds these from source, so a CI cell pays a cargo compile for each —
@@ -68,12 +68,12 @@ stack:
 substrate:
   ciris-persist:
     repo: "https://github.com/CIRISAI/CIRISPersist"
-    tag: "v53.1.4"
-    sha: "41fa5548f0dc99ea0a0b5acf338ed0f4ff679aef"
+    tag: "v61.0.4"
+    sha: "e7ead8fcc0127d4eb508e666033c0fd0772c8091"
   ciris-edge:
     repo: "https://github.com/CIRISAI/CIRISEdge"
-    tag: "v40.0.3"
-    sha: "7f1bcf7bc1ac3cfe176eb4c59d3812b21fd2cc4e"
+    tag: "v44.0.0"
+    sha: "310aa7e196ced65b98311044ca6603bc1fa0db45"
 
 # ─── Normative members ────────────────────────────────────────────────
 # FSD #86 §4 Class 3: a set that pins the code but not the Constitution
@@ -88,28 +88,27 @@ constitution:
 # One paragraph per member for the CURRENT pin. History: matrices/history/.
 rationale:
   set: >-
-    Patch bump to CIRISServer v0.5.222 (2026-10-06), read off its own
-    Cargo.toml: persist v53.1.4, edge v40.0.3, verify v19.0.0 — the floor the
-    agent team is adopting. No Python-surface or wire change the suite drives;
-    the substrate patches are scrub/withdrawal correctness fixes. Every
-    substrate sha below is the DEREFERENCED tag, resolved upstream at bump
-    time rather than copied.
+    Catch-up from the 0.5.222 set (persist v53.1.4 / edge v40.0.3 / verify 19)
+    to the CIRISServer 0.5.245 line: persist v61.0.4, verify 22.0.0, and the
+    edge v44 series. 0.5.245 itself is not on PyPI yet and pins edge by rev
+    (83b4c21, the 44.1.0 candidate), so this set pins the newest PUBLISHED
+    server (0.5.244) and the newest edge TAG (v44.0.0); the edge tag run
+    supplies its own wheel as under-test and overrides persist. Bump server to
+    0.5.245 and edge to v44.1.0 when they publish. Eight persist majors of
+    contract change are absorbed in the tests, each citing its persist issue
+    and CC section (founder_only refused above the family, paged
+    list_attestations_by, holds_bytes retired for custody:ack, takedown
+    notices as rows, delegation terms, declared affiliation cohort).
   ciris-server: >-
-    0.5.221 → 0.5.222. The canonical can upgrade to the final genesis: adopts
-    persist v53.1.4 / edge v40.0.3, and the client floor moves to 0.5.228 with
-    the device-class refusal localized (CIRISServer#733, #738).
+    0.5.222 → 0.5.244, the newest on PyPI (0.5.245, the persist v61 / edge
+    44.1 adopt, is unpublished).
   ciris-verify: >-
-    19.0.0, unchanged — the verify CIRISServer v0.5.222 carries.
+    19.0.0 → 22.0.0, the verify CIRISServer 0.5.245 carries.
   ciris-persist: >-
-    v53.1.2 → v53.1.4. v53.1.3 fixes four Codex findings on #985/#986: a
-    location-proof withdrawal is re-indexed and atomic, and the custody
-    row-target arm and plaintext room writes carry the group. v53.1.4 lets an
-    upgraded canonical take the ceremony's serve record (the equal-instant
-    supersede arm) and makes every federation_keys UPDATE door carry the whole
-    scrub set (additional_scrubs).
+    v53.1.4 → v61.0.4 (e7ead8fc), the persist CIRISServer 0.5.245 carries.
   ciris-edge: >-
-    v40.0.2 → v40.0.3. An adopt of persist v53.1.4 (CIRISEdge#811), no edge
-    surface change.
+    v40.0.3 → v44.0.0 (310aa7e1), the newest edge tag; 0.5.245 pins the
+    v44.1.0 candidate 83b4c21 by rev.
 # Python interpreter version under test. Every member declares
 # `requires-python = ">=3.10"`; the abi3-py310 build (one wheel for all
 # 3.10+) is the canonical shape. We exercise the floor (3.10) + a current

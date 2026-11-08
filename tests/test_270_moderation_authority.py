@@ -48,6 +48,13 @@ _SHA = "a" * 64  # 32-byte lowercase-hex content hash
 # ── Negative gate: a single agent engine with no moderation duty ──────────
 _NEG_BODY = r"""
 import json, sys, os, tempfile, secrets
+# persist v60.0.0 (CIRISPersist#1048; CC 4.4.3.2.8 C, CC 2.4): a term-bearing
+# delegates_to (moderate / takedown / review / ...) MUST carry
+# `delegation_valid_until` at most one year after signing, else it is refused
+# `federation_delegation_term_required`. 180 days from the real signing clock.
+import datetime as _dtm
+TERM_UNTIL = (_dtm.datetime.now(_dtm.timezone.utc) + _dtm.timedelta(days=180)).strftime(
+    "%Y-%m-%dT%H:%M:%S.000Z")
 try:
     import ciris_persist as cp
 except ImportError as exc:
@@ -78,7 +85,7 @@ except Exception as exc:
 
 # add_moderator still mints a well-formed steward-bound appointment edge.
 try:
-    report["appointment_id"] = engine.add_moderator(kid, kid, "moderate")
+    report["appointment_id"] = engine.add_moderator(kid, kid, "moderate", None, TERM_UNTIL)
 except Exception as exc:
     report["appointment_id"] = {"_error": str(exc)[:120]}
 
@@ -106,13 +113,24 @@ def moderation():
 # identity_type), files as the zero-hop authority, then appoints/removes a
 # separately-registered moderator key. MOD_KID comes from a prior member node.
 _FOUNDER_BODY = r"""
+# persist v60.0.0 (CIRISPersist#1048; CC 4.4.3.2.8 C, CC 2.4): a term-bearing
+# delegates_to (moderate / takedown / review / ...) MUST carry
+# `delegation_valid_until` at most one year after signing, else it is refused
+# `federation_delegation_term_required`. 180 days from the real signing clock.
+import datetime as _dtm
+TERM_UNTIL = (_dtm.datetime.now(_dtm.timezone.utc) + _dtm.timedelta(days=180)).strftime(
+    "%Y-%m-%dT%H:%M:%S.000Z")
 # This node registered as identity_type=user (steward-bound) via the preamble's
 # IDENTITY_TYPE injection, so `kid` is the founder's steward-bound federation id.
 founder = kid
+# persist v61.0.0 (CIRISPersist#1123; CC 4.4.3.2 / CC 4.5.13): `founder_only` is a
+# family's protocol and is refused for a community above the family
+# (`federation_community_consensus_protocol_violation`, rule
+# `founder_only_above_family`); a one-founder room is founded under `majority`.
 engine.put_community_json(json.dumps({
     "community_key_id": founder, "community_name": "conformance-comm",
     "members": [{"key_id": founder, "joined_at": NOW, "role": "founder"}],
-    "founded_at": NOW, "consensus_protocol": "founder_only", "persist_row_hash": "",
+    "founded_at": NOW, "consensus_protocol": "majority", "persist_row_hash": "",
 }))
 report["founder"] = founder
 
@@ -125,7 +143,7 @@ except Exception as exc:
     report["founder_can_file"] = str(exc)[:80]
 
 # Appoint a separate registered key as a moderate delegate → recognized.
-appt = engine.add_moderator(founder, MOD_KID, "moderate")
+appt = engine.add_moderator(founder, MOD_KID, "moderate", None, TERM_UNTIL)
 report["appointed_is_named"] = engine.is_named_moderator_json(MOD_KID, founder, "moderate")
 report["moderators_of"] = json.loads(engine.moderators_of_json(founder, "moderate"))
 

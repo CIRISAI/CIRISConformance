@@ -59,6 +59,13 @@ pytestmark = pytest.mark.fabric
 # then the steward attempts each binding and we report the outcome token + bands.
 _BODY = r"""
 import json, sys, os, tempfile, secrets
+# persist v60.0.0 (CIRISPersist#1048; CC 4.4.3.2.8 C, CC 2.4): a term-bearing
+# delegates_to (moderate / takedown / review / ...) MUST carry
+# `delegation_valid_until` at most one year after signing, else it is refused
+# `federation_delegation_term_required`. 180 days from the real signing clock.
+import datetime as _dtm
+TERM_UNTIL = (_dtm.datetime.now(_dtm.timezone.utc) + _dtm.timedelta(days=180)).strftime(
+    "%Y-%m-%dT%H:%M:%S.000Z")
 try:
     import ciris_persist as cp
 except ImportError as exc:
@@ -173,11 +180,11 @@ _attempt("minor_target_bind", lambda: S.engine().steward_bind(T.kid, ["infra:tra
 # a duty conferral onto the same adult → ADMIT (the #87 pair).
 _attempt("adult_target_grant", lambda: S.engine().grant_delegation(A.kid, ["infra:transport"], False, CUSTODY))
 _attempt("adult_target_steward_bind", lambda: S.engine().steward_bind(A.kid, ["infra:transport"], CUSTODY))
-_attempt("adult_target_conferral", lambda: S.engine().grant_delegation(A.kid, ["moderate"], False))
+_attempt("adult_target_conferral", lambda: S.engine().grant_delegation(A.kid, ["moderate"], False, None, None, TERM_UNTIL))
 # S (proven adult) → U (unverified age): presumption of sovereignty → REJECT
 # the custody claim; the conferral is not an age-gated act → ADMIT.
 _attempt("unver_target_steward_bind", lambda: S.engine().steward_bind(U.kid, ["infra:transport"], CUSTODY))
-_attempt("unver_target_conferral", lambda: S.engine().grant_delegation(U.kid, ["moderate"], False))
+_attempt("unver_target_conferral", lambda: S.engine().grant_delegation(U.kid, ["moderate"], False, None, None, TERM_UNTIL))
 
 # Confirm the admitted minor binding actually resolves as a live steward-binding.
 e = S.engine()

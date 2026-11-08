@@ -94,7 +94,7 @@ try:
     # The holds_bytes holder attestation was emitted for the attesting key.
     holders = json.loads(engine.list_attestations_for(key_id))['items']
     report["holder_attestation_emitted"] = any(
-        h.get("attestation_type", "").startswith("holds_bytes:sha256:") for h in holders
+        _is_here_claim(h) for h in holders
     )
 except Exception as exc:
     report["positive_error"] = f"{type(exc).__name__}: {str(exc)[:160]}"

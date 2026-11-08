@@ -96,8 +96,8 @@ report["after_add"] = roster()
 # The idempotent re-add, both forms. A SIGNED exact retry returns False (the
 # fold sees carol active; no row is written). The UNSIGNED exact retry is the
 # documented no-op on the community plane since persist v51.2.0
-# (CIRISPersist#936) but is still refused on the FAMILY plane v49 added
-# (CIRISPersist#990) — recorded, and asserted as a strict xfail.
+# (CIRISPersist#936) and, since CIRISPersist#990 (closed 2026-10-09), on the
+# family plane v49 added too, so both forms assert the no-op.
 report["readd_carol"] = engine.cohort_add_member(
     "family", kid, json.dumps(_carol), admit_spec("family", kid, _carol))
 try:
@@ -233,10 +233,6 @@ def test_member_side_read_reflects_active_membership(cohort_lifecycle):
 
 
 @pytest.mark.requires_persist
-@pytest.mark.xfail(strict=True, reason=
-    "CIRISPersist#990: on the family widening plane (persist v49+) an exact UNSIGNED re-add of "
-    "an already-active member is refused federation_federation_tier_unverified — #936 fixed the "
-    "community arm in v51.2.0, not the family twin. Turns red when the family arm matches.")
 def test_unsigned_exact_readd_is_a_noop(cohort_lifecycle):
     """CC #249 G1 idempotency, the authority-free half: re-adding an already-active
     family member with NO authority signature is a no-op (`False`), not a refusal —

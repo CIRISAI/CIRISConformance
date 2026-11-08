@@ -50,7 +50,7 @@ report["kid"] = kid; report["sha"] = sha
 report["sees_blob"] = engine.has_blob_json(SHA)
 holders = json.loads(engine.list_attestations_for(KID_A))['items']
 report["sees_holder_attestation"] = any(
-    h.get("attestation_type", "").startswith("holds_bytes:sha256:") for h in holders)
+    _is_here_claim(h) for h in holders)
 ''',
         identity_ref="node-B", SHA=a["sha"], KID_A=a["kid"],
     )
@@ -114,7 +114,7 @@ report["evicted_own"] = rep["blobs_evicted"]
     c = federation(
         r'''
 atts = json.loads(engine.list_attestations_for(KID_A))['items']
-report["a_holds_bytes"] = sum(1 for x in atts if x.get("attestation_type","").startswith("holds_bytes:sha256:"))
+report["a_here_claims"] = sum(1 for x in atts if _is_here_claim(x))
 report["a_withdraws"] = sum(1 for x in atts if x.get("attestation_type","") == "withdraws")
 ''',
         identity_ref="observer-C", KID_A=a["kid"],
@@ -122,5 +122,5 @@ report["a_withdraws"] = sum(1 for x in atts if x.get("attestation_type","") == "
     assert b["held_before"] is True, b
     assert b["evicted_own"] >= 1, b
     # A's holder attestation survives B's eviction; B's withdraws are B's own.
-    assert c["a_holds_bytes"] >= 1, c
+    assert c["a_here_claims"] >= 1, c
     assert c["a_withdraws"] == 0, c

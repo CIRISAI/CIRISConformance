@@ -120,8 +120,12 @@ ef = oe("q-founder")
 ef.put_community_json(json.dumps(_payload))
 
 # Build the change envelope: new roster adds carol → quorum:3/4 for the new count.
+# persist v54.0.0 (CIRISPersist#1034, I593; CC 4.4.3.2.8): a record declares its
+# cohort at founding, and `put_community_json` founds a plain community, so the
+# change is addressed under `community`; addressing it as `affiliations` is
+# refused `federation_affiliation_cohort_mismatch`.
 env = ef.cohort_build_membership_change_envelope(
-    "affiliations", founder, json.dumps([founder, alice, bob, carol]), False, None)
+    "community", founder, json.dumps([founder, alice, bob, carol]), False, None)
 canon = ef.canonicalize_envelope_for_signing(env)
 report["envelope"] = json.loads(env)
 
@@ -145,7 +149,7 @@ def probe(label, refs):
     selected = [sig[r] for r in refs]
     try:
         ef.cohort_verify_membership_quorum(
-            "affiliations", founder, env, json.dumps(selected))
+            "community", founder, env, json.dumps(selected))
         report[label] = {"verified": True}
     except Exception as exc:  # noqa: BLE001
         report[label] = {"verified": False, "error": str(exc)}

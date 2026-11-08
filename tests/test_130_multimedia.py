@@ -11,28 +11,29 @@ substrate half. This file pins the load-bearing claim of the whole tier —
 the wire format** — plus the new takedown / perceptual-hash / key-grant
 substrate primitives.
 
-Verified against ciris-persist 3.6.3:
+Verified against ciris-persist 61.0.4:
 
 - ✅ **Media rides existing blob storage** (MEDIA_SHARING §2.6): a media
   blob stores through the same `put_blob_signing` (with a `media_type`)
-  and emits the same `holds_bytes:sha256:*` holder attestation — no new
-  chunking primitive, no media-specific storage path.
+  and emits the same holding claim — `custody:ack:v1` `here` since persist
+  v55.0.0 (CC 3.1.3.3; `holds_bytes` retired, CC 2.4) — no new chunking
+  primitive, no media-specific storage path.
 - ✅ **Perceptual-hash gate** (CC 3.1.8): an installed matcher refuses a
   known-bad blob at write with `blob_hash_matched_known_bad`.
-- ✅ **Takedown admission** (CC 3.1.4 / CC 3.3.2): immediate legal bases
-  (`ncmec_csam`, `tvec_terrorist`) evict now; windowed bases
-  (`dmca_512`, `dsa_article_16`) schedule a future eviction; the
-  `legal_basis` closed-set enum is validated.
-- ✅ **Key-grant retire = `supersedes`, NOT `withdraws`** (CC 3.3.2
-  option-b): the retire path reports `supersedes_emitted`.
-- ✅ **Operator multimedia config** round-trips (§5).
+- ✅ **Takedown** (CC 3.1.1 / CC 3.3.2 / CC 4.5.3 / CC 4.5.5): since persist
+  v60.0.0 (CIRISPersist#803) a notice is the duty-holder's signed
+  `takedown_notice:{basis}:v1` row and `cirisnode_process_takedown_admission_json`
+  executes it by row id. Immediate-removal bases (`ncmec_csam`,
+  `tvec_terrorist`) destroy the bytes on receipt; counter-notice bases
+  (`dmca512`, `dsa_article16`) withhold and settle after their window; a basis
+  outside the closed set is refused at the put door.
 - ✅ **Budget-driven eviction** (FEDERATION_SCALING_MODEL §1.2): a small
   `storage_budget_bytes` makes the popularity×freshness sweeper actually
   evict under capacity pressure.
 
-Tracked gap (xfail, not worked around): takedown admission reports
-`holders_seen: 0` for a *locally*-held blob — the same local-holder blind
-spot as `list_holders_json` → **CIRISPersist#130**.
+Retired with their surfaces (persist v55.0.0): the key-grant SET retire gate
+(a key grant is one `key_grant:{axis}:v1` row per recipient, never withdrawn,
+CC 3.3.2) and the operator `MultimediaConfig` round-trip.
 
 See MEDIA_SHARING.md + the CIRIS Constitution CC 0.4 CC 3.3 / §8.1.10 (vendored under reference/).
 """
@@ -52,14 +53,50 @@ def _media_substrate_script(database_url: str) -> str:
 report = {"stage": "start"}
 kid = engine.register_self_federation_key("agent", "media-ref", None, None, None)
 
-def _notice(sha, basis):
-    return json.dumps({
-        "content_sha256": sha, "content_holder_key_ids": [kid], "claimant_key_id": kid,
-        "legal_basis": basis, "jurisdiction": "US", "good_faith_statement": "x",
-        "claim_text": "x", "evidence_refs": [], "perceptual_hash": None,
-        "counter_notice_channel": None, "asserted_at": "2026-05-28T14:00:00.000Z",
-        "expires_at": "2026-06-28T14:00:00.000Z",
-    })
+import datetime as _dt
+def _iso(t):
+    return t.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+
+# persist v60.0.0 (CIRISPersist#803; CC 3.1.1, CC 3.3.2): a takedown notice is a
+# ROW, the signer's `scores` row on `takedown_notice:{basis}:v1` (score -1,
+# `subject_kind: takedown_notice`, `claimant_key_id` == the signer). The put door
+# admits it only from a CC 4.5.5 duty-holder over the content as THIS node holds
+# it; the holder's own `custody:ack:v1` claim names it a subject of the content.
+def _emit_notice(sha, basis):
+    now = _dt.datetime.now(_dt.timezone.utc)
+    return engine.emit_attestation_self(json.dumps({
+        "attestation_type": "scores", "cohort_scope": "federation",
+        "attested_key_id": kid,
+        "expires_at": _iso(now + _dt.timedelta(days=30)),
+        "attestation_envelope": {
+            "dimension": "takedown_notice:" + basis + ":v1",
+            "subject_kind": "takedown_notice", "score": -1.0,
+            "content_sha256": sha, "claimant_key_id": kid, "legal_basis": basis,
+            "jurisdiction": "US", "good_faith_statement": "conformance good faith",
+            "claim_text": "conformance claim",
+        },
+    }))
+
+# CC 4.5.5: whose content it is comes from a held row that BINDS it (its
+# `evidence_refs` name the digest). A holding claim is custody, never a binding
+# (`envelope_binds_content` skips `custody:*`), so the author establishes the
+# content with its own `content:established:v1` row, as persist's own takedown
+# fixtures do (`takedown_reversal_invariants::bind_into`).
+def _bind(h):
+    engine.emit_attestation_self(json.dumps({
+        "attestation_type": "scores", "cohort_scope": "federation",
+        "attested_key_id": kid,
+        "attestation_envelope": {"dimension": "content:established:v1",
+                                 "evidence_refs": [h]},
+    }))
+
+def _held_blob(tag):
+    b = b"takedown-" + tag.encode() + b"-" + kid.encode()
+    h = hashlib.sha256(b).hexdigest()
+    engine.put_blob_signing(h, base64.b64encode(b).decode(), None, "image/png",
+                            kid, _iso(_dt.datetime.now(_dt.timezone.utc)), str(uuid.uuid4()))
+    _bind(h)
+    return h
 
 # (1) A media blob rides the same blob storage + holder attestation.
 # Content + attestation_id are salted/unique per subprocess so tests stay
@@ -71,8 +108,8 @@ engine.put_blob_signing(sha, base64.b64encode(body).decode(), None, "image/jpeg"
 fetched = engine.get_blob_json(sha)
 report["media_intact"] = fetched is not None and base64.b64decode(json.loads(fetched)["inline"]) == body
 holders = json.loads(engine.list_attestations_for(kid))['items']
-report["media_holds_bytes_emitted"] = any(
-    h.get("attestation_type", "").startswith("holds_bytes:sha256:") for h in holders
+report["media_here_claim_emitted"] = any(
+    _is_here_claim(h) for h in holders
 )
 
 # (2) Perceptual-hash gate refuses a known-bad blob at write.
@@ -101,39 +138,51 @@ except Exception as exc:
     report["clean_error"] = str(exc)[:120]
 engine.set_perceptual_hash_matcher(None)
 
-# (3) Takedown scheduling: immediate vs windowed by legal basis.
+# (3) Takedown disposition by basis (CC 4.5.3 / CC 3.3.2): an immediate-removal
+# basis destroys the bytes on receipt; a counter-notice basis withholds them and
+# settles (hard-deletes) after its window. Each basis runs on its own held blob.
 sched = {}
-for basis in ("ncmec_csam", "tvec_terrorist", "dmca_512", "dsa_article_16"):
-    r = json.loads(engine.cirisnode_process_takedown_admission_json(
-        _notice("ab" * 32, basis), kid, "2026-05-28T14:00:00.000Z"))
-    sched[basis] = r["scheduled_eviction_at"]
+for basis in ("ncmec_csam", "tvec_terrorist", "dmca512", "dsa_article16"):
+    h = _held_blob(basis)
+    r = json.loads(engine.cirisnode_process_takedown_admission_json(_emit_notice(h, basis)))
+    sched[basis] = {"disposition": r["disposition"], "tombstoned": r["tombstoned"],
+                    "settles_at": r["settles_at"], "bytes_destroyed": r["bytes_destroyed"],
+                    "blob_held_after": engine.has_blob_json(h)}
 report["takedown_scheduling"] = sched
 
-# (4) The legal_basis enum is a validated closed set.
+# (4) The legal_basis enum is a validated closed set: a notice row on a basis
+# outside it is refused at the put door.
 try:
-    engine.cirisnode_process_takedown_admission_json(
-        _notice("cd" * 32, "not_a_real_basis"), kid, "2026-05-28T14:00:00.000Z")
+    _emit_notice(_held_blob("unknown"), "not_a_real_basis")
     report["unknown_basis_rejected"] = False
 except ValueError as exc:
-    report["unknown_basis_rejected"] = "unknown variant" in str(exc) or "legal_basis" in str(exc)
+    report["unknown_basis_rejected"] = True
+    report["unknown_basis_error"] = str(exc)[:300]
 
-# (5) Key-grant retire reports supersedes (option-b), not withdraws.
-report["retire_report"] = json.loads(
-    engine.cirisnode_retire_key_grants_json(kid, "2026-05-28T14:00:00.000Z"))
-
-# (6) Operator multimedia config round-trips.
-report["config_default"] = engine.get_multimedia_config_json()
-engine.set_multimedia_config_json(json.dumps(
-    {"immediate_legal_bases": ["ncmec_csam", "tvec_terrorist"], "counter_notice_window_days": 7}))
-report["config_after_set"] = json.loads(engine.get_multimedia_config_json())
-
-# Takedown sees + evicts the local holder of the content (persist#130, fixed 3.6.4).
-engine.set_multimedia_config_json(None)
-_td = json.loads(engine.cirisnode_process_takedown_admission_json(
-    _notice(sha, "ncmec_csam"), kid, "2026-05-28T14:00:00.000Z"))
-report["takedown_local_holders_seen"] = _td["holders_seen"]
-report["takedown_withdraws_emitted"] = _td["withdraws_emitted"]
-report["takedown_blob_evicted"] = not engine.has_blob_json(sha)
+# Takedown sees + evicts the local holder of the content: this node's own
+# holding claim is retracted and the bytes destroyed (CC 4.5.3).
+# The blob is stored at the real clock: a holding claim is live 72 h from its
+# signed instant (CC 3.1.3.3 rule 5), so a claim stamped months ago (as the media
+# blob above is) has already lapsed and there is nothing live to retract.
+_local = _held_blob("local-holder")
+def _live_here_on(sha):
+    # This node's `here` claims on `sha` that no `withdraws` row of its own retracts.
+    rows = json.loads(engine.list_attestations_for(kid))["items"] + \
+        json.loads(engine.list_attestations_by(kid, 1000))["items"]
+    claims = {h["attestation_id"] for h in rows
+              if _is_here_claim(h) and sha in json.dumps(h.get("attestation_envelope") or {})}
+    retracted = set()
+    for r in rows:
+        blob = json.dumps(r)
+        if r.get("attestation_type") == "withdraws" or '"withdraws"' in blob:
+            retracted |= {c for c in claims if c in blob}
+    return len(claims), len(claims - retracted)
+report["takedown_here_before"] = _live_here_on(_local)[1]
+_td = json.loads(engine.cirisnode_process_takedown_admission_json(_emit_notice(_local, "ncmec_csam")))
+report["takedown_here_after"] = _live_here_on(_local)[1]
+report["takedown_claims_retracted"] = _td["claims_retracted"]
+report["takedown_bytes_destroyed"] = _td["bytes_destroyed"]
+report["takedown_blob_evicted"] = not engine.has_blob_json(_local)
 
 report["stage"] = "done"
 print(json.dumps(report))
@@ -158,9 +207,12 @@ def media_substrate():
 @pytest.mark.ceg
 @pytest.mark.requires_persist
 def test_media_blob_rides_existing_storage(media_substrate):
-    """§2.6: a media blob uses the same put_blob_signing + holds_bytes — no new primitive."""
+    """§2.6: a media blob uses the same put_blob_signing + holding claim — no new primitive.
+
+    The holding claim is `custody:ack:v1` `here` since persist v55.0.0 (CC 3.1.3.3;
+    `holds_bytes` is retired, CC 2.4)."""
     assert media_substrate["media_intact"] is True, media_substrate
-    assert media_substrate["media_holds_bytes_emitted"] is True, media_substrate
+    assert media_substrate["media_here_claim_emitted"] is True, media_substrate
 
 
 @pytest.mark.ceg
@@ -176,64 +228,52 @@ def test_perceptual_hash_gate_refuses_known_bad(media_substrate):
 @pytest.mark.ceg
 @pytest.mark.requires_persist
 def test_takedown_immediate_vs_windowed_scheduling(media_substrate):
-    """CC 3.1.4: child-safety/terrorist bases evict immediately; DMCA/DSA schedule a window."""
+    """CC 4.5.3 / CC 3.3.2: immediate-removal bases destroy on receipt; counter-notice
+    bases withhold now and settle after their window (dmca512 10 d, dsa_article16 14 d)."""
     sched = media_substrate["takedown_scheduling"]
-    assert sched["ncmec_csam"] is None, sched
-    assert sched["tvec_terrorist"] is None, sched
-    assert sched["dmca_512"] is not None, sched
-    assert sched["dsa_article_16"] is not None, sched
+    for basis in ("ncmec_csam", "tvec_terrorist"):
+        r = sched[basis]
+        assert r["disposition"] == {"kind": "destroy_on_receipt"}, (basis, r)
+        assert r["tombstoned"] is True, (basis, r)
+        assert r["bytes_destroyed"] is True, (basis, r)
+        assert r["blob_held_after"] is False, (basis, r)
+    for basis, days in (("dmca512", 10), ("dsa_article16", 14)):
+        r = sched[basis]
+        assert r["disposition"] == {"kind": "withhold_then_delete", "window_days": days}, (basis, r)
+        assert r["tombstoned"] is True, (basis, r)
+        assert r["settles_at"] is not None, (basis, r)
+        assert r["bytes_destroyed"] is False, (basis, r)
 
 
 @pytest.mark.ceg
 @pytest.mark.requires_persist
 def test_takedown_rejects_unknown_legal_basis(media_substrate):
-    """CC 3.3.2: the LegalBasis enum is a validated closed set."""
+    """CC 3.3.2: the legal_basis set is closed; a notice row outside it is refused."""
     assert media_substrate["unknown_basis_rejected"] is True, media_substrate
+    assert "not_a_real_basis" in media_substrate["unknown_basis_error"], media_substrate
 
 
-@pytest.mark.ceg
-@pytest.mark.requires_persist
-def test_key_grant_retire_uses_supersedes_not_withdraws(media_substrate):
-    """CC 3.3.2 option-b: retire emits `supersedes` (with rotation_chain), not `withdraws`.
-
-    persist v36.0.0 (CIRISPersist#711): the report is a typed
-    `RetireKeyGrantsOutcome` — `{outcome: complete, retired}` or
-    `{outcome: partial, retired, failed: [{contribution_id, stage, error}]}` —
-    and a retirement that retired nothing can no longer report success by
-    counting failures into a side column (`supersedes_failed` is gone). There is
-    still no `withdraws_emitted`: retirement is supersession, never withdrawal.
-    """
-    rep = media_substrate["retire_report"]
-    assert rep.get("outcome") in ("complete", "partial"), rep
-    assert isinstance(rep.get("retired"), int), rep
-    if rep["outcome"] == "partial":
-        assert rep.get("failed"), f"`partial` with no named failure is unconstructible: {rep}"
-        assert all({"contribution_id", "stage", "error"} <= set(f) for f in rep["failed"]), rep
-    else:
-        assert "failed" not in rep, rep
-    assert "supersedes_failed" not in rep, rep
-    assert "withdraws_emitted" not in rep, rep
-
-
-@pytest.mark.ceg
-@pytest.mark.requires_persist
-def test_multimedia_config_round_trips(media_substrate):
-    """§5: the operator multimedia config installs and reads back."""
-    assert media_substrate["config_default"] is None, media_substrate
-    cfg = media_substrate["config_after_set"]
-    assert cfg["counter_notice_window_days"] == 7, cfg
-    assert set(cfg["immediate_legal_bases"]) == {"ncmec_csam", "tvec_terrorist"}, cfg
+# persist v55.0.0 retired the key-grant SET rows and `cirisnode_retire_key_grants_json`
+# (a key grant is one `scores` row per recipient on `key_grant:{axis}:v1`, never
+# withdrawn, CC 3.3.2), and removed `MultimediaConfig` (a basis's disposition is
+# the CC 4.5.3 table, not operator config). Their two gates went with them; the
+# disposition table is asserted above.
 
 
 @pytest.mark.ceg
 @pytest.mark.requires_persist
 def test_takedown_evicts_local_holder(media_substrate):
-    """CC 4.5.3: a takedown for content this node holds sees + evicts the local holder.
-
-    Real gate as of persist 3.6.4 (CIRISPersist#130 fixed).
-    """
-    assert media_substrate["takedown_local_holders_seen"] >= 1, media_substrate
-    assert media_substrate["takedown_withdraws_emitted"] >= 1, media_substrate
+    """CC 4.5.3: a takedown of content this node holds retracts this node's own
+    holding claim and destroys the bytes (immediate-removal basis)."""
+    # persist v61 (CIRISPersist#803): an immediate-removal basis settles at once
+    # through `purge_finalize`, whose eviction retracts this node's holding claim
+    # with its own `withdraws` row; the report's `claims_retracted` counts only the
+    # counter-notice path and stays 0 here. What the rule requires is that no live
+    # claim of this node's survives, so the claim is read before and after.
+    assert media_substrate["takedown_here_before"] >= 1, media_substrate
+    assert (media_substrate["takedown_here_after"] == 0
+            or media_substrate["takedown_claims_retracted"] >= 1), media_substrate
+    assert media_substrate["takedown_bytes_destroyed"] is True, media_substrate
     assert media_substrate["takedown_blob_evicted"] is True, media_substrate
 
 

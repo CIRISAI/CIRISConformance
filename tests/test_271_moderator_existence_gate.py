@@ -83,11 +83,21 @@ _SHA = "a" * 64  # 32-byte lowercase-hex content hash
 # Mirrors test_270's founder authority node (IDENTITY_TYPE="user" ⇒ steward-bound),
 # but asserts the §4.5.4 EXISTENCE surface rather than the authority lifecycle.
 _FOUNDER_BODY = r"""
+# persist v60.0.0 (CIRISPersist#1048; CC 4.4.3.2.8 C, CC 2.4): a term-bearing
+# delegates_to (moderate / takedown / review / ...) MUST carry
+# `delegation_valid_until` at most one year after signing, else it is refused
+# `federation_delegation_term_required`. 180 days from the real signing clock.
+import datetime as _dtm
+TERM_UNTIL = (_dtm.datetime.now(_dtm.timezone.utc) + _dtm.timedelta(days=180)).strftime(
+    "%Y-%m-%dT%H:%M:%S.000Z")
 founder = kid  # owner-bound (steward-bound) via IDENTITY_TYPE="user" injection
+# persist v61.0.0 (CIRISPersist#1123; CC 4.4.3.2 / CC 4.5.13): `founder_only` is a
+# family's protocol, refused for a community (`founder_only_above_family`); every
+# room in this module is founded under `majority`.
 engine.put_community_json(json.dumps({
     "community_key_id": founder, "community_name": "exists-comm",
     "members": [{"key_id": founder, "joined_at": NOW, "role": "founder"}],
-    "founded_at": NOW, "consensus_protocol": "founder_only", "persist_row_hash": "",
+    "founded_at": NOW, "consensus_protocol": "majority", "persist_row_hash": "",
 }))
 
 # (1) A live moderate-holder resolves over C — C may operate at moderated capability.
@@ -111,7 +121,7 @@ report["apply_verdict_unknown"] = json.loads(
     engine.check_no_moderator_federate_json("community-not-locally-known"))
 
 # (2) Appoint a delegate moderator, then remove it — the loss the apply-step gate keys on.
-appt = engine.add_moderator(founder, MOD_KID, "moderate")
+appt = engine.add_moderator(founder, MOD_KID, "moderate", None, TERM_UNTIL)
 report["delegate_named_after_appoint"] = engine.is_named_moderator_json(
     MOD_KID, founder, "moderate")
 report["moderators_after_appoint"] = json.loads(
@@ -139,7 +149,7 @@ try:
     engine.put_community_json(json.dumps({
         "community_key_id": founder, "community_name": "moderatorless-comm",
         "members": [{"key_id": founder, "joined_at": NOW, "role": "founder"}],
-        "founded_at": NOW, "consensus_protocol": "founder_only", "persist_row_hash": "",
+        "founded_at": NOW, "consensus_protocol": "majority", "persist_row_hash": "",
     }))
     report["stewardless_community_admit"] = "admitted"
 except Exception as exc:
@@ -150,7 +160,7 @@ try:
     engine.put_community_json(json.dumps({
         "community_key_id": founder, "community_name": "empty-comm",
         "members": [], "founded_at": NOW,
-        "consensus_protocol": "founder_only", "persist_row_hash": "",
+        "consensus_protocol": "majority", "persist_row_hash": "",
     }))
     report["empty_community_admit"] = "admitted"
     report["empty_moderators"] = json.loads(engine.moderators_of_json(founder, "moderate"))
