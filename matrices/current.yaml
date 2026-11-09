@@ -68,12 +68,12 @@ stack:
 substrate:
   ciris-persist:
     repo: "https://github.com/CIRISAI/CIRISPersist"
-    tag: "v61.0.4"
-    sha: "e7ead8fcc0127d4eb508e666033c0fd0772c8091"
+    tag: "v61.0.5"
+    sha: "048f0993eccbbb81813de9a726b43472b47d9e06"
   ciris-edge:
     repo: "https://github.com/CIRISAI/CIRISEdge"
-    tag: "v44.0.0"
-    sha: "310aa7e196ced65b98311044ca6603bc1fa0db45"
+    tag: "v44.1.0"
+    sha: "07eac79c2ac398715b6684b800f5237141cb4e36"
 
 # ─── Normative members ────────────────────────────────────────────────
 # FSD #86 §4 Class 3: a set that pins the code but not the Constitution
@@ -88,27 +88,24 @@ constitution:
 # One paragraph per member for the CURRENT pin. History: matrices/history/.
 rationale:
   set: >-
-    Catch-up from the 0.5.222 set (persist v53.1.4 / edge v40.0.3 / verify 19)
-    to the CIRISServer 0.5.245 line: persist v61.0.4, verify 22.0.0, and the
-    edge v44 series. 0.5.245 itself is not on PyPI yet and pins edge by rev
-    (83b4c21, the 44.1.0 candidate), so this set pins the newest PUBLISHED
-    server (0.5.244) and the newest edge TAG (v44.0.0); the edge tag run
-    supplies its own wheel as under-test and overrides persist. Bump server to
-    0.5.245 and edge to v44.1.0 when they publish. Eight persist majors of
-    contract change are absorbed in the tests, each citing its persist issue
-    and CC section (founder_only refused above the family, paged
-    list_attestations_by, holds_bytes retired for custody:ack, takedown
-    notices as rows, delegation terms, declared affiliation cohort).
+    The CIRISServer 0.5.245 line: persist v61.0.5, edge v44.1.0, verify 22.0.0.
+    0.5.245 is not on PyPI yet, so the stack keeps the newest PUBLISHED server
+    (0.5.244); a server PR supplies its own wheel as under-test. Moved from
+    edge v44.0.0 / persist v61.0.4 because a set that lags the server under
+    test mixes two edge and persist builds in one process (a cdylib
+    duplication that SIGSEGVs on postgres; CIRISServer PR #866). Bump server
+    to 0.5.245 when it publishes. The suite's contract changes for persist v61
+    and edge v44 are PR #106, each citing its persist issue and CC section.
   ciris-server: >-
     0.5.222 → 0.5.244, the newest on PyPI (0.5.245, the persist v61 / edge
     44.1 adopt, is unpublished).
   ciris-verify: >-
     19.0.0 → 22.0.0, the verify CIRISServer 0.5.245 carries.
   ciris-persist: >-
-    v53.1.4 → v61.0.4 (e7ead8fc), the persist CIRISServer 0.5.245 carries.
+    v61.0.4 → v61.0.5 (048f0993), the persist CIRISServer 0.5.245 carries
+    (adds the by-subject read door edge v44.1.0 calls).
   ciris-edge: >-
-    v40.0.3 → v44.0.0 (310aa7e1), the newest edge tag; 0.5.245 pins the
-    v44.1.0 candidate 83b4c21 by rev.
+    v44.0.0 → v44.1.0 (07eac79c), the edge CIRISServer 0.5.245 pins.
 # Python interpreter version under test. Every member declares
 # `requires-python = ">=3.10"`; the abi3-py310 build (one wheel for all
 # 3.10+) is the canonical shape. We exercise the floor (3.10) + a current
