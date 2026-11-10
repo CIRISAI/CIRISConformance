@@ -80,9 +80,11 @@ substrate:
 # commit is not describing a coherent system, it is describing the part that
 # happened to be installable. Promoted here from prose in the pin comments.
 constitution:
-  version: "1.0-rc6"
+  # rc17 is not tagged yet: this is the rc17 branch head at vendoring time
+  # (tools/vendor_constitution.py). Re-vendor and re-pin at the v1.0-rc17 tag.
+  version: "1.0-rc17"
   repo: "https://github.com/CIRISAI/CIRISConstitution"
-  commit: "3c3e63f"
+  commit: "892a68b"
 
 # ─── Why this set ─────────────────────────────────────────────────────
 # One paragraph per member for the CURRENT pin. History: matrices/history/.
