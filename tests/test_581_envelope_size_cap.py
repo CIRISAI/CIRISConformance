@@ -11,7 +11,7 @@ never on a stored or transport-framed image of them". A CCP MUST NOT emit above
 the cap; a CCS MUST reject one at admission — "at **every** write path, including
 capsule/FFI and tier-ingest, not only an HTTP body gate" — with
 `ENVELOPE_TOO_LARGE` (HTTP 413, CC 5.3.6.1). Above the cap the envelope carries
-the manifest, not the bytes (the degradable fountain plane, CC 6.1.5). The text
+the manifest, not the bytes (the blob plane, replicated per item, CC 6.1.5). The text
 mandates this exact pair (CIRISConformance#85).
 
 What is REAL on the floor (persist v40.0.0), driven end-to-end here:

@@ -31,6 +31,15 @@ UNCHANGED across the bump — the §19.1 Merkle scheme did not move, and the gat
 it. A future change to any of these hexes must likewise be a deliberate CC 6.1.4 re-cut
 with a version bump behind it, never a quiet edit.
 
+**One input re-cut since (CC 1.0-rc17, CIRISConformance#107).** The frozen
+`aggregation_algorithm_id` input was `raptorq-pyramid-v1`; RaptorQ is out of the
+Constitution everywhere, and CC 6.1.2.1 names `layered-gist-v1` as its example of
+this opaque id. The input moved to `layered-gist-v1`, so the preimage is 3 bytes
+shorter (175 → 172) and its SHA-256 moved (`d1e95da5…` → `53cff162…`). The LAYOUT did
+not move: `member_commitment`, `mass_commitment` and the empty sentinel are
+unchanged, and the new preimage hash was computed independently from the CC 6.1.2.1
+layout and checked to reproduce the old golden from the old input before re-cutting.
+
 The gate has two legs that together freeze the wheel's bytes against the golden
 vector:
 
@@ -39,7 +48,7 @@ vector:
     would freeze our own re-derivation rather than the reference's bytes. It is made
     deterministic by pinning every input: member set `frozen-src-0..2`,
     `content_id=frozen-agg-root`, corpus `aggregate:trace`, tier 1,
-    `raptorq-pyramid-v1`, `mean+stddev`, masses = equal thirds (→ `n_eff == 3`), and
+    `layered-gist-v1`, `mean+stddev`, masses = equal thirds (→ `n_eff == 3`), and
     `max_source_multiplicity = 1`. (`content_multiplicity` is deliberately NOT called:
     it measures real payload similarity, and random payloads are not freezable.) The
     resulting `member_commitment`, `mass_commitment`, preimage SHA-256, preimage length,
@@ -77,7 +86,7 @@ pytestmark = pytest.mark.fabric
 # ─── #57 golden vectors, re-cut at AggregationMetaV1 v3 ───────────────
 # Frozen inputs: member set ["frozen-src-0","frozen-src-1","frozen-src-2"],
 # content_id "frozen-agg-root", corpus "aggregate:trace", tier 1,
-# algorithm "raptorq-pyramid-v1", noise_floor_descriptor "mean+stddev",
+# algorithm "layered-gist-v1", noise_floor_descriptor "mean+stddev",
 # version 3, source_count 3, masses = equal thirds (n_eff 3),
 # max_source_multiplicity 1.  Produced by ciris_edge.assemble_tier_meta_v3.
 #
@@ -90,14 +99,16 @@ GOLDEN_WW_EMPTY_ROOT = (
 )
 # RE-CUT at v3 (CIRISVerify#191 / CIRISEdge#328) — the preimage gained
 # u32_be(max_source_multiplicity) ‖ mass_commitment[32], so it grew 139 → 175 bytes
-# and its hash moved; `mass_commitment` is a wholly new frozen shape:
+# and its hash moved; `mass_commitment` is a wholly new frozen shape.
+# INPUT re-cut at CC 1.0-rc17 (CIRISConformance#107): algorithm id
+# "raptorq-pyramid-v1" (175 bytes, d1e95da5…) → "layered-gist-v1" (172 bytes):
 GOLDEN_AGG_META_V3_PREIMAGE_SHA256 = (
-    "d1e95da5b21962737b1fe41333d3bfbfa1de42f9b7be0a1d9877b0b573e6f368"
+    "53cff162d3ef7b8c038645171fd10f2921479430c2ed30368bbe819ccab01c3a"
 )
 GOLDEN_MASS_COMMITMENT = (
     "a009bf9f4e19aa2e44a291aaa994097d567617a8bf03e60e42bde83d78256988"
 )
-GOLDEN_PREIMAGE_LEN = 175
+GOLDEN_PREIMAGE_LEN = 172
 
 # The frozen construction inputs (mirrored in the driver's vector leg).
 FROZEN_MEMBER_IDS = ["frozen-src-0", "frozen-src-1", "frozen-src-2"]
@@ -164,7 +175,7 @@ def member_commitment(content_ids):
     return level[0]
 
 
-TIER, ALGO, NFD, VERSION = 1, "raptorq-pyramid-v1", "mean+stddev", 3
+TIER, ALGO, NFD, VERSION = 1, "layered-gist-v1", "mean+stddev", 3
 AGG_CORPUS = "aggregate:trace"
 
 # The frozen mass vector. Equal thirds → Kish n_eff == 3 (edge DERIVES the signed n_eff
@@ -351,7 +362,7 @@ def test_wholeness_witness_member_commitment_frozen(freeze):
 @pytest.mark.requires_persist
 def test_aggregation_meta_v3_preimage_frozen(freeze):
     """CC 6.1.4 / CC 6.1.2.1: the SHA-256 of the **v3** `AggregationMetaV1` binary
-    preimage matches its frozen #57 hex, at the frozen length (175 bytes).
+    preimage matches its frozen #57 hex, at the frozen length (172 bytes).
 
     Freezes the CC 6.1.3 binary layout end to end: the 16-byte domain separator, the
     big-endian `u32` version/tier/source_count, the length-prefixed strings, the raw
@@ -411,7 +422,7 @@ def test_wheel_admits_the_frozen_preimage_construction(freeze):
     assert fa["result"] == "admit", fa
     assert fa["observed"] is True, fa
     assert fa["version"] == FROZEN_VERSION == 3, fa
-    # The admitted preimage differs from the 175-byte golden by EXACTLY the salt in the
+    # The admitted preimage differs from the 172-byte golden by EXACTLY the salt in the
     # length-prefixed content_id and nothing else — the member ids enter only through
     # their fixed-width 32-byte Merkle root, so no other field can move. This pins the
     # wheel leg to the frozen LAYOUT, not merely to "some v3 preimage".

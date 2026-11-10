@@ -15,7 +15,7 @@ persistence.
 This gate drives the boundary **behaviorally** through persist's §19.7.1
 aggregation-admission surface `Engine.put_aggregated_tier(...)`, which runs
 `verify_aggregation_meta` over the `AggregationMetaV1` preimage. It admits 3 signed
-source fountains + a composite, then attempts to admit the SAME logical
+source contents + a composite, then attempts to admit the SAME logical
 `AggregationMetaV1` two ways:
 
   • signed over the correct CC 6.1.3 **binary** preimage — as of `AggregationMetaV1`
@@ -148,7 +148,8 @@ NS = secrets.token_hex(6)
 SYMBOL, N_SOURCE, K_REPAIR, MIN_VIABLE = 16, 10, 4, 3
 TOTAL = N_SOURCE + K_REPAIR
 AGG_CORPUS = "aggregate:trace"
-V_TIER, V_ALGO, V_NFD = 1, "raptorq-pyramid-v1", "mean+stddev"
+# The aggregation algorithm id is opaque (CC 6.1.2.1); this is the rc17 example.
+V_TIER, V_ALGO, V_NFD = 1, "layered-gist-v1", "mean+stddev"
 
 
 def sign_manifest(value):
@@ -184,7 +185,7 @@ def build_content(cid, corpus, payload=None):
     return sign_manifest(value), symbols
 
 
-# ── admit 3 source fountains (the descent fan-in) ──
+# ── admit 3 source contents (the descent fan-in) ──
 SOURCES = [(f"src-{i}-{NS}", "trace") for i in range(3)]
 SRC_PAYLOADS = [secrets.token_bytes(TOTAL * SYMBOL) for _ in SOURCES]
 for (cid, corpus), payload in zip(SOURCES, SRC_PAYLOADS):

@@ -4,8 +4,9 @@ transport): the wire-exact per-symbol key derivation.
 
 CC 5.4.3 (part_5_transport_substrate.md §5.4.3, "`fragmentation` — Uniform-envelope
 fragmentation & reassembly") and its companion §5.4.2 (`symbol` — Uniform symbol
-AEAD framing) define how a record's bytes are fountain-coded (RaptorQ) and each
-symbol sealed under its OWN AEAD key, so a holder lacking the keys holds bytes
+AEAD framing) define how a record's bytes are fragmented to a shaped link's frame
+size and each fragment (a *symbol*, CC 5.4.3 "Fragment unit — the symbol envelope")
+sealed under its OWN AEAD key, so a holder lacking the keys holds bytes
 indistinguishable from random. The whole discipline hangs on one wire-exact
 primitive, and the spec explicitly names CIRISConformance as its checker:
 
@@ -170,7 +171,7 @@ def test_symbol_key_is_index_bound_and_deterministic(symbol_kdf):
     a `u16_be` symbol index.
 
     Same inputs → same key (a failed reproduction would break reassembly); index N
-    and N+1 yield different keys (each RaptorQ symbol seals under its own key); and a
+    and N+1 yield different keys (each fragment seals under its own key); and a
     symbol index beyond `u16::MAX` is refused at conversion — pinning the 2-byte
     big-endian `symbol_index` encoding whose BE/LE agreement §5.4.3 makes normative.
     """

@@ -42,13 +42,14 @@ The pin-never-defeats-revocation leg (B6/N5) is now a **real green drive** on
 persist 13.0.1 (CIRISPersist#370), which ships the missing pin-INSTALL surface:
 `install_storage_budget_v1(wire, ed_pub, ml_dsa_pub)` verifies the bound-hybrid
 signature at the gate, enforces §Q B3 anti-rollback, and persists a
-`StorageBudgetV1` that GOVERNS fountain eviction (its `pinned_class` /
+`StorageBudgetV1` that GOVERNS content-store eviction (its `pinned_class` /
 `pin_reserve_bytes` drive the B5 cache-before-pinned sweep); returning the
 accepted `revision`. `get_installed_storage_budget_json(node_id)` reads it back
 verbatim. The driver installs a budget pinning the `trace` corpus class, admits
-`trace` fountain content held under that pin, then revokes it
+`trace` content held under that pin (persist's content store, still named
+`fountain` at the pin, CIRISPersist#1230), then revokes it
 (`evict_fountain_content_hard_delete`) and asserts the pin does **not** save it:
-the symbols are purged and the manifest descends to `EnvelopeOnly`, while the pin
+the retained pieces are purged and the manifest descends to `EnvelopeOnly`, while the pin
 itself stays installed — revocation is **pin-blind** (§Q B6). A pin holds content
 above the floor against *capacity* pressure only, never against *revocation*.
 
@@ -169,10 +170,10 @@ cw_report = {
 #     StorageBudgetV1 that GOVERNS eviction (its pinned_class / pin_reserve drive
 #     the B5 CACHE-BEFORE-PINNED sweep), returning the accepted revision;
 #   get_installed_storage_budget_json(node_id) reads it back VERBATIM (re-verifiable).
-# Install a budget that PINS the `trace` corpus class, admit trace fountain
-# content, confirm it is held under the pin, then revoke it
+# Install a budget that PINS the `trace` corpus class, admit trace content
+# (persist's content store), confirm it is held under the pin, then revoke it
 # (evict_fountain_content_hard_delete) and assert the pin does NOT save it: N5/B6 —
-# revocation is pin-blind and forces descent below the floor (symbols purged, the
+# revocation is pin-blind and forces descent below the floor (pieces purged, the
 # manifest left EnvelopeOnly) regardless of the pin, which itself stays installed.
 
 def _as_bytes(x):
@@ -339,10 +340,10 @@ def test_pin_never_defeats_revocation(contention):
     eviction-governing `StorageBudgetV1` pinning the `trace` corpus class is
     installed (`install_storage_budget_v1` — bound-hybrid verified at the gate,
     §Q B3 anti-rollback enforced, re-readable verbatim via
-    `get_installed_storage_budget_json`); `trace` fountain content is admitted and
+    `get_installed_storage_budget_json`); `trace` content is admitted and
     held under that pin. Then the content is revoked
     (`evict_fountain_content_hard_delete`) and the pin does **NOT** save it: the
-    symbols are purged and the manifest descends to `EnvelopeOnly`, while the pin
+    retained pieces are purged and the manifest descends to `EnvelopeOnly`, while the pin
     itself stays installed — revocation is **pin-blind** and forces immediate
     descent below the noise floor regardless of pin state. §Q is the positive
     inverse of N5 and is bounded by it: a pin holds content above the floor
@@ -360,7 +361,7 @@ def test_pin_never_defeats_revocation(contention):
     # content is held under the pin, then revocation purges it anyway (N5/B6)...
     assert rev["present_before"] is True, rev
     assert rev["gone_after_hard_delete"] is True, rev
-    # ...descending to EnvelopeOnly (symbols purged below the floor)...
+    # ...descending to EnvelopeOnly (pieces purged below the floor)...
     assert rev["state_after"] == "envelope_only", rev
     # ...while the pin itself is untouched — revocation is pin-blind, not a
     # budget teardown: the pin survives, the pinned content does not.

@@ -69,7 +69,7 @@ wrong — the source `AggregationMetaV1::verify_for_admission` runs
   • signed bound-hybrid: `ed = local_sign(preimage)`, `pqc = local_pqc_sign(preimage ‖ ed)`,
     aggregator pubkeys resolved off the composite manifest envelope.
 
-Composite content itself uses the fountain sign recipe: manifest canonical =
+Composite content itself uses the content-store sign recipe: manifest canonical =
 `json.dumps(value, sort_keys=True, separators=(",",":"))`, `ed=local_sign(canonical)`,
 `pqc=local_pqc_sign(canonical+ed)`.
 
@@ -90,7 +90,7 @@ from conftest import get_database_url, run_python_script
 
 
 # ─── The full §19.7 descent drive, run once in an isolated subprocess ──
-# Admits 3 source fountain contents + a signed composite (put_aggregated_tier),
+# Admits 3 source contents + a signed composite (put_aggregated_tier),
 # then drives descend_aggregated_sources across the whole §19.7.3 verdict matrix
 # in monotonic-descent order (Keep → EjectToTier → EjectHardDelete), the
 # EjectAggregatedTierOnly stratum-shed, and the two negative gates. Captures
@@ -223,7 +223,7 @@ def fstate(cid, corpus):
     return json.loads(r) if r else None
 
 
-# ── admit 3 source fountain contents (the descent fan-in) ──
+# ── admit 3 source contents (the descent fan-in) ──
 # Independent high-entropy payloads: real members are not near-duplicates, so the
 # §19.7.1.3 producer measures max_source_multiplicity == 1 and the fold admits.
 SOURCES = [(f"src-a-{NS}", "trace"), (f"src-b-{NS}", "trace"), (f"src-c-{NS}", "trace")]
@@ -241,7 +241,8 @@ member_ids = [cid for cid, _ in SOURCES]
 AGG_CID = f"agg-root-{NS}"
 AGG_LEVEL = 1
 AGG_CORPUS = "aggregate:trace"            # aggregate_corpus_kind("trace")
-V_TIER, V_ALGO, V_NFD = 1, "raptorq-pyramid-v1", "mean+stddev"
+# The aggregation algorithm id is opaque (CC 6.1.2.1); this is the rc17 example.
+V_TIER, V_ALGO, V_NFD = 1, "layered-gist-v1", "mean+stddev"
 
 
 def build_agg_json(agg_cid, mem_ids, payloads, *, sig_content_id=None, blank_pqc=False):
@@ -538,7 +539,7 @@ def test_descend_never_touches_the_composite(drive):
     below the floor forever — O(log T) memory). The aggregation record and the
     composite's own symbols survive the whole source-descent matrix."""
     assert drive["composite_untouched_by_descend"] is True
-    # The composite's own fountain symbols are still fully present after every
+    # The composite's own retained pieces are still fully present after every
     # source-level descent step ran.
     assert drive["composite_present_before_shed"] == drive["symbols_per_source"]
 

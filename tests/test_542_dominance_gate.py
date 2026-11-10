@@ -77,7 +77,7 @@ from conftest import get_database_url, run_python_script
 
 
 # ─── The dominance-gate drive, run once in an isolated subprocess ──────
-# Admits N source fountain contents, then hammers put_aggregated_tier with a
+# Admits N source contents, then hammers put_aggregated_tier with a
 # matrix of (version, source_count, signed n_eff, mass-honesty) AggregationMetaV1
 # composites and records the exact admit/reject token for each — so every test
 # below asserts one observed transition independently.
@@ -157,7 +157,8 @@ NS = secrets.token_hex(6)
 SYMBOL, N_SOURCE, K_REPAIR, MIN_VIABLE = 16, 10, 4, 3
 TOTAL = N_SOURCE + K_REPAIR
 AGG_CORPUS = "aggregate:trace"
-V_TIER, V_ALGO, V_NFD = 1, "raptorq-pyramid-v1", "mean+stddev"
+# The aggregation algorithm id is opaque (CC 6.1.2.1); this is the rc17 example.
+V_TIER, V_ALGO, V_NFD = 1, "layered-gist-v1", "mean+stddev"
 V3, V2, V1 = 3, 2, 1
 
 
