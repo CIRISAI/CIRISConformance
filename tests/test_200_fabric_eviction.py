@@ -16,7 +16,7 @@ cross-wheel boundary:
 
 - ✅ **Per-actor eviction** (`evict_actor_json`, CIRISPersist#125):
   deletes every blob the Engine holds for an actor AND emits a
-  `withdraws` against each `holds_bytes` attestation (the §10.1.2
+  `withdraws` against each holding claim (`custody:ack:v1`, CC 3.1.3.3; the §10.1.2
   ContentMiss feedback). This is the §9 thesis, end to end.
 - ✅ **Eviction sweeper liveness** (`sweep_evictions_once`,
   CIRISPersist#123): the popularity×freshness sweep runs synchronously

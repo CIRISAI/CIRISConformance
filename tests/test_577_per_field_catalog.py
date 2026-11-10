@@ -10,10 +10,11 @@ explicit value equals the field's documented default (an explicit `"epistemic_mo
 interpretation-time, never encoding-time). This is the rule §5.3.2.4.2 leans on when
 it forbids re-defaulting at promote.
 
-This test drives the FULL catalog as the vendored CC 1.0-rc6 table states it (30
+This test drives the FULL catalog as the vendored CC 1.0-rc17 table states it (31
 rows; 28 exercised — `family_id` / `community_id` are conditional-required, gated by
 admission, and are covered by the cohort family/community tests, not the
-omit-vs-materialize catalog) through TWO real wheels at once — this is a genuine
+omit-vs-materialize catalog; `additional_scrubs` travels beside the signed object,
+never inside it, CC 2.6.1.7) through TWO real wheels at once — this is a genuine
 cohabitation property, not a single-wheel tautology. A drift test parses the table
 from `reference/` so a new row the catalog does not exercise fails the build:
 
@@ -63,7 +64,9 @@ _CATALOG = [
     ("context", "free-form"),
     ("evidence_refs", ["ref-a", "ref-b"]),
     ("valid_until", "2026-12-31T00:00:00.000Z"),
-    ("subject_key_ids", ["subject-key-0"]),
+    # `subject_key_ids` left the CC 2.6.1.2 table at rc17: the CC 2.6.1.7 signed
+    # object places it BESIDE the signed bytes (part_2 §2.6.1.7, placement
+    # `beside`), so it is no longer an omit-vs-materialize envelope member.
     # CC 1.0-rc5 / rc6 rows. Values follow the table's own example column; the
     # placeholders it leaves (`<original_content_hash>`, `<64 lowercase hex>`,
     # `[<SignedKeyRecord>, ...]`) are filled with well-formed stand-ins, since
@@ -83,8 +86,13 @@ _CATALOG = [
     ("witness_quorum", 2),
     ("witnesses", [{"key_id": "witness-0"}]),
     ("delivery_mode", "push"),
-    ("listed", "public"),
+    # `listed` was retired from CC 2.1 at rc17 (no outward member listing; a
+    # roster is never enumerable outside its cohort, CC 3.2), so it is gone here.
     ("history_on_join", "full"),
+    # CC 1.0-rc17 rows (part_2 §2.6.1.2): the accord charter's halt fuse and
+    # recovery commitments. Values follow the table's example column.
+    ("halt_fuse_secs", 3600),
+    ("recovery_commitments", {"holder-0": "3" * 64}),
 ]
 
 # Rows of the CC 2.6.1.2 table this omit-vs-materialize gate deliberately does not
@@ -94,6 +102,14 @@ _CATALOG = [
 # fall behind the reference again (it sat at the 16-row table while rc5/rc6 grew
 # it to 30).
 _ADMISSION_GATED = {"family_id", "community_id"}
+
+# Rows that are not envelope members at all. CC 1.0-rc17 §2.6.1.2 / CC 2.4 /
+# CC 2.6.1.7: `additional_scrubs` "travels **beside** the signed object, never
+# inside it, since a cosignature cannot be inside the bytes it signs", so it has
+# no omit-vs-materialize behaviour inside the canonical envelope bytes this gate
+# drives. Naming it here keeps the drift gate total: a row is exercised, named
+# admission-gated, or named beside-the-row, never silently skipped.
+_BESIDE_THE_ROW = {"additional_scrubs"}
 
 _BODY = r"""
 import json, sys, os, tempfile, secrets
@@ -224,7 +240,7 @@ def test_catalog_covers_the_vendored_table():
     table = _table_fields()
     assert len(table) == len(set(table)), f"duplicate rows in the vendored table: {table}"
     exercised = {f for f, _ in _CATALOG}
-    missing = set(table) - exercised - _ADMISSION_GATED
+    missing = set(table) - exercised - _ADMISSION_GATED - _BESIDE_THE_ROW
     stale = exercised - set(table)
     assert not missing, f"CC 2.6.1.2 rows the catalog does not exercise: {sorted(missing)}"
     assert not stale, f"catalog fields no longer in the CC 2.6.1.2 table: {sorted(stale)}"

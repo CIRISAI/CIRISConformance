@@ -14,8 +14,8 @@ cross-wheel-observable half of CC 5.3.2.5 and is exercised here.
 
 The *positive* round-trip (store a valid blob + read it back) uses
 persist v3.3.0's one-call `put_blob_signing` (CIRISPersist#121 — the seam
-filed as CIRISPersist#124, now shipped): persist owns the holds_bytes
-envelope construction, canonicalization, signing (via the engine's
+filed as CIRISPersist#124, now shipped): persist owns the holding-claim
+(`custody:ack:v1`, CC 3.1.3.3; `holds_bytes` is retired, CC 2.4) envelope construction, canonicalization, signing (via the engine's
 composed signer), and atomic commit. The attesting key must first be
 registered in the federation directory, otherwise attestation emission
 fails (`blob_attestation_emission_failed`).
@@ -91,7 +91,7 @@ try:
         fetched is not None and base64.b64decode(json.loads(fetched)["inline"]) == body
     )
     report["positive_has_blob"] = engine.has_blob_json(good_sha)
-    # The holds_bytes holder attestation was emitted for the attesting key.
+    # The holding claim (custody:ack:v1 `here`) was emitted for the attesting key.
     holders = json.loads(engine.list_attestations_for(key_id))['items']
     report["holder_attestation_emitted"] = any(
         _is_here_claim(h) for h in holders
@@ -145,5 +145,5 @@ def test_blob_positive_round_trip(ccs_blob):
     assert ccs_blob["positive_intact"] is True, ccs_blob
     assert ccs_blob["positive_has_blob"] is True, ccs_blob
     assert ccs_blob["holder_attestation_emitted"] is True, (
-        f"put_blob_signing did not emit a holds_bytes holder attestation: {ccs_blob}"
+        f"put_blob_signing did not emit a holding claim (custody:ack:v1): {ccs_blob}"
     )

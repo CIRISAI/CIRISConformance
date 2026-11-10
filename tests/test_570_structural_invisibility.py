@@ -3,22 +3,21 @@ Substrate tier — CC 5.2 structural invisibility (the CEWP "the wire format can
 carry them" privacy promise).
 
 CC 5.2 (part_5_transport_substrate.md §5.2, "`family` — Structural invisibility —
-`holds_bytes:sha256:*` suppression for `cohort_scope: self | family`") codifies a
-NORMATIVE substrate discipline, not an operator policy:
+no holding claim leaves a bounded cohort") codifies a NORMATIVE substrate
+discipline, not an operator policy:
 
 - When a Contribution carries `cohort_scope: self` OR `cohort_scope: family`, the
-  substrate **MUST NOT** emit a corresponding `holds_bytes:sha256:{prefix}`
-  holder-directory attestation (CC 3.1.9.1). The bytes are held locally and
-  delivered to admitted self-collective / family members via the at-rest flow,
-  never via the public holder-discovery directory — so "a non-member peer cannot
-  even *discover* the bytes exist." This is the UNCONDITIONAL layer (§5.2 (1)),
-  holding even when the at-rest bytes are plaintext.
-- `cohort_scope: community | affiliations | federation` content emits
-  `holds_bytes:sha256:*` per status-quo behavior (§5.2 "Interaction with existing
-  behavior"); only the self/family path is suppressed.
+  substrate **MUST NOT** emit any holding claim observable outside the cohort. The
+  holding claim is the holder's `custody:ack:v1` report (CC 3.1.3.3); the retired
+  `holds_bytes` row type is refused (CC 2.4). The bytes are held locally and
+  delivered to admitted self-collective / family members, never via the public
+  holder-discovery directory — so "a non-member peer cannot even *discover* the
+  bytes exist." This holds even when the at-rest bytes are plaintext.
+- `cohort_scope: community | affiliations | federation` content emits its holding
+  claim at the content's scope; only the self/family path is suppressed.
 
 **The real wheel surface (persist 15.1.0) — fully drivable, no transport needed.**
-The presence/absence of the `holds_bytes` directory attestation IS the structural
+The presence/absence of the holding claim in the holder directory IS the structural
 property, and persist exposes both emission paths plus the scope→tier resolver on
 one Engine:
 
@@ -27,20 +26,20 @@ one Engine:
   `community`/`affiliations` → `"community_dek"`, Commons/unknown → `"plaintext"`.
 - `store_blob_local_json(payload)` (CIRISPersist#153, CEG 0.7 §10.1.4) — the
   self/family primitive: stores the bytes locally (readable via `get_blob_json`)
-  WITHOUT emitting a `holds_bytes` attestation — "no `holds_bytes` row, so
-  non-member peers cannot discover the bytes exist."
+  WITHOUT emitting a holding claim, so non-member peers cannot discover the bytes
+  exist.
 - `put_blob_signing(...)` (CIRISPersist#121) — the community/federation primitive:
   writes the blob WITH holder-attestation emission (persist owns the envelope
   construction + hybrid signing internally).
 - `list_local_holders_json(sha256)` / `list_holders_json(sha256)` — the holder
-  directory: the `attesting_key_id`s of every `holds_bytes` attestation for a blob.
+  directory: the `attesting_key_id`s of every holding claim for a blob.
 
 **Why the assertion is deterministic / robust.** One persist Engine, one process,
 no Reticulum transport, no timing — a pure storage-semantics gate. The SAME node
 stores the SAME shape of content two ways differing ONLY in cohort scope; the
 self/family path yields an empty holder directory while the community path names
 the local key. This is the wire-format-level closure of the structural-invisibility
-claim, asserted at the exact `holds_bytes`-suppression seam §5.2 makes normative.
+claim, asserted at the exact holding-claim suppression seam §5.2 makes normative.
 It runs under BOTH sqlite and postgres via the injected database URL. The
 scope-disable hook (`cohort_scope_enforcement=Off`) is NOT touched — suppression is
 the substrate's unconditional default, exercised through the ordinary blob surface.
@@ -85,7 +84,7 @@ report = {"kid": kid}
 report["tiers"] = {t: eng.cohort_scope_crypto_tier(t)
                    for t in ("self", "family", "community", "affiliations", "federation")}
 
-# self/family path: bytes held locally, NO holds_bytes directory attestation.
+# self/family path: bytes held locally, NO holding claim in the directory.
 b_self = b"family-photo-" + secrets.token_hex(4).encode()
 sha_self = hashlib.sha256(b_self).hexdigest()
 eng.store_blob_local_json(json.dumps({"sha256": sha_self,
@@ -96,7 +95,7 @@ report["self"] = {
     "fed_holders": json.loads(eng.list_holders_json(sha_self)),
 }
 
-# community/federation path: bytes held locally AND a holds_bytes attestation emitted.
+# community/federation path: bytes held locally AND a holding claim emitted.
 b_comm = b"community-post-" + secrets.token_hex(4).encode()
 sha_comm = hashlib.sha256(b_comm).hexdigest()
 eng.put_blob_signing(sha_comm, base64.b64encode(b_comm).decode(), None, "text/plain",
@@ -130,7 +129,7 @@ def test_cohort_scope_crypto_tier_splits_invisible_from_discoverable(invisibilit
     invisible-encrypted tier and community/affiliations in the discoverable tier.
 
     This is the closed-set dispatch (`cohort_scope_crypto_tier`, CC 4.4.3.2.8) that
-    governs which content is `holds_bytes`-suppressed. `self`/`family` resolve to
+    governs which content has its holding claim suppressed. `self`/`family` resolve to
     `invisible_encrypted` (no holder-directory attestation), `community`/
     `affiliations` to `community_dek` (holder-inspectable), and `federation` to
     `plaintext` — the structural split, deterministic and negative-default.
@@ -145,20 +144,20 @@ def test_cohort_scope_crypto_tier_splits_invisible_from_discoverable(invisibilit
 
 @pytest.mark.requires_persist
 @pytest.mark.ccs
-def test_self_family_content_emits_no_holds_bytes_attestation(invisibility):
+def test_self_family_content_emits_no_holding_claim(invisibility):
     """CC 5.2: self/family content is structurally invisible — held locally but
-    emitting NO `holds_bytes:sha256:*` holder-directory attestation.
+    emitting NO holding claim into the holder directory.
 
     `store_blob_local_json` persists the bytes (they are readable via
     `get_blob_json`) yet the substrate announces nothing: both the federation-
     discovery and local-truth holder directories are EMPTY for the blob. A
     non-member peer cannot discover the bytes exist — the unconditional §5.2 (1)
-    invisibility layer, at the `holds_bytes`-suppression seam itself.
+    invisibility layer, at the holding-claim suppression seam itself.
     """
     self_ = invisibility["self"]
     assert self_["readable"], "self/family bytes must be locally held (readable), just undiscoverable"
     assert self_["local_holders"] == [], (
-        f"self/family content emitted a holds_bytes attestation — structural "
+        f"self/family content emitted a holding claim — structural "
         f"invisibility violated: local_holders={self_['local_holders']}")
     assert self_["fed_holders"] == [], (
         f"self/family content is discoverable on the federation holder directory — "
@@ -167,9 +166,9 @@ def test_self_family_content_emits_no_holds_bytes_attestation(invisibility):
 
 @pytest.mark.requires_persist
 @pytest.mark.ccs
-def test_community_content_does_emit_holds_bytes_attestation(invisibility):
+def test_community_content_does_emit_holding_claim(invisibility):
     """CC 5.2 contrast: community-scope content DOES emit a discoverable
-    `holds_bytes` attestation (only the self/family path is suppressed).
+    holding claim (only the self/family path is suppressed).
 
     The load-bearing contrast that makes the invisibility claim a real wire-level
     distinction and not a blanket "persist never announces": the SAME node, via
@@ -179,6 +178,6 @@ def test_community_content_does_emit_holds_bytes_attestation(invisibility):
     comm = invisibility["community"]
     assert comm["readable"], "community bytes must be locally held"
     assert comm["local_holders"] == [invisibility["kid"]], (
-        f"community-scope content did not emit a holds_bytes attestation naming the "
+        f"community-scope content did not emit a holding claim naming the "
         f"local key — the suppression is not scope-selective: "
         f"local_holders={comm['local_holders']}, kid={invisibility['kid']}")

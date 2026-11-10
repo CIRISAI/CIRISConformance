@@ -2,32 +2,52 @@
 Fabric tier — CC 6.1.2 noise floor: Full / Partial / EnvelopeOnly classification
 and N5 revocation → below-floor descent (CIRISConformance#55 tests #1 + #2).
 
-CC 6.1 gives content a *fountain* shape: a bound-hybrid-signed manifest
-(Ed25519 + ML-DSA-65, verified at ingest) plus `n_source + k_repair` erasure
-symbols. The **noise floor** is the classification of how much of that content is
-still recoverable from the symbols currently held:
+CC 6.1.2 (rc17) defines the **noise floor** as the individual-recoverability
+boundary: an item is above it iff the declared reconstruction procedure `R`
+recovers it above fidelity `ε`, and the pinned default `R` is the layered-codec
+fidelity metric (drop the high-detail layers, keep a coarse version). Revocation,
+capacity eviction and aging are one operation — a monotonic descent of fidelity —
+and revocation is the fastest: immediate forced descent below the floor, which no
+pin or retention priority defeats (CC 6.1.5 N5, CC 6.1.5.2 B6). The signed record
+that the content existed survives below the floor.
 
-  • **Full**       — enough symbols to reconstruct the original (all `n_source`
-                     source symbols recoverable).
-  • **Partial**    — some symbols remain but fewer than `n_source`; still at or
-                     above `min_viable_symbols`, so partial recovery is possible.
-  • **EnvelopeOnly** — symbols have fallen *below* `min_viable_symbols`; nothing
+The substrate at the matrix pin realises that descent in its content store, whose
+module and Python surface still carry the legacy v19 name `fountain` (persist's
+spelling, kept here because the test imports it; CIRISPersist#1230 renames the
+module for what it does at v62). In that store an item is a bound-hybrid-signed
+manifest (Ed25519 + ML-DSA-65, verified at ingest) plus `n_source + k_repair`
+retained pieces, and its fidelity is read as three states:
+
+  • **Full**       — every `n_source` piece is present: fully recoverable.
+  • **Partial**    — fewer than `n_source` remain but at least `min_viable`:
+                     degraded, still above the floor.
+  • **EnvelopeOnly** — fewer than `min_viable` remain: below the floor. Nothing
                      is reconstructable, but the signed manifest (the envelope)
-                     survives. This is the noise floor: provenance is retained
-                     even when payload is gone — descent NEVER goes to zero.
+                     survives — provenance is retained even when payload is gone.
 
-This is drivable end-to-end on the Python wheel (persist 12.2.0) via the real
-fountain surface: `Engine.put_fountain_content(manifest_json, symbols_json)`
-admits a signed fountain; `Engine.get_fountain_content(cid, corpus)` returns
+These are the substrate's states; CC registers its classifier as the CC 6.1.2
+evidence (`CLM-noise-classify`). What this file asserts is the rc17 rule as that
+store expresses it: descent is monotonic down a closed ladder, revocation drops
+everything regardless of retention priority, and the manifest survives at the
+floor. The piece geometry (`n_source`, `k_repair`, `min_viable`) is the store's
+legacy shape, not a rule of rc17: the Constitution dropped erasure coding for
+storage at rc10 ("Stored content is never split by a node", CC 5.4.3), and
+CIRISPersist#1230 retires it. Nothing here asserts that shape as conformance;
+the geometry is only the input the store needs to express a descent, and no test
+asserts coded symbols on the wire.
+
+This is drivable end-to-end on the Python wheel via the store's surface:
+`Engine.put_fountain_content(manifest_json, symbols_json)` admits a signed item;
+`Engine.get_fountain_content(cid, corpus)` returns
 `{"state": "full"|"partial"|"envelope_only", "present": <int>, "manifest": ...}`
 — that IS the classification surface. Two eviction verbs drive descent:
 `evict_fountain_content_to_tier(cid, corpus, tier)` (capacity-pressure descent
 down a retention ladder) and `evict_fountain_content_hard_delete(cid, corpus)`
-(N5 revocation — purge every symbol regardless of retention priority).
+(N5 revocation — purge every piece regardless of retention priority).
 
 ────────────────────────────────────────────────────────────────────────────
 OBSERVED tier → present → state mapping (persist 12.2.0, fresh engine per tier,
-n_source=10, k_repair=4, symbol_size=16, min_viable=3, total=14 symbols admitted):
+n_source=10, k_repair=4, piece size 16, min_viable=3, total=14 pieces admitted):
 
     admit         present=14   state=full           (all present)
     tier "t2"     present=10   state=full           (drops k_repair; keeps n_source)
@@ -37,14 +57,15 @@ n_source=10, k_repair=4, symbol_size=16, min_viable=3, total=14 symbols admitted
     hard_delete   present= 0   state=envelope_only  (dropped == 14; manifest survives)
 
 The valid tier vocabulary is exactly `full | t2 | t3 | t4 | t5` (any other tier
-name is rejected `unknown fountain tier`). The classification crossings observed
-are consistent with `FountainContent::classify(present, n_source, min_viable)`
+name is rejected with persist's message `unknown fountain tier`). The classification
+crossings observed are consistent with persist's
+`FountainContent::classify(present, n_source, min_viable)`
 being pinned in parallel on the CIRISServer Rust lane: Full = all source
-symbols present (present ≥ n_source), Partial = min_viable ≤ present < n_source,
+pieces present (present ≥ n_source), Partial = min_viable ≤ present < n_source,
 EnvelopeOnly = present < min_viable. The manifest is present in EVERY state,
 including envelope_only — the floor is envelope-only provenance, never nothing.
 
-Backend parity: the fountain path uses only the Engine (never init_edge_runtime),
+Backend parity: the content-store path uses only the Engine (never init_edge_runtime),
 so both sqlite and postgres are exercised without the CIRISPersist#354 edge-runtime
 abort. Each content id is salted with a per-subprocess token so a shared postgres
 database never sees a cross-run cid collision.
@@ -60,7 +81,7 @@ from conftest import get_database_url, run_python_script
 
 pytestmark = pytest.mark.fabric
 
-# The fountain geometry these gates pin their crossings against.
+# The content-store geometry these gates pin their crossings against.
 N_SOURCE, K_REPAIR, SYMBOL_SIZE, MIN_VIABLE = 10, 4, 16, 3
 TOTAL_SYMBOLS = N_SOURCE + K_REPAIR  # 14
 
@@ -77,8 +98,8 @@ EXPECTED_TIER_LADDER = {
 VALID_TIERS = ("full", "t2", "t3", "t4", "t5")
 
 
-# ─── Real fountain admit-and-observe driver ───────────────────────────
-# One subprocess admits several independent signed fountains and drives the
+# ─── Real content-store admit-and-observe driver ──────────────────────
+# One subprocess admits several independent signed items and drives the
 # real eviction verbs, returning a structured report the tests assert on. The
 # signing recipe is the proven bound-hybrid one: canonical manifest JSON signed
 # Ed25519, then ML-DSA-65 over (canonical || ed_sig), verified at ingest.
@@ -156,7 +177,7 @@ def observe(cid):
 report = {"n_source": N_SOURCE, "k_repair": K_REPAIR, "min_viable": MIN_VIABLE,
           "total": TOTAL}
 
-# Baseline: a freshly admitted fountain is Full with every symbol present.
+# Baseline: a freshly admitted item is Full with every piece present.
 _base_cid = f"nf-base-{SALT}"
 admit(_base_cid)
 report["baseline"] = observe(_base_cid)
@@ -208,10 +229,10 @@ def floor():
     if payload.get("_error") == "import":
         pytest.fail(f"driver could not import ciris_persist: {payload.get('detail')}")
     if payload.get("_error") == "absent":
-        pytest.fail("fountain surface missing on the wheel: "
+        pytest.fail("content-store surface (persist `*_fountain_content`) missing on the wheel: "
                     f"{payload.get('missing')} is not on Engine")
     assert payload.get("stage") == "done", payload
-    # Guard: a freshly admitted fountain MUST classify Full with every symbol
+    # Guard: a freshly admitted item MUST classify Full with every piece
     # present, else the descent crossings below would pass for the wrong reason.
     base = payload["baseline"]
     assert base["state"] == "full" and base["present"] == TOTAL_SYMBOLS, payload
@@ -290,7 +311,7 @@ def test_unknown_tier_is_rejected(floor):
     against a closed ladder.
     """
     assert floor["unknown_tier"] != "accepted", (
-        "an unknown fountain tier was accepted — the ladder vocabulary is not closed")
+        "an unknown tier was accepted — the ladder vocabulary is not closed")
     assert "unknown fountain tier" in floor["unknown_tier"], floor["unknown_tier"]
 
 
