@@ -16,7 +16,7 @@ cannot reach:
   evicting *its own* holdings does not delete a peer's copy — eviction
   authority is per-operator, and the content survives at other holders.
 - **Federation directory visibility** (§10.1): a node sees a peer's
-  `holds_bytes` attestation + blob through the shared substrate.
+  holding claim (`custody:ack:v1`) + blob through the shared substrate.
 
 This fixture is the foundation the still-pending multi-node scenarios build
 on (cross-transport #4, trust-depth admission, the F-AV enforcement half of

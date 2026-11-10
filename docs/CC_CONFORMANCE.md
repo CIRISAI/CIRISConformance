@@ -1,6 +1,8 @@
 # CIRIS Constitution conformance profiles in this harness
 
-The **[CIRIS Constitution](../reference/CIRIS_Constitution/) `CC 1.0-rc2`** — the
+The **[CIRIS Constitution](../reference/CIRIS_Constitution/) `CC 1.0-rc17`** (vendored at
+CIRISConstitution `892a68b`, the rc17 branch head before the tag; see
+[`reference/README.md`](../reference/README.md)) — the
 ecosystem's **superalignment standard** — defines three normative conformance
 profiles in **CC 2.2**. (The Constitution **superseded CEG**: the CEG wire-grammar
 is absorbed into it — grammar → `part_2`, namespace → `part_3`, transport →
@@ -35,7 +37,7 @@ adds a Cartesian admission gate on self-attestation as **non-conformant**.
 consumer-policy-weighted with no substrate enforcement gate; gated at the Rust
 layer where applicable, see CIRISServer below.)
 
-## Why this harness can't yet cover all of CC 1.0-rc2
+## Why this harness can't yet cover all of CC 1.0-rc17
 
 This harness drives the **real published wheels** (persist / verify /
 edge). A test is only meaningful if it exercises actual binary behavior —
@@ -83,15 +85,15 @@ artificial PyO3 surface) · ⏳ pending an upstream seam · 🏛 governance/proc
 | Live transport bring-up + delivery (4-node fabric) | CCS | ✅ | `test_340` — **rock-solid gates**: (1) the 4-node/3-steward fabric stands up — every `init_edge_runtime(enable_transport=True)` returns, all reach ready (**CIRISPersist#320** closed; the deadlock/crash is fixed); (2) real Reticulum delivery demonstrably works end-to-end (a robust majority of routes deliver). Strict *per-route* delivery is not gated — edge 8.7.2 intermittently drops ~1 of 4 routes under contention (**CIRISEdge#276**, persistent-within-a-run) — and per-*mode holder-scoping* awaits the opaque scope selector (**CIRISEdge#265**); both return when those land |
 | Holder-*scoped* delivery (non-holder ⇒ no delivery) | CCS | ⏳ | edge 8's `send_opaque_event` is a raw primed-peer push with no scope selector, so a non-holder still receives — the CEWP "no membership ⇒ no delivery" property is **not** gated until the opaque holder/scope selector returns → **CIRISEdge#265** (was a real gate on the edge-7 / CC 0.5.1 floor) |
 | Edge-runtime cohabitation on postgres (send/receive, intake, https) | CCS | ⏳ | `test_050`/`test_140`/`test_230` — real green gates on sqlite; on **postgres** persist 12.2.0 non-deterministically aborts `init_edge_runtime` (background tokio `net/addr` panic → SIGABRT) so they imperatively xfail only when the crash fires → **CIRISPersist#354** |
-| CC 6.1.2 fountain below-floor classification (Full/Partial/EnvelopeOnly) | CCS | ✅ | `test_540` (Python behavioral — `get_fountain_content` `state` across tier descent, boundaries cross-checked with the Rust lane) **+** 🦀 CIRISServer `tests/noise_floor_verdicts.rs` (pure `FountainContent::classify` boundary table) |
+| CC 6.1.2 noise-floor classification (Full/Partial/EnvelopeOnly — the substrate's content store; the rc17 default `R` is layered-codec fidelity) | CCS | ✅ | `test_540` (Python behavioral — persist's `get_fountain_content` `state` across tier descent; the store keeps its legacy name until CIRISPersist#1230, boundaries cross-checked with the Rust lane) **+** 🦀 CIRISServer `tests/noise_floor_verdicts.rs` (pure `FountainContent::classify` boundary table) |
 | CC 6.1.2 / §19.7 N5 revocation → below floor (hard-delete purge, rarity can't resurrect) | CCS | ✅ | `test_540` (Python — `evict_fountain_content_hard_delete` → `envelope_only`/present=0, signed manifest survives) **+** 🦀 `tests/noise_floor.rs::revocation_purges_member_tiers_but_not_the_composite` (tier-pyramid: member purged every tier, composite stays `Full`) |
 | CC 6.1.2.3 EjectionVerdict routing (Keep/EjectToTier/EjectHardDelete/AggregatedTierOnly) | CCS | ✅ | `test_541` (Python behavioral via `descend_aggregated_sources` + a byte-exact Python-built signed `AggregationMetaV1` + negative gates) **+** 🦀 `tests/noise_floor_verdicts.rs` (pure `ejection_verdict` matrix + `EjectionAction::from_verdict`) |
-| CC 6.1.2 measured recoverability below floor (structured + known-plaintext) | CCS | 🦀 | CIRISServer `tests/noise_floor.rs::structured_and_known_plaintext_stay_below_floor` — the RaptorQ residual-fidelity sweep needs edge's `fountain_decode`, not on the Python wheel; worst-case fidelity 0.0 ≤ ε for compressible + partial-known-plaintext payloads |
+| CC 6.1.2 measured recoverability below floor (structured + known-plaintext) | CCS | 🦀 | CIRISServer `tests/noise_floor.rs::structured_and_known_plaintext_stay_below_floor` — the residual-fidelity sweep needs an edge decode surface that is not on the Python wheel (CIRISServer#864 retires its RaptorQ shape); worst-case fidelity 0.0 ≤ ε for compressible + partial-known-plaintext payloads |
 | CC 6.1.2 faithful N→1 aggregation-erasure | CCS | ⏳ | `tests/noise_floor.rs::..._pending_ciris_edge_266` (`#[ignore]`) — the prior test was true-by-construction (fabricated composite); a real measurement needs a pub edge resampling operator → **CIRISEdge#266** |
 | CC 6.1.2 / §19.7.1.2 aggregation dominance / N_eff gate (CC 1.0-rc1 G-B) | CCS | ✅ | `test_542` — verify 8.7.0 shipped the gate (**CIRISVerify#167** closed): `AggregationMetaV1` v2 carries a **signed `n_eff`**; `put_aggregated_tier` rejects a fold with `2·n_eff < source_count` as `aggregation_meta_dominated` (v1 tier unconditionally rejected). The 900/1000 fold (Kish n_eff≈1.2 < floor 5) is rejected. **R9 residual pinned:** the gate *trusts* the signed n_eff (no mass recompute at this surface), so a fold that signs a lying `n_eff==N` is admitted (CC 8.3.1 acknowledged bet) |
 | — (Rust-lane note) the CIRISServer `noise_floor.rs::dominance_undetectable_pending_ciris_verify_167` gap-pin inverts when the server crate-pins bump to verify 8.7.0 | CCS | 🦀 | currently green on the server's pinned verify 8.5.0 (dominated fold accepted); flips to assert rejection at the bump |
 | R1/Q1 partition+heal merge contracts (Fed TM v1.1) | CCS | ⏳ | CIRISVerify#48/#49 — **Conformance#7** Scenario 3 |
-| CC 5.3.2.1 holds_bytes 24h TTL | CCS | ⏳ | needs injectable clock → folded into CIRISPersist#125 |
+| CC 5.3.2.1 holding-claim liveness: a `custody:ack:v1` `here` report is live for 72 h, then reads *unknown* (rc17; `holds_bytes` and its 24 h TTL are retired) | CCS | ⏳ | needs injectable clock → folded into CIRISPersist#125 |
 | Identity-aware storage / per-actor eviction (scaling §9) | CCS | ⏳ | `list_holders` + evict-actor → **CIRISPersist#125** |
 | Trust-recursion-depth admission (scaling §1.4) | CCS | ⏳ | depth-N graph walk → **CIRISNodeCore#21** |
 | CC 3.2 steward-binding (node/agent) admission + resolution | CCS | ✅ | `test_360` — `steward_bind`/`is_steward_bound_json`/`steward_bindings_of_json` (persist 11.0.0, owner→steward reframe; un-stewarded community reject token `federation_unstewarded_community_member` via `test_340`) |
