@@ -1,7 +1,7 @@
 # CIRIS Constitution conformance profiles in this harness
 
-The **[CIRIS Constitution](../reference/CIRIS_Constitution/) `CC 1.0-rc17`** (vendored at
-CIRISConstitution `892a68b`, the rc17 branch head before the tag; see
+The **[CIRIS Constitution](../reference/CIRIS_Constitution/) `CC 1.0-rc18`** (vendored at
+CIRISConstitution `646df97`, the `v1.0-rc18` tag; see
 [`reference/README.md`](../reference/README.md)) — the
 ecosystem's **superalignment standard** — defines three normative conformance
 profiles in **CC 2.2**. (The Constitution **superseded CEG**: the CEG wire-grammar
@@ -37,7 +37,7 @@ adds a Cartesian admission gate on self-attestation as **non-conformant**.
 consumer-policy-weighted with no substrate enforcement gate; gated at the Rust
 layer where applicable, see CIRISServer below.)
 
-## Why this harness can't yet cover all of CC 1.0-rc17
+## Why this harness can't yet cover all of CC 1.0-rc18
 
 This harness drives the **real published wheels** (persist / verify /
 edge). A test is only meaningful if it exercises actual binary behavior —
