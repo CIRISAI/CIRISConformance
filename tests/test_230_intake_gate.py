@@ -18,11 +18,12 @@ wire bytes) and pins the gate:
 
 Drivable as of **edge 7.0.10** (CIRISEdge#211): `build_signed_inbound_envelope`
 mints the exact byte-shape `dispatch_inbound_bytes` expects, so the harness
-never reverse-engineers the wire format. The envelope is Ed25519-only, so the
-edge runtime is built with `hybrid_policy="ed25519_fallback"` (the helper's
-documented pairing) and the sender is an Ed25519-only — i.e. hybrid-pending —
-federation key. The trust gate runs *after* verify, so a passing envelope is the
-precondition; this test proves the whole chain.
+never reverse-engineers the wire format. The envelope is the full hybrid
+(Ed25519 + ML-DSA-65) and the sender a hybrid federation key: the runtime keeps
+edge's default `strict` policy, the only one edge v45 accepts (CIRISEdge#957,
+CC 5.3.2.4.3.1; `ed25519_fallback` is refused). The trust gate runs *after*
+verify, so a passing envelope is the precondition; this test proves the whole
+chain.
 """
 
 from __future__ import annotations

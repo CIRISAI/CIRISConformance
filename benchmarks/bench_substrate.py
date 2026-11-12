@@ -109,10 +109,18 @@ def run(quick: bool) -> dict:
     }
 
     # ── hybrid verify (cross-wheel: persist Engine → verify crypto) ──
-    sig = base64.b64encode(engine.local_sign(msg)).decode()
+    # Both halves under `strict`, the only verifier policy (CC 5.3.2.4.3.1;
+    # persist v61.1.0 CIRISPersist#1233, edge v45 CIRISEdge#957): the
+    # `ed25519_fallback` this used to time is refused before any crypto runs.
+    # Now the full Ed25519 + ML-DSA-65 verify, the same work the CIRISVerify
+    # `federation_crypto/hybrid_verify` reference number measures.
+    _h = engine.local_sign_hybrid(msg)
+    sig = base64.b64encode(_h["classical_sig"]).decode()
+    pqc_sig = base64.b64encode(_h["pqc_sig"]).decode()
+    pqc_pk = engine.local_pqc_public_key_b64()
     results["hybrid_verify"] = {
         **measure(
-            lambda: engine.verify_hybrid(msg, sig, None, pk, None, "ed25519_fallback", None, None),
+            lambda: engine.verify_hybrid(msg, sig, pqc_sig, pk, pqc_pk, "strict", None, None),
             iters=iters_med, warmup=warmup,
         ),
         "unit": "per-call",

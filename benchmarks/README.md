@@ -37,6 +37,8 @@ numbers is the **cohabitation + PyO3-FFI tax**.
 Measured (see [`bench_substrate.py`](bench_substrate.py)):
 
 - `ed25519_sign` / `hybrid_verify` — crypto cost through the persist Engine FFI
+  (`hybrid_verify` is the full Ed25519 + ML-DSA-65 verify under `strict`, the
+  only verifier policy since persist v61.1.0 / edge v45)
 - `canonicalize` — `canonicalize_envelope` throughput (ns/byte) through FFI
 - `put_blob_signing_composite` — the **headline** metric: canonicalize +
   sign + store + holder-attestation in one cross-wheel call. No per-crate
