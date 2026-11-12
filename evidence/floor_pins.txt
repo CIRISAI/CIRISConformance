@@ -8,13 +8,14 @@
 # is reproducible. Bumping the floor here (+ regenerating) is a deliberate
 # registry update — see evidence/README.md.
 #
-# CC 1.0-rc17 floor — the CIRISServer 0.5.245 substrate (persist v61.0.5 / edge
-# v44.1.0 / verify v22.0.0), read off 0.5.245's Cargo.toml; the server wheel
-# stays the newest on PyPI (0.5.244) until 0.5.245 publishes. Edge v44.0.0
-# cannot be the floor: its source build SIGSEGVs beside persist v61 on
-# postgres (fixed in v44.1.0). The
-# substrate members are pinned by the DEREFERENCED tag sha (persist v61.0.5 /
-# edge v44.1.0), the same shas matrices/current.yaml records, so a moved tag
+# CC 1.0-rc17 floor — the CIRISServer 0.5.246 substrate (persist v61.2.2 / edge
+# v45.0.0 / verify v22.2.0), read off 0.5.246's Cargo.toml; the server wheel
+# stays the newest on PyPI (0.5.245) until 0.5.246 publishes. Edge v45 makes
+# `strict` the only verifier policy and retires `FountainHoldingClaim` from the
+# wire (CIRISConformance#111), so a floor below it would re-derive the
+# wire-vocabulary row against a wheel that still ratifies the retired kind. The
+# substrate members are pinned by the DEREFERENCED tag sha (persist v61.2.2 /
+# edge v45.0.0), the same shas matrices/current.yaml records, so a moved tag
 # cannot silently change the floor the registry was derived against.
 #
 # WHY TWO SHAPES: ciris-persist and ciris-edge stopped publishing desktop
@@ -24,10 +25,11 @@
 # CIRISVerify's Python project lives at `bindings/python`, not the repo root,
 # so a `git+` install of it fails outright. See matrices/current.yaml.
 #
-# This bump supersedes the v0.5.222 floor of 2026-10-06 (persist v53.1.4 /
-# edge v40.0.3): persist v61 and edge v44, with the suite brought to their
-# rules (CIRISConformance PR #106). verify moves to 22.0.0 with them.
-ciris-server==0.5.244
-ciris-verify==22.0.0
-git+https://github.com/CIRISAI/CIRISPersist@048f0993eccbbb81813de9a726b43472b47d9e06
-git+https://github.com/CIRISAI/CIRISEdge@07eac79c2ac398715b6684b800f5237141cb4e36
+# This bump supersedes the 0.5.245 floor of 2026-11-08 (persist v61.0.5 /
+# edge v44.1.0 / verify 22.0.0): edge v45 and persist v61.2, with the suite
+# brought to their rules (CIRISConformance#111). verify moves to 22.2.0 with
+# them.
+ciris-server==0.5.245
+ciris-verify==22.2.0
+git+https://github.com/CIRISAI/CIRISPersist@712575dfcd8f059c515e80a9d5abc874fd07171a
+git+https://github.com/CIRISAI/CIRISEdge@a54c6a2b20ead371b8e19d11c27c67f1f9696e6a
