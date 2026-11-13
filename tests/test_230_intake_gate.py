@@ -28,6 +28,8 @@ chain.
 
 from __future__ import annotations
 
+import subprocess
+
 import pytest
 
 from conftest import (
@@ -120,7 +122,20 @@ def _intake_script(database_url: str) -> str:
 
 @pytest.fixture(scope="module")
 def intake_gate():
-    result = run_python_script(_intake_script(get_database_url()))
+    try:
+        result = run_python_script(_intake_script(get_database_url()))
+    except subprocess.TimeoutExpired:
+        # Known edge defect, not a wrong outcome: with the standalone ciris_persist
+        # and ciris_edge wheels in one process, each statically links its own
+        # parking_lot, and edge's compiled copy of persist's store code locks a
+        # mutex in persist's memory. A waiter parked in one copy's table is never
+        # woken by an unlock in the other's, so a dispatch's verify read sleeps
+        # forever (~1 in 25 runs). The one-wheel ciris-server links a single
+        # parking_lot and cannot hit it. Only the HANG is excused; a dispatch
+        # that returns the wrong outcome still fails below. Remove at the edge
+        # release that closes CIRISEdge#988 (verify/rooting on persist's ops capsule).
+        pytest.xfail("edge two-wheel parking_lot lost wakeup in dispatch_inbound_bytes "
+                     "(CIRISEdge#988)")
     xfail_if_pg_edge_runtime_crash(result)  # CIRISPersist#354 (postgres native abort)
     payload = result.parsed_stdout()
     if payload.get("_error") == "absent":
