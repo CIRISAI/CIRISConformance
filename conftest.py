@@ -845,9 +845,11 @@ def ceg_local_signer_preamble(database_url: str, *, pqc: bool = False) -> str:
 
     `pqc` selects the engine identity shape:
 
-    - ``pqc=False`` (default) → **Ed25519-only**. Use for the CCC
-      `ed25519_fallback` / hybrid-pending verify path, which is only valid
-      for a key whose ML-DSA-65 pubkey is absent.
+    - ``pqc=False`` (default) → **Ed25519-only**. A hybrid-pending identity:
+      under `strict`, the only verifier policy (CC 5.3.2.4.3.1, persist
+      v61.1.0 / edge v45; `ed25519_fallback` is refused), nothing it signs
+      classically verifies. Use where the classical half alone is what is
+      under test.
     - ``pqc=True`` → **hybrid (Ed25519 + ML-DSA-65)**. Required for any
       federation-tier EMISSION (`put_blob_signing` holds_bytes, eviction
       `withdraws`): as of persist 10.1.1 (CIRISPersist#275) `register_self`

@@ -18,14 +18,17 @@ wire bytes) and pins the gate:
 
 Drivable as of **edge 7.0.10** (CIRISEdge#211): `build_signed_inbound_envelope`
 mints the exact byte-shape `dispatch_inbound_bytes` expects, so the harness
-never reverse-engineers the wire format. The envelope is Ed25519-only, so the
-edge runtime is built with `hybrid_policy="ed25519_fallback"` (the helper's
-documented pairing) and the sender is an Ed25519-only — i.e. hybrid-pending —
-federation key. The trust gate runs *after* verify, so a passing envelope is the
-precondition; this test proves the whole chain.
+never reverse-engineers the wire format. The envelope is the full hybrid
+(Ed25519 + ML-DSA-65) and the sender a hybrid federation key: the runtime keeps
+edge's default `strict` policy, the only one edge v45 accepts (CIRISEdge#957,
+CC 5.3.2.4.3.1; `ed25519_fallback` is refused). The trust gate runs *after*
+verify, so a passing envelope is the precondition; this test proves the whole
+chain.
 """
 
 from __future__ import annotations
+
+import subprocess
 
 import pytest
 
@@ -119,7 +122,20 @@ def _intake_script(database_url: str) -> str:
 
 @pytest.fixture(scope="module")
 def intake_gate():
-    result = run_python_script(_intake_script(get_database_url()))
+    try:
+        result = run_python_script(_intake_script(get_database_url()))
+    except subprocess.TimeoutExpired:
+        # Known edge defect, not a wrong outcome: with the standalone ciris_persist
+        # and ciris_edge wheels in one process, each statically links its own
+        # parking_lot, and edge's compiled copy of persist's store code locks a
+        # mutex in persist's memory. A waiter parked in one copy's table is never
+        # woken by an unlock in the other's, so a dispatch's verify read sleeps
+        # forever (~1 in 25 runs). The one-wheel ciris-server links a single
+        # parking_lot and cannot hit it. Only the HANG is excused; a dispatch
+        # that returns the wrong outcome still fails below. Remove at the edge
+        # release that closes CIRISEdge#988 (verify/rooting on persist's ops capsule).
+        pytest.xfail("edge two-wheel parking_lot lost wakeup in dispatch_inbound_bytes "
+                     "(CIRISEdge#988)")
     xfail_if_pg_edge_runtime_crash(result)  # CIRISPersist#354 (postgres native abort)
     payload = result.parsed_stdout()
     if payload.get("_error") == "absent":

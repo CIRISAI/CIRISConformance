@@ -64,7 +64,7 @@ artificial PyO3 surface) · ⏳ pending an upstream seam · 🏛 governance/proc
 | CC clause (legacy CEG §) | Profile | Status | Where / why |
 |---|---|---|---|
 | CC 2.2 profile organizing principle | — | ✅ | `ccp`/`ccc`/`ccs`/`ceg` markers; this doc |
-| Hybrid-signature verify + policy matrix | CCC | ✅ | `test_100_ccc_hybrid_verify.py` (strict / ed25519_fallback / soft_freshness / directory) |
+| Hybrid-signature verify + policy matrix | CCC | ✅ | `test_100_ccc_hybrid_verify.py` (strict accepts hybrid, refuses hybrid-pending; ed25519_fallback / soft_freshness refused, CC 5.3.2.4.3.1; directory) |
 | CC 5.3.2.5 blob full-SHA integrity (reject mismatch) | CCS | ✅ | `test_110_ccs_blob_integrity.py` (`blob_hash_mismatch`) |
 | CC 5.3.2.5 blob positive round-trip + holder attestation | CCS | ✅ | `test_110` via persist v3.3.0 `put_blob_signing` (CIRISPersist#124 shipped) |
 | Canonical-bytes determinism + sign/verify round-trip | CCP | ✅ | `test_120_ccp_canonical_bytes.py` |

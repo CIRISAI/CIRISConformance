@@ -127,7 +127,7 @@ kid = eng.register_self_federation_key("node", ROLE, None, None, None)
 boot = ["127.0.0.1:" + p for p in BOOT_PORTS.split(",") if p]
 listen = "127.0.0.1:" + LISTEN_PORT
 edge = init_edge_runtime(eng, idp, listen_addr=listen, bootstrap_peers=boot,
-    announce_interval_seconds=2, enable_transport=True, hybrid_policy="ed25519_fallback",
+    announce_interval_seconds=2, enable_transport=True, hybrid_policy="strict",
     agent_occurrence_key_id=kid)
 got = []
 # edge 8 (CIRISConformance#53): the inline-text handler was ripped; the

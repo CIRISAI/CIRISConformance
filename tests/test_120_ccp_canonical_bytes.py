@@ -32,7 +32,7 @@ from conftest import ceg_local_signer_preamble, get_database_url, run_python_scr
 
 
 def _ccp_canonical_script(database_url: str) -> str:
-    return ceg_local_signer_preamble(database_url) + r'''
+    return ceg_local_signer_preamble(database_url, pqc=True) + r'''
 report = {"stage": "start"}
 
 # (a) Determinism: the same fields in different key order canonicalize
@@ -50,19 +50,30 @@ for_signing = engine.canonicalize_envelope_for_signing(signed_env).decode()
 report["signing_strips_sig"] = ("signature" not in for_signing and "PQC" not in for_signing)
 report["for_signing"] = for_signing
 
-# (c) CCP → CCC round-trip: canonicalize for signing, sign, verify.
+# (c) CCP → CCC round-trip: canonicalize for signing, hybrid-sign, verify
+# under `strict`, the only verifier policy (CC 5.3.2.4.3.1; persist v61.1.0
+# CIRISPersist#1233, edge v45 CIRISEdge#957). A classical-only signature
+# over the same bytes is hybrid-pending and refused.
 envelope = json.dumps({
     "dimension": "scores:demo",
     "asserted_at": "2026-05-28T13:45:09.000Z",
     "signature": "",
 })
 canonical = engine.canonicalize_envelope_for_signing(envelope)
-sig = base64.b64encode(engine.local_sign(canonical)).decode()
+_h = engine.local_sign_hybrid(canonical)
+sig = base64.b64encode(_h["classical_sig"]).decode()
+pqc_sig = base64.b64encode(_h["pqc_sig"]).decode()
+pqc_pk = engine.local_pqc_public_key_b64()
 try:
-    out = engine.verify_hybrid(canonical, sig, None, pk, None, "ed25519_fallback", None, None)
+    out = engine.verify_hybrid(canonical, sig, pqc_sig, pk, pqc_pk, "strict", None, None)
     report["roundtrip"] = out["outcome"]
 except ValueError as exc:
     report["roundtrip_error"] = str(exc)
+try:
+    engine.verify_hybrid(canonical, sig, None, pk, None, "strict", None, None)
+    report["roundtrip_classical_only"] = "accepted"
+except ValueError as exc:
+    report["roundtrip_classical_only"] = str(exc)
 
 # (d) CC 2.6.2/CC 2.6.3/CC 2.6.7 canonicalization rejection — the opt-in validator
 # persist v3.5.0 shipped for CIRISPersist#126 (separate from canonicalize_*).
@@ -128,8 +139,12 @@ def test_signing_form_strips_signature_fields(ccp_canonical):
 @pytest.mark.ccp
 @pytest.mark.requires_persist
 def test_producer_consumer_round_trip(ccp_canonical):
-    """CCP canonicalizes + signs; a CCC consumer verifies the bytes."""
-    assert ccp_canonical.get("roundtrip") == "ed25519_fallback", ccp_canonical
+    """CCP canonicalizes + hybrid-signs; a CCC consumer verifies the bytes
+    under `strict`, and refuses a classical-only signature over them."""
+    assert ccp_canonical.get("roundtrip") == "hybrid_verified", ccp_canonical
+    assert ccp_canonical.get("roundtrip_classical_only") == "verify_hybrid_pending_rejected", (
+        ccp_canonical
+    )
 
 
 @pytest.mark.ceg

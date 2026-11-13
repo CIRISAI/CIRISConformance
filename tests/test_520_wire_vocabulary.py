@@ -6,7 +6,7 @@ CC 0.7 promotes the set of message types the substrate recognizes from "whatever
 contract**: `manifests/WIRE_VOCABULARY.md`. It is governed in two tiers (the
 RFC 8126 registration-policy discipline):
 
-- **Tier 1 — closed, CC-ratified `MessageType` variants.** 24 variants whose
+- **Tier 1 — closed, CC-ratified `MessageType` variants.** 23 variants whose
   canonicalization is load-bearing to an ethical primitive (attestations, votes,
   moderation/slashing, deferral, steward directives, key registration, the
   humanity-accord path, `Withdraws`, build provenance, content/blob
@@ -18,8 +18,9 @@ RFC 8126 registration-policy discipline):
 
 Plus `DSARRequest` / `DSARResponse`, which §3.3 keeps **Tier-1** (rights-bearing +
 Durable/requires_ack, which the opaque model can't express) — so the wheel's
-closed `MessageType` enum is exactly **24 Tier-1 + 3 opaque + 2 DSAR = 29** (vocabulary
-v1.0.2 retired `GoalDeclaration` / `GoalRetirement`, CC 3.1.9.7).
+closed `MessageType` enum is exactly **23 Tier-1 + 3 opaque + 2 DSAR = 28** (vocabulary
+v1.0.2 retired `GoalDeclaration` / `GoalRetirement`, CC 3.1.9.7; v1.0.3 retired
+`FountainHoldingClaim`, CIRISEdge#959).
 
 This is the executable form of the pin. The wheel exposes the closed enum through
 `Edge.build_signed_inbound_envelope(...)` (CIRISEdge#211): a valid wire-string
@@ -48,8 +49,8 @@ hash-pin to gate à la `tests/test_150_rns_dest_hash.py`; this gates the
 accept/reject membership behavior the hash pin will (eventually) protect.
 
 Spec: reference/CIRIS_Constitution/part_2_the_grammar.md §2.6.4 +
-reference/CIRIS_Constitution/WIRE_VOCABULARY.md (CC 1.0-rc17 db0d051, vocabulary v1.0.2,
-sha256 38bd4847c1203ae6da7b26c560ee51b577daaab4ef2d7924067995769100829e).
+reference/CIRIS_Constitution/WIRE_VOCABULARY.md (CC 1.0-rc17 892a68b, vocabulary v1.0.3,
+sha256 e0ffb58b0f15938c186f6a4eaa0fbf7393a8a10b9d18378e56b658c25f85a2b6).
 """
 
 from __future__ import annotations
@@ -85,7 +86,7 @@ def _manifest_sets() -> dict[str, set[str]]:
     sec2 = txt[txt.index("## 2. Tier 1"):txt.index("## 3. Tier 2")]
     sec3 = txt[txt.index("## 3. Tier 2"):]
 
-    tier1 = set(_table_col1_variants(sec2))          # 24 closed Tier-1 variants (v1.0.2)
+    tier1 = set(_table_col1_variants(sec2))          # 23 closed Tier-1 variants (v1.0.3)
 
     # The three opaque channels — parsed from the §3 ```rust``` block, not
     # hand-listed, so a manifest that changes the opaque set changes the gate.
@@ -105,9 +106,16 @@ def _manifest_sets() -> dict[str, set[str]]:
     # `goal:{scale}` scores row). Only the subject of that sentence is read, so the
     # note's other backticked names (`MetaGoalAlignment`, `ContributionSubmit`) are
     # not mistaken for retirements.
-    retired = set()
-    for m in re.finditer(r"\*\*Retired \([^)]*\)\.\*\*(.*?)are no longer wire kinds", txt, re.S):
-        retired |= set(re.findall(r"`([A-Z][A-Za-z0-9]+)`", m.group(1)))
+    # v1.0.3 retires a single kind and says so in the singular (`A` is no longer a
+    # wire kind), so both forms are read, keyed by the version in the note.
+    retired_by_version: dict[str, set[str]] = {}
+    for m in re.finditer(
+        r"\*\*Retired \(([^)]*)\)\.\*\*(.*?)(?:are no longer wire kinds|is no longer a wire kind)",
+        txt, re.S,
+    ):
+        retired_by_version.setdefault(m.group(1), set()).update(
+            re.findall(r"`([A-Z][A-Za-z0-9]+)`", m.group(2)))
+    retired = set().union(*retired_by_version.values()) if retired_by_version else set()
 
     return {
         "tier1": tier1,
@@ -115,6 +123,7 @@ def _manifest_sets() -> dict[str, set[str]]:
         "dsar": dsar if dsar_kept else set(),
         "migrants": migrants,
         "retired": retired,
+        "retired_by_version": retired_by_version,
     }
 
 
@@ -123,6 +132,7 @@ _SETS = _manifest_sets()
 _EXPECTED_ACCEPT = _SETS["tier1"] | _SETS["opaque"] | _SETS["dsar"]
 _MIGRANTS = _SETS["migrants"]
 _RETIRED = _SETS["retired"]
+_RETIRED_BY_VERSION = _SETS["retired_by_version"]
 
 
 # ─── Wheel probe ──────────────────────────────────────────────────────
@@ -263,9 +273,30 @@ def test_v1_0_2_retired_goal_kinds_rejected_unknown_variant(wire):
     unknown kind. The Goal is the declarer's `goal:{scale}` scores row and rides
     `ContributionSubmit` like any row.
     """
-    assert _RETIRED == {"GoalDeclaration", "GoalRetirement"}, _RETIRED
-    assert not (_RETIRED & _EXPECTED_ACCEPT), _RETIRED & _EXPECTED_ACCEPT
-    for mt in sorted(_RETIRED):
+    goal_kinds = _RETIRED_BY_VERSION.get("v1.0.2", set())
+    assert goal_kinds == {"GoalDeclaration", "GoalRetirement"}, _RETIRED_BY_VERSION
+    assert not (goal_kinds & _EXPECTED_ACCEPT), goal_kinds & _EXPECTED_ACCEPT
+    for mt in sorted(goal_kinds):
+        res = wire["migrants"][mt]
+        assert res != "accepted", f"retired kind {mt!r} is still accepted by the wheel"
+        assert "unknown variant" in res, (
+            f"{mt!r} rejected, but not as an unknown kind: {res}")
+
+
+@pytest.mark.cohabitation
+@pytest.mark.requires_persist
+@pytest.mark.requires_edge
+def test_v1_0_3_retired_holding_claim_rejected_unknown_variant(wire):
+    """Manifest v1.0.3 §2 (CIRISEdge#959): `FountainHoldingClaim` is no longer a wire
+    kind; a decoder meeting the discriminator MUST reject it as an unknown kind.
+    Holding on the chunk plane is a sealed-chunk custody fact (CC 5.3.3.2.4,
+    CC 6.1.5.1) carried as rows and acknowledgements — the suite's holding claim
+    is the holder's `custody:ack:v1` scores row.
+    """
+    kinds = _RETIRED_BY_VERSION.get("v1.0.3", set())
+    assert kinds == {"FountainHoldingClaim"}, _RETIRED_BY_VERSION
+    assert not (kinds & _EXPECTED_ACCEPT), kinds & _EXPECTED_ACCEPT
+    for mt in sorted(kinds):
         res = wire["migrants"][mt]
         assert res != "accepted", f"retired kind {mt!r} is still accepted by the wheel"
         assert "unknown variant" in res, (
